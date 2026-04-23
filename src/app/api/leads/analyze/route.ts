@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
 import { generateResponse, GEMINI_STANDARD } from '@/lib/gemini'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function POST(req: Request) {
   try {
     const { lead_id } = await req.json()
 
-    const { data: lead, error } = await supabase
+    const { data: lead, error } = await supabaseAdmin
       .from('leads')
       .select('*')
       .eq('id', lead_id)
@@ -31,7 +31,7 @@ export async function POST(req: Request) {
       // JSON parse başarısız olursa ham metni kullan
     }
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from('leads')
       .update({ ai_analysis: finalAnalysis, updated_at: new Date().toISOString() })
       .eq('id', lead_id)

@@ -27,10 +27,15 @@ export default function PlaybooksPage() {
           .eq('is_active', true)
           .order('name')
         
-        if (error) throw error
+        if (error) {
+          console.error('Supabase error fetching playbooks:', error)
+          throw error
+        }
+        
+        console.log('Fetched playbooks count:', data?.length || 0)
         setPlaybooks(data || [])
       } catch (err) {
-        console.error('Fetch error:', err)
+        console.error('Fetch error in PlaybooksPage:', err)
       } finally {
         setLoading(false)
       }

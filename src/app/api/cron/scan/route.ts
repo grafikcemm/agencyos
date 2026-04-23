@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET(req: Request) {
   try {
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     console.log(`[CRON SCAN] Başladı: ${sector} - ${city}`)
 
     // 3. Supabase'e log atalım
-    const { error } = await supabase.from('settings').insert({
+    const { error } = await supabaseAdmin.from('settings').insert({
       key: `cron_last_scan_${Date.now()}`,
       value: { sector, city, result: '20 yeni lead eklendi (mock)' }
     })

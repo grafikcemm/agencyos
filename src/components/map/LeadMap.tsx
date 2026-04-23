@@ -40,7 +40,7 @@ const createCustomIcon = (status: string, priority?: string) => {
   })
 }
 
-export default function LeadMap() {
+export default function LeadMap({ leads }: { leads: any[] }) {
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -68,22 +68,30 @@ export default function LeadMap() {
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
         
-        {/* Örnek Marker (Yüksek Öncelik) */}
-        <Marker position={[41.0082, 28.9784]} icon={createCustomIcon('new', 'high')}>
-          <Popup className="font-mono">
-            <div className="space-y-2 pb-1">
-              <div className="font-bold text-sm tracking-widest text-[#06b6d4]">KAHVECİ MEHMET EFENDİ</div>
-              <div className="text-[10px] text-[#6b7280] flex justify-between">
-                <span>Kafe / İstanbul</span>
-                <span className="text-[#f59e0b]">80 OBP</span>
-              </div>
-              <div className="pt-2 flex gap-2 w-full">
-                <button className="flex-1 bg-[#f59e0b] text-[#050810] text-[10px] font-bold py-1.5 rounded-sm">PİPELİNE'A EKLE</button>
-                <button className="flex-1 border border-[#06b6d4] text-[#06b6d4] text-[10px] font-bold py-1.5 rounded-sm">JARVIS'E SOR</button>
-              </div>
-            </div>
-          </Popup>
-        </Marker>
+        {leads.map(lead => {
+          if (!lead.latitude || !lead.longitude) return null
+          return (
+            <Marker 
+              key={lead.id} 
+              position={[lead.latitude, lead.longitude]} 
+              icon={createCustomIcon(lead.status, lead.priority)}
+            >
+              <Popup className="font-mono">
+                <div className="space-y-2 pb-1">
+                  <div className="font-bold text-sm tracking-widest text-[var(--os-cyan)] uppercase">{lead.business_name}</div>
+                  <div className="text-[10px] text-[#6b7280] flex justify-between">
+                    <span>{lead.sector} / {lead.city}</span>
+                    <span className="text-[#f59e0b] font-bold">{lead.potential_score} OBP</span>
+                  </div>
+                  <div className="pt-2 flex gap-2 w-full">
+                    <button className="flex-1 bg-[#f59e0b] text-[#050810] text-[10px] font-bold py-1.5 rounded-sm">DETAY GÖR</button>
+                    <button className="flex-1 border border-[#06b6d4] text-[#06b6d4] text-[10px] font-bold py-1.5 rounded-sm">JARVIS</button>
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          )
+        })}
       </MapContainer>
     </div>
   )

@@ -17,7 +17,7 @@ const SAMPLE_COMMANDS = [
   "Beşiktaş'ta kuaför tara"
 ]
 
-export function JarvisPanel() {
+export function JarvisPanel({ leadsCount = 0 }: { leadsCount?: number }) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -199,7 +199,7 @@ export function JarvisPanel() {
       {/* Bottom info */}
       <div className="h-8 border-t border-[var(--border-color)] shrink-0 flex items-center justify-between px-4">
         <div className="text-[8px] text-[var(--text-muted)] font-bold tracking-widest uppercase">
-          GEMİNİ 3.1 FLASH • 0 İŞLETME • 0 ŞEHİR • 54 TOOL
+          GEMİNİ 3 FLASH • {leadsCount} İŞLETME • 1 ŞEHİR • 54 TOOL
         </div>
       </div>
 

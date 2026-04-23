@@ -33,7 +33,33 @@ export function LeadModal({ lead, onClose, onUpdate }: { lead: any, onClose: () 
   }
 
   const handleCopySummary = () => {
-    const text = `Merhaba ${lead.business_name} yetkilisi,\n\nİşletmeniz için hazırladığımız özel analiz:\n${lead.pitch || 'Size özel teklifimiz için görüşmek isteriz.'}`
+    const services = lead.sector === 'güzellik salonu' || lead.sector === 'kuaför salonu' ?
+      '• Sosyal Medya Şablonu\n• Logo Tasarımı\n• Instagram Yönetimi' :
+      lead.sector === 'kafe' || lead.sector === 'kahve dükkanı' ?
+      '• AI Görsel Üretimi\n• Sosyal Medya Yönetimi\n• Logo' :
+      '• Logo & Kurumsal Kimlik\n• Sosyal Medya Şablonu'
+
+    const estimatedValue = lead.potential_score >= 80 ? '8.000 - 15.000 ₺' :
+      lead.potential_score >= 60 ? '5.000 - 10.000 ₺' :
+      '3.000 - 6.000 ₺'
+
+    const text = `🎯 YENİ LEAD — ${lead.priority === 'high' ? '⚡ YÜKSEK ÖNCELİK' : ''}
+
+İşletme: ${lead.business_name}
+Sektör: ${lead.sector || 'Belirtilmedi'}
+Şehir: ${lead.city || 'Belirtilmedi'}
+📞 ${lead.phone || 'Yok'}
+⭐ Google: ${lead.rating || '?'}/5 (${lead.review_count || 0} yorum)
+
+❌ Eksikler:
+${!lead.has_website ? '• Web sitesi YOK\n' : ''}${lead.potential_score >= 80 ? '• Dijital görünürlük yetersiz\n' : ''}
+💡 Önerilen Hizmetler:
+${services}
+
+💰 Tahmini Değer: ${estimatedValue}
+
+📝 Not: ${lead.ai_analysis?.slice(0, 100) || 'Analiz bekleniyor'}`
+
     navigator.clipboard.writeText(text)
     alert("WhatsApp özeti kopyalandı!")
   }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function POST(req: Request) {
   try {
@@ -33,17 +33,37 @@ export async function POST(req: Request) {
       const d = detailsData.result
       if (!d || !d.formatted_phone_number) continue // Telefon zorunlu
 
+      const YUKSEK_ONCELIK_SEKTORLER = [
+        'güzellik salonu', 'estetik merkezi', 'kuaför salonu',
+        'nail art studio', 'butik mağaza', 'kafe', 'kahve dükkanı',
+        'diş kliniği', 'özel klinik'
+      ]
+
       // 3. Score & Priority calculation
-      const hasWebsite = !!d.website
-      const score = hasWebsite ? 50 : 80
-      const priority = (!d.website || d.website === '') && (d.formatted_phone_number && d.formatted_phone_number !== '')
-        ? 'high'
-        : (!d.formatted_phone_number || d.formatted_phone_number === '')
-        ? 'low'
-        : 'normal'
+      const website = d.website
+      const phone = d.formatted_phone_number
+      let potential_score = 50
+      let priority = 'normal'
+
+      // Web sitesi YOK + telefon VAR
+      // Küçük işletme sektöründe (güzellik, kuaför, kafe, butik)
+      if (!website && phone && YUKSEK_ONCELIK_SEKTORLER.includes(sector.toLowerCase())) {
+        potential_score = 90
+        priority = 'high'
+      }
+      // Web sitesi VAR ama Instagram yok (Google'dan anlaşılıyorsa)
+      else if (website && phone) {
+        potential_score = 60
+        priority = 'normal'
+      }
+      // Telefon YOK
+      else if (!phone) {
+        potential_score = 20
+        priority = 'low'
+      }
 
       // 4. Supabase Upsert
-      const { error } = await supabase.from('leads').upsert(
+      const { error } = await supabaseAdmin.from('leads').upsert(
         {
           google_place_id: place.place_id,
           business_name: d.name,
@@ -51,13 +71,13 @@ export async function POST(req: Request) {
           city: city,
           phone: d.formatted_phone_number,
           website: d.website || null,
-          has_website: hasWebsite,
+          has_website: !!d.website,
           priority: priority,
           latitude: d.geometry?.location?.lat || null,
           longitude: d.geometry?.location?.lng || null,
           rating: d.rating || null,
           review_count: d.user_ratings_total || 0,
-          potential_score: score,
+          potential_score: potential_score,
           status: 'new',
           ai_analysis: null,
           pitch: null

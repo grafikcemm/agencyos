@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { generateResponse, GEMINI_STANDARD } from '@/lib/gemini'
-import { supabase } from '@/lib/supabase'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function POST(req: Request) {
   try {
@@ -10,7 +10,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'lead_ids is required' }, { status: 400 })
     }
 
-    const { data: leads, error } = await supabase
+    const { data: leads, error } = await supabaseAdmin
       .from('leads')
       .select('id, business_name, sector, city, has_website, potential_score')
       .in('id', lead_ids.slice(0, 10)) // Max 10
@@ -52,7 +52,7 @@ ${leadsText}`
       if (item.id && item.analysis && item.pitch) {
         const finalAnalysis = `=== ANALİZ ===\n${item.analysis}\n\n=== PITCH ===\n${item.pitch}`
         
-        await supabase
+        await supabaseAdmin
           .from('leads')
           .update({ ai_analysis: finalAnalysis, updated_at: new Date().toISOString() })
           .eq('id', item.id)

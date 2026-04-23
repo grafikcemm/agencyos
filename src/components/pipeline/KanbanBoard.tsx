@@ -14,6 +14,16 @@ const COLUMNS = [
   { id: 'converted', title: 'KAZANILDI', color: '#10b981' },
 ]
 
+const STATUS_MAP: Record<string, string> = {
+  'new': 'new', 'yeni': 'new',
+  'contacted': 'contacted', 'iletişim': 'contacted',
+  'responded': 'responded', 'replied': 'responded', 'yanıt': 'responded', 'yanıt verdi': 'responded',
+  'meeting': 'meeting', 'toplantı': 'meeting',
+  'proposal': 'proposal', 'teklif': 'proposal',
+  'converted': 'converted', 'won': 'converted', 'kazanıldı': 'converted',
+  'lost': 'lost', 'kaybedildi': 'lost'
+}
+
 export function KanbanBoard() {
   const [leads, setLeads] = useState<any[]>([])
   const [draggedId, setDraggedId] = useState<string | null>(null)
@@ -22,7 +32,10 @@ export function KanbanBoard() {
 
   const fetchLeads = async () => {
     const { data } = await supabase.from('leads').select('*').order('created_at', { ascending: false })
-    if (data) setLeads(data)
+    if (data) {
+      console.log('Tüm lead status değerleri:', data.map(l => l.status))
+      setLeads(data)
+    }
   }
 
   useEffect(() => {
@@ -104,7 +117,10 @@ export function KanbanBoard() {
       <div className="flex gap-4 h-full overflow-x-auto pb-4 custom-scrollbar items-start">
         {COLUMNS.map(col => {
           const columnLeads = leads
-            .filter(l => l.status === col.id)
+            .filter(l => {
+              const normalizedStatus = STATUS_MAP[l.status?.toLowerCase()] || l.status
+              return normalizedStatus === col.id
+            })
             .sort((a, b) => {
               const priorityOrder: Record<string, number> = { high: 3, normal: 2, low: 1 }
               const aPrio = priorityOrder[a.priority || 'normal']
