@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { generateResponse, GEMINI_STANDARD } from '@/lib/gemini'
+import { callMedium } from '@/lib/openrouter'
 import { supabaseAdmin } from '@/lib/supabase'
 
 let cache: { data: any; timestamp: number } | null = null
@@ -43,14 +43,21 @@ export async function POST(req: Request) {
 
       context = {
         total: leads.length,
-        new: leads.filter(l => l.status === 'new').length,
-        contacted: leads.filter(l => l.status === 'contacted').length,
-        won: leads.filter(l => l.status === 'converted').length,
-        high_priority: leads.filter(l => l.priority === 'high').length,
-        active_projects: projects.filter(p => p.status === 'active').length,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        new: leads.filter((l: any) => l.status === 'new').length,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        contacted: leads.filter((l: any) => l.status === 'contacted').length,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        won: leads.filter((l: any) => l.status === 'converted').length,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        high_priority: leads.filter((l: any) => l.priority === 'high').length,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        active_projects: projects.filter((p: any) => p.status === 'active').length,
         monthly_revenue: projects
-          .filter(p => p.status === 'active')
-          .reduce((sum, p) => sum + (p.monthly_fee || 0), 0)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .filter((p: any) => p.status === 'active')
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .reduce((sum: number, p: any) => sum + (p.monthly_fee || 0), 0)
       }
 
       cache = { data: context, timestamp: now }
@@ -85,7 +92,7 @@ Bu lead'i bulunca JARVIS şöyle analiz etsin:
 "Bu işletmenin web sitesi yok, telefonu var. Sosyal medya şablonu + logo paketi için ideal müşteri profili. Tahmini proje değeri: 8.000-15.000₺"
 `
 
-    const aiReply = await generateResponse(message, systemPrompt, GEMINI_STANDARD)
+    const aiReply = await callMedium(systemPrompt, message)
 
     return NextResponse.json({ reply: aiReply })
 

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { generateResponse, GEMINI_STANDARD } from '@/lib/gemini'
+import { callHeavy } from '@/lib/openrouter'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export async function POST(req: Request) {
@@ -18,7 +18,8 @@ export async function POST(req: Request) {
 
     const systemPrompt = `JSON DÖN. {"analysis":"1 cümle analiz","pitch":"2 cümle satış mesajı"}. Ad:${lead.business_name}, Sektör:${lead.sector}, Web:${lead.has_website?'Var':'Yok'}, Skor:${lead.potential_score}`
 
-    const aiAnalysisRaw = await generateResponse("Analiz et", systemPrompt, GEMINI_STANDARD)
+    const aiAnalysisRaw = await callHeavy(systemPrompt, "Analiz et")
+
     
     // Basit JSON parse denemesi
     let finalAnalysis = aiAnalysisRaw

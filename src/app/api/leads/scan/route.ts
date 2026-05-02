@@ -62,7 +62,7 @@ export async function POST(req: Request) {
         priority = 'low'
       }
 
-      // 4. Supabase Upsert
+      // 4. Supabase Upsert — omit ai_analysis/pitch/status to preserve existing values on re-scan
       const { error } = await supabaseAdmin.from('leads').upsert(
         {
           google_place_id: place.place_id,
@@ -79,10 +79,8 @@ export async function POST(req: Request) {
           review_count: d.user_ratings_total || 0,
           potential_score: potential_score,
           status: 'new',
-          ai_analysis: null,
-          pitch: null
         },
-        { onConflict: 'google_place_id' }
+        { onConflict: 'google_place_id', ignoreDuplicates: false }
       )
 
       if (!error) addedCount++

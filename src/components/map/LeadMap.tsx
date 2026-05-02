@@ -1,11 +1,9 @@
 "use client"
 
 import { useEffect, useState } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import L from 'leaflet'
-import { FilterPanel } from './FilterPanel'
-
 // Harita motoru başladığında Leaflet'in default ikon sorunlarını düzelt
 const fixLeafletIcons = () => {
   delete (L.Icon.Default.prototype as any)._getIconUrl
@@ -18,19 +16,22 @@ const fixLeafletIcons = () => {
 
 // Custom Marker İkonu
 const createCustomIcon = (status: string, priority?: string) => {
-  // Yüksek öncelikli markerlar sarı/turuncu (#f59e0b)
+  const accentColor = '#E8440A'
+  const successColor = '#1D9E75'
+  const mutedColor = '#737373'
+
   if (priority === 'high') {
     return L.divIcon({
       className: 'custom-div-icon',
-      html: `<div style="width: 14px; height: 14px; background-color: #f59e0b; border-radius: 50%; box-shadow: 0 0 12px #f59e0b; border: 2px solid #fff;"></div>`,
-      iconSize: [14, 14],
-      iconAnchor: [7, 7]
+      html: `<div style="width: 16px; height: 16px; background-color: ${accentColor}; border-radius: 50%; box-shadow: 0 0 12px ${accentColor}; border: 2px solid #fff;"></div>`,
+      iconSize: [16, 16],
+      iconAnchor: [8, 8]
     })
   }
 
-  const color = status === 'new' ? '#06b6d4' : 
-                status === 'contacted' ? '#f59e0b' : 
-                status === 'converted' ? '#10b981' : '#6b7280'
+  const color = status === 'new' ? '#378ADD' : 
+                status === 'contacted' ? '#BA7517' : 
+                status === 'converted' ? successColor : mutedColor
                 
   return L.divIcon({
     className: 'custom-div-icon',
@@ -52,15 +53,11 @@ export default function LeadMap({ leads }: { leads: any[] }) {
 
   return (
     <div className="w-full h-full relative">
-      
-      {/* Sol Filtre Paneli */}
-      <FilterPanel />
-      
       <MapContainer 
         center={[38.96, 35.24]} 
         zoom={5.5} 
         scrollWheelZoom={true}
-        className="w-full h-full bg-[#050810]"
+        className="w-full h-full bg-[var(--bg-base)]"
         zoomControl={false}
       >
         <TileLayer
@@ -76,16 +73,27 @@ export default function LeadMap({ leads }: { leads: any[] }) {
               position={[lead.latitude, lead.longitude]} 
               icon={createCustomIcon(lead.status, lead.priority)}
             >
-              <Popup className="font-mono">
-                <div className="space-y-2 pb-1">
-                  <div className="font-bold text-sm tracking-widest text-[var(--os-cyan)] uppercase">{lead.business_name}</div>
-                  <div className="text-[10px] text-[#6b7280] flex justify-between">
-                    <span>{lead.sector} / {lead.city}</span>
-                    <span className="text-[#f59e0b] font-bold">{lead.potential_score} OBP</span>
+              <Popup className="custom-popup">
+                <div className="p-1 space-y-3 min-w-[180px]">
+                  <div>
+                    <div className="font-bold text-[14px] text-[var(--text-primary)] mb-1">{lead.business_name}</div>
+                    <div className="text-[10px] text-[var(--text-secondary)] uppercase font-semibold tracking-wider">
+                      {lead.sector} • {lead.city}
+                    </div>
                   </div>
-                  <div className="pt-2 flex gap-2 w-full">
-                    <button className="flex-1 bg-[#f59e0b] text-[#050810] text-[10px] font-bold py-1.5 rounded-sm">DETAY GÖR</button>
-                    <button className="flex-1 border border-[#06b6d4] text-[#06b6d4] text-[10px] font-bold py-1.5 rounded-sm">JARVIS</button>
+                  
+                  <div className="flex justify-between items-center py-2 border-y border-[var(--border-subtle)]">
+                    <span className="text-[10px] text-[var(--text-muted)] font-bold uppercase">Potansiyel Skor</span>
+                    <span className="text-[12px] font-bold text-[var(--accent)]">{lead.score || lead.potential_score || 0}</span>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button className="flex-1 bg-[var(--accent)] text-white text-[10px] font-bold py-2 rounded-lg hover:bg-[var(--accent-hover)] transition-colors">
+                      DETAY
+                    </button>
+                    <button className="flex-1 border border-[var(--border-subtle)] text-[var(--text-primary)] text-[10px] font-bold py-2 rounded-lg hover:bg-[var(--bg-surface)] transition-colors">
+                      JARVIS
+                    </button>
                   </div>
                 </div>
               </Popup>

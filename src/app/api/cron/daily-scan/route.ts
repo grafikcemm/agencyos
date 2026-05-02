@@ -44,9 +44,9 @@ async function handleScan(req: Request) {
     const getDailySector = () => {
       const day = new Date().getDate()
       if (day % 10 < 7) {
-        return SECTORS[day % 9]  // ilk 9 — yüksek öncelik
+        return SECTORS[day % 9]  // ilk 9 — yüksek öncelik (indices 0-8)
       }
-      return SECTORS[9 + (day % 8)]  // son 8 — orta öncelik
+      return SECTORS[9 + (day % 7)]  // orta öncelik (indices 9-15, 7 items)
     }
 
     const sector = getDailySector()
@@ -126,9 +126,29 @@ async function handleScan(req: Request) {
         priority = 'low'
       }
 
-      // 4. Supabase Upsert
-      const { error } = await supabaseAdmin.from('leads').upsert(
-        {
+      // 4. Insert new lead or update contact info only (never touch status/ai_analysis)
+      const { data: existing } = await supabaseAdmin
+        .from('leads')
+        .select('id')
+        .eq('google_place_id', place.place_id)
+        .maybeSingle()
+
+      let error: any = null
+
+      if (existing) {
+        // Update contact info only — preserve status, ai_analysis, pitch, priority
+        const { error: updateError } = await supabaseAdmin.from('leads').update({
+          phone: d.formatted_phone_number,
+          website: d.website || null,
+          has_website: !!d.website,
+          latitude: d.geometry?.location?.lat || null,
+          longitude: d.geometry?.location?.lng || null,
+          rating: d.rating || null,
+          review_count: d.user_ratings_total || 0,
+        }).eq('google_place_id', place.place_id)
+        error = updateError
+      } else {
+        const { error: insertError } = await supabaseAdmin.from('leads').insert({
           google_place_id: place.place_id,
           business_name: d.name,
           sector: sector,
@@ -142,14 +162,14 @@ async function handleScan(req: Request) {
           rating: d.rating || null,
           review_count: d.user_ratings_total || 0,
           potential_score: potentialScore,
-          status: 'new'
-        },
-        { onConflict: 'google_place_id' }
-      )
+          status: 'new',
+        })
+        error = insertError
+        if (!insertError) addedCount++
+      }
 
       if (!error) {
-        addedCount++
-        console.log(`[DAILY CRON] Added/Updated lead: ${d.name}`)
+        console.log(`[DAILY CRON] ${existing ? 'Updated' : 'Added'} lead: ${d.name}`)
       } else {
         console.error(`[DAILY CRON] Supabase Error for ${d.name}:`, error)
       }

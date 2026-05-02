@@ -1,15 +1,16 @@
 import type { Metadata } from 'next'
-import { Geist_Mono } from 'next/font/google'
+import { DM_Sans } from 'next/font/google'
 import './globals.css'
 
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
+const dmSans = DM_Sans({
   subsets: ['latin'],
+  variable: '--font-dm-sans',
+  weight: ['400', '500', '600', '700'],
 })
 
 export const metadata: Metadata = {
-  title: 'Agency OS // Komuta Merkezi',
-  description: 'AI destekli ajans yönetim sistemi',
+  title: 'Grafikcem Agency // Komuta Merkezi',
+  description: 'Kişisel iş geliştirme ve proje yönetim sistemi',
 }
 
 export default function RootLayout({
@@ -18,8 +19,8 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="tr" className={`${geistMono.variable} h-full dark`}>
-      <body className="min-h-full bg-[#050810] text-[#e8eaf0] antialiased">
+    <html lang="tr" className={`${dmSans.variable} h-full dark`} suppressHydrationWarning>
+      <body className="min-h-full font-sans antialiased" suppressHydrationWarning>
         {children}
       </body>
     </html>

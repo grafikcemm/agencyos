@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { generateResponse, GEMINI_STANDARD } from '@/lib/gemini'
+import { callHeavy } from '@/lib/openrouter'
 import { supabaseAdmin } from '@/lib/supabase'
 
 export async function POST(req: Request) {
@@ -19,7 +19,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Leads bulunamadı' }, { status: 404 })
     }
 
-    const leadsText = leads.map(l => 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const leadsText = leads.map((l: any) =>
       `{id: ${l.id}, ad: "${l.business_name}", sektör: "${l.sector}", web: ${l.has_website?'var':'yok'}, skor: ${l.potential_score}}`
     ).join(',\n')
 
@@ -30,7 +31,8 @@ export async function POST(req: Request) {
 Aşağıdaki işletmeleri analiz et:
 ${leadsText}`
 
-    const aiAnalysisRaw = await generateResponse("Analiz et", systemPrompt, GEMINI_STANDARD)
+    const aiAnalysisRaw = await callHeavy(systemPrompt, "Analiz et")
+
     
     let parsedData = []
     try {

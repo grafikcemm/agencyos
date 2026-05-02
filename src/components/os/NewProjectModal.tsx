@@ -1,9 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { Plus, X } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
-
+import { Plus, X, Briefcase, Check } from 'lucide-react'
 export function NewProjectModal() {
   const [isOpen, setIsOpen] = useState(false)
   const [leads, setLeads] = useState<any[]>([])
@@ -11,15 +9,14 @@ export function NewProjectModal() {
   
   const [selectedLead, setSelectedLead] = useState('')
   const [selectedPlaybook, setSelectedPlaybook] = useState('')
-  const [setupFee, setSetupFee] = useState('')
-  const [monthlyFee, setMonthlyFee] = useState('')
+  const [revenue, setRevenue] = useState('')
   
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (isOpen) {
-      supabase.from('leads').select('*').order('created_at', { ascending: false }).then(({ data }) => setLeads(data || []))
-      supabase.from('playbooks').select('*').then(({ data }) => setPlaybooks(data || []))
+      fetch('/api/db/leads?order=created_at&asc=false').then(res => res.json()).then(data => setLeads(data || []))
+      fetch('/api/db/playbooks').then(res => res.json()).then(data => setPlaybooks(data || []))
     }
   }, [isOpen])
 
@@ -27,8 +24,7 @@ export function NewProjectModal() {
     setSelectedPlaybook(id)
     const pb = playbooks.find(p => p.id === id)
     if (pb) {
-      setSetupFee(pb.setup_fee.toString())
-      setMonthlyFee(pb.monthly_fee.toString())
+      setRevenue((pb.monthly_fee || pb.setup_fee || 0).toString())
     }
   }
 
@@ -38,13 +34,16 @@ export function NewProjectModal() {
     const lead = leads.find(l => l.id === selectedLead)
     const pb = playbooks.find(p => p.id === selectedPlaybook)
     
-    await supabase.from('projects').insert({
-      lead_id: selectedLead,
-      business_name: lead?.business_name || 'Bilinmeyen İşletme',
-      status: 'active',
-      services: [pb?.name || 'Özel Hizmet'],
-      setup_fee: parseFloat(setupFee || '0'),
-      monthly_fee: parseFloat(monthlyFee || '0')
+    await fetch('/api/db/projects', {
+      method: 'POST',
+      body: JSON.stringify({
+        lead_id: selectedLead,
+        business_name: lead?.business_name || 'Bilinmeyen İşletme',
+        status: 'active',
+        services: [pb?.name || 'Özel Hizmet'],
+        revenue_tl: parseFloat(revenue || '0'),
+        revenue_collected: false
+      })
     })
     
     setLoading(false)
@@ -52,28 +51,39 @@ export function NewProjectModal() {
     window.location.reload()
   }
 
+
   return (
     <>
       <button 
         onClick={() => setIsOpen(true)}
-        className="flex items-center gap-2 px-4 py-2 bg-[var(--os-accent)] text-[#050810] text-[11px] font-bold tracking-wider hover:bg-[var(--os-accent-hover)] transition-colors rounded-sm"
+        className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-white text-[12px] font-bold hover:bg-[var(--accent-hover)] transition-all rounded-lg"
       >
-        <Plus className="w-3.5 h-3.5" /> YENİ PROJE
+        <Plus className="w-4 h-4" /> Yeni Proje
       </button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm font-mono">
-          <div className="bg-[#0a0d16] border border-[var(--border-color)] w-[500px] rounded-sm p-6 shadow-2xl relative">
-            <button onClick={() => setIsOpen(false)} className="absolute top-4 right-4 text-[var(--text-muted)] hover:text-white">
-              <X className="w-5 h-5" />
-            </button>
-            <h2 className="text-lg font-bold text-[var(--os-cyan)] mb-6 uppercase tracking-wider">// YENİ PROJE OLUŞTUR</h2>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] w-full max-w-md rounded-2xl p-0 shadow-2xl relative overflow-hidden">
             
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] text-[var(--text-secondary)] font-bold tracking-widest mb-2">LEAD SEÇ</label>
+            {/* Header */}
+            <div className="p-6 border-b border-[var(--border-subtle)] flex items-center justify-between bg-[var(--bg-base)]/50">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-[var(--accent-muted)] flex items-center justify-center border border-[var(--accent)]/20">
+                  <Briefcase className="w-5 h-5 text-[var(--accent)]" />
+                </div>
+                <h2 className="text-lg font-bold text-[var(--text-primary)]">Yeni Proje Oluştur</h2>
+              </div>
+              <button onClick={() => setIsOpen(false)} className="p-2 hover:bg-[var(--bg-base)] rounded-full transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6 space-y-5">
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-[var(--text-muted)] font-bold uppercase tracking-widest">Müşteri (Lead)</label>
                 <select 
-                  className="w-full bg-[#050810] border border-[var(--border-color)] p-2 text-xs text-white outline-none focus:border-[var(--os-cyan)]"
+                  className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg text-sm p-3 text-[var(--text-primary)] outline-none focus:border-[var(--accent)] appearance-none"
                   value={selectedLead}
                   onChange={(e) => setSelectedLead(e.target.value)}
                 >
@@ -82,10 +92,10 @@ export function NewProjectModal() {
                 </select>
               </div>
 
-              <div>
-                <label className="block text-[10px] text-[var(--text-secondary)] font-bold tracking-widest mb-2">HİZMET (PLAYBOOK)</label>
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-[var(--text-muted)] font-bold uppercase tracking-widest">Hizmet Paketi</label>
                 <select 
-                  className="w-full bg-[#050810] border border-[var(--border-color)] p-2 text-xs text-white outline-none focus:border-[var(--os-cyan)]"
+                  className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg text-sm p-3 text-[var(--text-primary)] outline-none focus:border-[var(--accent)] appearance-none"
                   value={selectedPlaybook}
                   onChange={(e) => handlePlaybookChange(e.target.value)}
                 >
@@ -94,32 +104,27 @@ export function NewProjectModal() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[10px] text-[var(--text-secondary)] font-bold tracking-widest mb-2">KURULUM ÜCRETİ (₺)</label>
-                  <input 
-                    type="number" 
-                    className="w-full bg-[#050810] border border-[var(--border-color)] p-2 text-xs text-white outline-none focus:border-[var(--os-cyan)]"
-                    value={setupFee}
-                    onChange={(e) => setSetupFee(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-[var(--text-secondary)] font-bold tracking-widest mb-2">AYLIK ÜCRET (₺)</label>
-                  <input 
-                    type="number" 
-                    className="w-full bg-[#050810] border border-[var(--border-color)] p-2 text-xs text-white outline-none focus:border-[var(--os-cyan)]"
-                    value={monthlyFee}
-                    onChange={(e) => setMonthlyFee(e.target.value)}
-                  />
-                </div>
+              <div className="space-y-1.5">
+                <label className="text-[11px] text-[var(--text-muted)] font-bold uppercase tracking-widest">Proje Bedeli (₺)</label>
+                <input 
+                  type="number" 
+                  className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg text-sm p-3 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                  value={revenue}
+                  onChange={(e) => setRevenue(e.target.value)}
+                  placeholder="0.00"
+                />
               </div>
             </div>
 
-            <div className="mt-8 flex justify-end gap-3">
-              <button onClick={() => setIsOpen(false)} className="px-4 py-2 border border-[var(--border-color)] text-[11px] font-bold tracking-wider hover:bg-[#050810]">İPTAL</button>
-              <button onClick={handleSave} disabled={loading} className="px-4 py-2 bg-[var(--os-cyan)] text-[#050810] text-[11px] font-bold tracking-wider hover:bg-[#0891b2]">
-                {loading ? 'KAYDEDİLİYOR...' : 'KAYDET'}
+            {/* Footer */}
+            <div className="p-6 border-t border-[var(--border-subtle)] flex gap-3 bg-[var(--bg-base)]/50">
+              <button onClick={() => setIsOpen(false)} className="flex-1 px-4 py-2.5 border border-[var(--border-subtle)] text-sm font-bold rounded-lg hover:bg-[var(--bg-surface)] transition-all">İptal</button>
+              <button 
+                onClick={handleSave} 
+                disabled={loading || !selectedLead || !selectedPlaybook}
+                className="flex-1 px-4 py-2.5 bg-[var(--accent)] text-white text-sm font-bold rounded-lg hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {loading ? 'Kaydediliyor...' : <><Check className="w-4 h-4" /> Projeyi Başlat</>}
               </button>
             </div>
           </div>
