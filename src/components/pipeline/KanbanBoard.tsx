@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { MoreHorizontal, Calendar, MapPin, Zap } from 'lucide-react'
 import { LeadModal } from './LeadModal'
-import { Badge } from '@/components/ui/Badge'
+import { Badge } from '@/components/ui/badge'
 import type { EnrichedLead } from '@/lib/enrichLead'
 
 const COLUMNS = [

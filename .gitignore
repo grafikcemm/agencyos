@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/test-results
+/.playwright-mcp
 
 # next.js
 /.next/
@@ -29,6 +31,16 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+/scratch/
+/output/
+/knowledge/
+/.claude/
+*.tmp.*
+*.jpeg
+agencyos-*.png
+services-current.jpeg
+dashboard-current.jpeg
+harita.jpeg
 
 # env files (can opt-in for committing if needed)
 .env*

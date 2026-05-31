@@ -1,7 +1,7 @@
 import { Search, MoreVertical, TrendingUp, Wallet, AlertTriangle, Clock, Briefcase, ChevronUp } from 'lucide-react'
 import { NewProjectModal } from '@/components/os/NewProjectModal'
 import { supabaseAdmin as supabase } from '@/lib/supabase'
-import { Badge } from '@/components/ui/Badge'
+import { Badge } from '@/components/ui/badge'
 
 export const revalidate = 0
 

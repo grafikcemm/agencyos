@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { EyeOff, Shield, Server, Activity, Save, AlertTriangle, Package, Trash2, RefreshCw } from 'lucide-react'
-import { Badge } from '@/components/ui/Badge'
+import { Badge } from '@/components/ui/badge'
 
 export default function SettingsPage() {
   const [seedLoading, setSeedLoading] = useState(false)

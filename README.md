@@ -1,36 +1,70 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AgencyOS
 
-## Getting Started
+AgencyOS is Grafikcem's internal AI agency operating system.
 
-First, run the development server:
+It supports daily sales execution, high-quality local lead discovery, JARVIS-assisted outreach, digital product planning, and weekly market intelligence.
+
+## Core Systems
+
+- Daily lead scan: finds 5 high-quality local business leads per day.
+- Evidence engine: explains why a business should pay for AI agency help now.
+- Quality engine: ranks leads by conversion probability and action priority.
+- Pipeline: separates call-now leads from mini-audit and warm-up work.
+- JARVIS: routes sales, lead, pitch, and opportunity questions into tool-backed answers.
+- Apollo pilot: optional enrichment flow when `APOLLO_API_KEY` is configured.
+- Opportunity Intelligence OS: monitors product and market signals for Grafikcem digital products.
+
+## Current Product Focus
+
+The current passive-income sprint is intentionally narrow:
+
+1. Grafikcem website sales infrastructure
+2. Grafikcem Prompt Kitapçığı at `$4.99`
+3. Tasarımcılar İçin AI Agent Paketi
+4. Mini AI Creative Operations Eğitimi
+5. AgencyOS Lite as a later validated template product
+
+Trend signals should support existing products, not create distracting new work.
+
+## Local Commands
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run lint
+npm run build
+npm run daily:scan
+npm run opportunity:seed
+npm run opportunity:scan -- --dryRun
+npm run opportunity:scan
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment Variables
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Required for production use:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `CRON_SECRET`
+- `GOOGLE_MAPS_KEY`
+- `OPENROUTER_API_KEY`
 
-## Learn More
+Optional:
 
-To learn more about Next.js, take a look at the following resources:
+- `APOLLO_API_KEY`
+- `SERPAPI_KEY` or `SERPAPI_API_KEY`
+- `TAVILY_API_KEY`
+- `EXA_API_KEY`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Never commit `.env.local`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deployment
 
-## Deploy on Vercel
+Production is deployed on Vercel from the `main` branch.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Cron jobs:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `/api/cron/daily-scan` at `05:00 UTC` daily
+- `/api/cron/opportunity-scan` at `06:00 UTC` every Monday
+
+Both cron routes require `CRON_SECRET`.
