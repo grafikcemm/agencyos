@@ -1,16 +1,52 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-export const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
+let publicClient: SupabaseClient | null = null
+let adminClient: SupabaseClient | null = null
 
-export const supabaseAdmin = typeof window === 'undefined' 
-  ? createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
+function requireEnv(name: string) {
+  const value = process.env[name]
+  if (!value) {
+    throw new Error(`${name} is required. Add it to the deployment environment variables.`)
+  }
+  return value
+}
+
+function getPublicClient() {
+  if (!publicClient) {
+    publicClient = createClient(
+      requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
+      requireEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY')
     )
-  : (null as unknown as ReturnType<typeof createClient>)
+  }
+  return publicClient
+}
+
+function getAdminClient() {
+  if (typeof window !== 'undefined') {
+    throw new Error('supabaseAdmin is server-only.')
+  }
+
+  if (!adminClient) {
+    adminClient = createClient(
+      requireEnv('NEXT_PUBLIC_SUPABASE_URL'),
+      requireEnv('SUPABASE_SERVICE_ROLE_KEY')
+    )
+  }
+  return adminClient
+}
+
+function lazyClient(getClient: () => SupabaseClient) {
+  return new Proxy({} as SupabaseClient, {
+    get(_target, prop, receiver) {
+      const client = getClient()
+      const value = Reflect.get(client, prop, receiver)
+      return typeof value === 'function' ? value.bind(client) : value
+    },
+  })
+}
+
+export const supabase = lazyClient(getPublicClient)
+export const supabaseAdmin = lazyClient(getAdminClient)
 
 
 export type Lead = {
