@@ -2,8 +2,10 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
 // Strict whitelist — prevents arbitrary table access via this proxy
-const READ_ALLOWED = new Set(['leads', 'follow_ups', 'ai_cost_logs', 'settings', 'projects', 'playbooks'])
-const WRITE_ALLOWED = new Set(['leads', 'projects', 'follow_ups'])
+const READ_ALLOWED = new Set(['leads', 'follow_ups', 'ai_cost_logs', 'settings', 'projects', 'playbooks', 'sessions', 'memories', 'strategy', 'hypotheses', 'decisions', 'autoresearch_runs', 'council_debates'])
+const WRITE_ALLOWED = new Set(['leads', 'projects', 'follow_ups', 'sessions', 'memories', 'strategy', 'hypotheses', 'decisions', 'autoresearch_runs', 'playbooks', 'council_debates'])
+
+const TIMEOUT_MS = 5000
 
 function tableGuard(table: string, write = false): NextResponse | null {
   const allowed = write ? WRITE_ALLOWED : READ_ALLOWED
@@ -11,6 +13,17 @@ function tableGuard(table: string, write = false): NextResponse | null {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
   return null
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function withTimeout(promise: PromiseLike<any>, ms: number = TIMEOUT_MS): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Supabase timeout')), ms)
+    Promise.resolve(promise).then(
+      (val) => { clearTimeout(timer); resolve(val) },
+      (err) => { clearTimeout(timer); reject(err) }
+    )
+  })
 }
 
 export async function GET(req: Request, { params }: { params: Promise<{ table: string }> }) {
@@ -32,12 +45,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ table: s
     const order = searchParams.get('order')
     if (order) query = query.order(order, { ascending: searchParams.get('asc') === 'true' })
 
-    const { data, error } = await query
+    const { data, error } = await withTimeout(query)
     if (error) throw error
     return NextResponse.json(data || [])
-  } catch (error: any) {
-    console.error('API DB GET Error:', error.message)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  } catch (error: unknown) {
+    const err = error as Error
+    const status = err?.message === 'Supabase timeout' ? 504 : 500
+    console.error(`API DB GET Error (${status}):`, err?.message)
+    return NextResponse.json({ error: err?.message || 'Internal Server Error' }, { status })
   }
 }
 
@@ -48,11 +63,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ table: 
     if (guard) return guard
 
     const body = await req.json()
-    const { data, error } = await supabaseAdmin.from(table).insert(body).select()
+    const { data, error } = await withTimeout(supabaseAdmin.from(table).insert(body).select())
     if (error) throw error
     return NextResponse.json(data)
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  } catch (error: unknown) {
+    const err = error as Error
+    const status = err?.message === 'Supabase timeout' ? 504 : 500
+    console.error(`API DB POST Error (${status}):`, err?.message)
+    return NextResponse.json({ error: err?.message || 'Internal Server Error' }, { status })
   }
 }
 
@@ -66,11 +84,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ table:
     const { id, ...updates } = body
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 
-    const { data, error } = await supabaseAdmin.from(table).update(updates).eq('id', id).select()
+    const { data, error } = await withTimeout(supabaseAdmin.from(table).update(updates).eq('id', id).select())
     if (error) throw error
     return NextResponse.json(data)
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  } catch (error: unknown) {
+    const err = error as Error
+    const status = err?.message === 'Supabase timeout' ? 504 : 500
+    console.error(`API DB PATCH Error (${status}):`, err?.message)
+    return NextResponse.json({ error: err?.message || 'Internal Server Error' }, { status })
   }
 }
 
@@ -82,24 +103,18 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ table
 
     const { searchParams } = new URL(req.url)
     const id = searchParams.get('id')
-    const deleteAll = searchParams.get('all') === 'true'
 
-    if (!id && !deleteAll) {
-      return NextResponse.json({ error: 'id or ?all=true required' }, { status: 400 })
+    if (!id) {
+      return NextResponse.json({ error: 'id is required' }, { status: 400 })
     }
 
-    let query = supabaseAdmin.from(table).delete()
-    if (id) {
-      query = (query as any).eq('id', id)
-    } else {
-      // Delete all rows — filter on created_at epoch to satisfy Supabase's required-filter rule
-      query = (query as any).gte('created_at', '2000-01-01T00:00:00.000Z')
-    }
-
-    const { error } = await query
+    const { error } = await withTimeout(supabaseAdmin.from(table).delete().eq('id', id))
     if (error) throw error
     return NextResponse.json({ success: true })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+  } catch (error: unknown) {
+    const err = error as Error
+    const status = err?.message === 'Supabase timeout' ? 504 : 500
+    console.error(`API DB DELETE Error (${status}):`, err?.message)
+    return NextResponse.json({ error: err?.message || 'Internal Server Error' }, { status })
   }
 }

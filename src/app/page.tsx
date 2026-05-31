@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 
 export default function HomePage() {
-  redirect('/dashboard')
+  redirect('/harita')
   
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--bg-base)]">

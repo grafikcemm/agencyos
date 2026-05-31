@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { normalizeLocation, normalizeSector } from '@/lib/geo'
+import { runQualityEngine } from '@/lib/highQualityLeadEngine'
+import { runEvidenceEngine } from '@/lib/evidenceEngine'
 
 export async function GET(req: Request) {
   return handleScan(req)
@@ -11,190 +14,419 @@ export async function POST(req: Request) {
 
 async function handleScan(req: Request) {
   try {
-    console.log(`[DAILY CRON] Request method: ${req.method}`)
-    
-    // Auth check (optional if secret not set)
+    const cronSecret = process.env.CRON_SECRET
+    if (!cronSecret) {
+      console.error("[DAILY CRON] CRON_SECRET environment variable is missing!")
+      return NextResponse.json({ error: 'CRON_SECRET environment variable is missing on the server.' }, { status: 500 })
+    }
+
+    // Auth check
     const authHeader = req.headers.get('authorization')
-    if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (authHeader !== `Bearer ${cronSecret}`) {
       console.warn("[DAILY CRON] Unauthorized access attempt")
       return new Response('Unauthorized', { status: 401 })
     }
 
-    const SECTORS = [
-      // KIRMIZI — En yüksek öncelik (ağırlıklı taransın)
-      'güzellik salonu',
-      'estetik merkezi',
-      'kuaför salonu',
-      'nail art studio',
-      'butik mağaza',
-      'kafe',
-      'kahve dükkanı',
-      'diş kliniği',
-      'özel klinik',
-      // SARI — Orta öncelik
-      'hukuk bürosu',
-      'mali müşavir',
-      'muhasebe bürosu',
-      'özel kurs merkezi',
-      'dil okulu',
-      'emlak ofisi',
-      'eczane',
-    ]
+    const { searchParams } = new URL(req.url)
+    const isDryRun = searchParams.get('dryRun') === 'true'
+    const isManual = searchParams.get('manual') === 'true' || req.method === 'POST'
 
-    const getDailySector = () => {
-      const day = new Date().getDate()
-      if (day % 10 < 7) {
-        return SECTORS[day % 9]  // ilk 9 — yüksek öncelik (indices 0-8)
-      }
-      return SECTORS[9 + (day % 7)]  // orta öncelik (indices 9-15, 7 items)
+    // Standby check: automatic scan starts on June 1st, 2026 (Europe/Istanbul)
+    const now = new Date()
+    const startDate = new Date('2026-06-01T00:00:00+03:00') // June 1st, 2026 Turkey
+
+    if (now < startDate && !isDryRun && !isManual) {
+      console.log(`[DAILY CRON] Standby Mode. Automatic scanning will start on June 1st, 2026. Current time: ${now.toISOString()}`)
+      return NextResponse.json({
+        success: true,
+        status: 'standby',
+        message: 'Tarama sistemi 1 Haziran 2026 Pazartesi günü otomatik olarak başlayacaktır.',
+        current_time: now.toISOString(),
+        start_date: startDate.toISOString()
+      })
     }
 
-    const sector = getDailySector()
-    const city = "İstanbul"
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
+    // Timezone check: Europe/Istanbul Date for Idempotency
+    const todayStr = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Istanbul',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(now)
 
-    console.log(`[DAILY CRON] Scanning for: ${sector} - ${city}`)
-
-    if (!apiKey || apiKey === 'your_google_maps_key') {
-      console.error("[DAILY CRON] GOOGLE MAPS API KEY NOT SET")
-      return NextResponse.json({ success: false, error: "Google Maps API Key eksik." }, { status: 500 })
-    }
-
-    // 1. Text Search
-    const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(`${sector} ${city}`)}&key=${apiKey}&language=tr`
-    console.log(`[DAILY CRON] Calling Google Maps Search API...`)
-    
-    const searchRes = await fetch(searchUrl)
-    const searchData = await searchRes.json()
-
-    console.log("[DAILY CRON] Google API Status:", searchData.status)
-    if (searchData.error_message) {
-      console.error("[DAILY CRON] Google API Error Message:", searchData.error_message)
-    }
-
-    if (searchData.status !== 'OK' && searchData.status !== 'ZERO_RESULTS') {
-      return NextResponse.json({ 
-        success: false, 
-        error: searchData.status, 
-        message: searchData.error_message 
-      }, { status: 400 })
-    }
-
-    if (searchData.status === 'ZERO_RESULTS' || !searchData.results) {
-      return NextResponse.json({ success: true, count: 0, message: "Sonuç bulunamadı." })
-    }
-
-    const places = searchData.results.slice(0, 5) // Limit for cron to avoid hitting limits
-    let addedCount = 0
-
-    console.log(`[DAILY CRON] Found ${searchData.results.length} places, processing top ${places.length}`)
-
-    // 2. Place Details
-    for (const place of places) {
-      const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_phone_number,website,geometry,rating,user_ratings_total&key=${apiKey}&language=tr`
-      const detailsRes = await fetch(detailsUrl)
-      const detailsData = await detailsRes.json()
-      
-      const d = detailsData.result
-      if (!d || !d.formatted_phone_number) {
-        console.log(`[DAILY CRON] Skipping ${d?.name || 'unknown'} (no phone number)`)
-        continue
-      }
-
-      const YUKSEK_ONCELIK_SEKTORLER = [
-        'güzellik salonu', 'estetik merkezi', 'kuaför salonu',
-        'nail art studio', 'butik mağaza', 'kafe', 'kahve dükkanı',
-        'diş kliniği', 'özel klinik'
-      ]
-
-      // 3. Priority calculation
-      const website = d.website
-      const phone = d.formatted_phone_number
-      let potentialScore = 50
-      let priority = 'normal'
-
-      if (!website && phone && YUKSEK_ONCELIK_SEKTORLER.includes(sector.toLowerCase())) {
-        potentialScore = 90
-        priority = 'high'
-      }
-      else if (website && phone) {
-        potentialScore = 60
-        priority = 'normal'
-      }
-      else if (!phone) {
-        potentialScore = 20
-        priority = 'low'
-      }
-
-      // 4. Insert new lead or update contact info only (never touch status/ai_analysis)
-      const { data: existing } = await supabaseAdmin
-        .from('leads')
-        .select('id')
-        .eq('google_place_id', place.place_id)
+    // Check if daily scan already executed today (if not dry run)
+    if (!isDryRun) {
+      const { data: lastScanSetting } = await supabaseAdmin
+        .from('settings')
+        .select('value')
+        .eq('key', 'last_daily_scan')
         .maybeSingle()
 
-      let error: any = null
-
-      if (existing) {
-        // Update contact info only — preserve status, ai_analysis, pitch, priority
-        const { error: updateError } = await supabaseAdmin.from('leads').update({
-          phone: d.formatted_phone_number,
-          website: d.website || null,
-          has_website: !!d.website,
-          latitude: d.geometry?.location?.lat || null,
-          longitude: d.geometry?.location?.lng || null,
-          rating: d.rating || null,
-          review_count: d.user_ratings_total || 0,
-        }).eq('google_place_id', place.place_id)
-        error = updateError
-      } else {
-        const { error: insertError } = await supabaseAdmin.from('leads').insert({
-          google_place_id: place.place_id,
-          business_name: d.name,
-          sector: sector,
-          city: city,
-          phone: d.formatted_phone_number,
-          website: d.website || null,
-          has_website: !!d.website,
-          priority: priority,
-          latitude: d.geometry?.location?.lat || null,
-          longitude: d.geometry?.location?.lng || null,
-          rating: d.rating || null,
-          review_count: d.user_ratings_total || 0,
-          potential_score: potentialScore,
-          status: 'new',
-        })
-        error = insertError
-        if (!insertError) addedCount++
-      }
-
-      if (!error) {
-        console.log(`[DAILY CRON] ${existing ? 'Updated' : 'Added'} lead: ${d.name}`)
-      } else {
-        console.error(`[DAILY CRON] Supabase Error for ${d.name}:`, error)
+      if (lastScanSetting && lastScanSetting.value) {
+        try {
+          const lastScan = JSON.parse(lastScanSetting.value)
+          if (lastScan && lastScan.date === todayStr) {
+            console.log(`[DAILY CRON] Scan already executed today (${todayStr}). Skipping to avoid duplication.`)
+            return NextResponse.json({
+              success: true,
+              message: `Bugün (${todayStr}) için günlük otomatik tarama zaten tamamlandı. Yeniden çalıştırılmadı.`,
+              skipped: true
+            })
+          }
+        } catch (e) {
+          // ignore parse errors and proceed
+        }
       }
     }
 
-    // Log the cron execution in settings
-    await supabaseAdmin.from('settings').upsert({
-      key: 'last_daily_scan',
-      value: JSON.stringify({
-        date: new Date().toISOString(),
-        sector,
-        city,
-        added: addedCount,
-        status: 'success'
-      })
-    }, { onConflict: 'key' })
+    const apiKey = process.env.GOOGLE_MAPS_KEY
+    if (!apiKey) {
+      console.error("[DAILY CRON] GOOGLE_MAPS_KEY is missing!")
+      return NextResponse.json({ error: 'GOOGLE_MAPS_KEY is missing on the server.' }, { status: 500 })
+    }
 
-    return NextResponse.json({ 
-      success: true, 
-      count: addedCount,
-      google_status: searchData.status 
-    })
+    // District & Sector Rotation Parameters
+    const districts = ['Kadıköy', 'Beşiktaş', 'Üsküdar', 'Şişli', 'Bakırköy', 'Ataşehir', 'Maltepe', 'Sarıyer']
+    const sectors = [
+      { name: 'Diş Kliniği / Ağız Sağlığı', queries: ['diş hekimi', 'diş kliniği'], dbSector: 'Diş Kliniği / Ağız Sağlığı' },
+      { name: 'Medikal Estetik', queries: ['medikal estetik', 'estetik merkezi'], dbSector: 'Medikal Estetik' },
+      { name: 'Güzellik Salonu', queries: ['güzellik salonu'], dbSector: 'Güzellik Salonu' },
+      { name: 'Psikolog / Diyetisyen', queries: ['psikolog', 'diyetisyen'], dbSector: 'Psikolog / Diyetisyen' },
+      { name: 'Oto Servis / Ekspertiz', queries: ['oto servis', 'oto ekspertiz'], dbSector: 'Oto Servis / Ekspertiz' }
+    ]
 
-  } catch (error: any) {
-    console.error('[DAILY CRON] Fatal Error:', error)
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+    // Calculate daily sequence index since 2026-06-01
+    const msDiff = now.getTime() - startDate.getTime()
+    const daySequence = Math.floor(msDiff / (24 * 60 * 60 * 1000))
+    const baseIndex = daySequence >= 0 ? daySequence : 0
+
+    let startDistrictIdx = baseIndex % districts.length
+    let startSectorIdx = baseIndex % sectors.length
+
+    const acceptedLeads: Array<{
+      id: string
+      name: string
+      sector: string
+      district: string
+      tier: string
+      score: number
+      why_now: string | null
+      pitch: string | null
+      action: string
+      pain_signals?: string[]
+      proof_points?: string[]
+    }> = []
+    
+    const rejectedLeads: Array<{
+      name: string
+      reason: string
+    }> = []
+
+    let skippedDuplicates = 0
+    const scannedQueries: string[] = []
+
+    let districtIdx = startDistrictIdx
+    let sectorIdx = startSectorIdx
+
+    let attempts = 0
+    const maxAttempts = 36 // avoid API/infinite loop issue, but allow broad rotation
+
+    while (acceptedLeads.length < 5 && attempts < maxAttempts) {
+      attempts++
+      const district = districts[districtIdx % districts.length]
+      const sector = sectors[sectorIdx % sectors.length]
+
+      // Scan queries for this combination
+      for (const query of sector.queries) {
+        if (acceptedLeads.length >= 5) break
+
+        const searchQuery = `${query} ${district} İstanbul`
+        scannedQueries.push(searchQuery)
+        console.log(`[DAILY CRON] Running query: "${searchQuery}" (Attempt ${attempts}, Accepted: ${acceptedLeads.length})`)
+
+        const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(searchQuery)}&key=${apiKey}&language=tr&region=tr`
+        const searchRes = await fetch(searchUrl)
+        const searchData = await searchRes.json()
+
+        if (searchData.status !== 'OK' && searchData.status !== 'ZERO_RESULTS') {
+          console.error(`[DAILY CRON] Google Place search failed: ${searchData.status}`)
+          continue
+        }
+
+        if (searchData.status === 'ZERO_RESULTS' || !searchData.results) {
+          continue
+        }
+
+        const places = searchData.results
+
+        // Process place results
+        for (const place of places) {
+          if (acceptedLeads.length >= 5) break
+
+          const placeId = place.place_id
+          if (!placeId) continue
+
+          // Duplicate Check 1: Google Place ID
+          const { data: byPlaceId } = await supabaseAdmin
+            .from('leads')
+            .select('id')
+            .eq('google_place_id', placeId)
+            .maybeSingle()
+
+          if (byPlaceId) {
+            skippedDuplicates++
+            continue
+          }
+
+          // Fetch Place Details
+          const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,formatted_phone_number,website,geometry,rating,user_ratings_total&key=${apiKey}&language=tr`
+          const detailsRes = await fetch(detailsUrl)
+          const detailsData = await detailsRes.json()
+
+          const d = detailsData.result
+          if (!d) continue
+
+          const phone = d.formatted_phone_number ? d.formatted_phone_number.trim() : null
+          const lat = d.geometry?.location?.lat || null
+          const lng = d.geometry?.location?.lng || null
+
+          // Strict Requirements: phone, coordinates, google_place_id must exist
+          if (!phone || lat === null || lng === null) {
+            rejectedLeads.push({
+              name: d.name || 'Bilinmeyen',
+              reason: 'Eksik bilgi (Telefon numarası veya koordinat eksik)'
+            })
+            continue
+          }
+
+          // Duplicate Check 2: Phone
+          const { data: byPhone } = await supabaseAdmin
+            .from('leads')
+            .select('id')
+            .eq('phone', phone)
+            .maybeSingle()
+
+          if (byPhone) {
+            skippedDuplicates++
+            continue
+          }
+
+          // Duplicate Check 3: Business Name + District
+          const { data: byName } = await supabaseAdmin
+            .from('leads')
+            .select('id, business_name, district')
+            .ilike('business_name', `%${d.name}%`)
+
+          if (byName && byName.some((b: { district: string | null }) => b.district && b.district.toLowerCase().trim() === district.toLowerCase().trim())) {
+            skippedDuplicates++
+            continue
+          }
+
+          const cleanSector = normalizeSector(sector.dbSector)
+          const loc = normalizeLocation('İstanbul', district)
+
+          // Call runEvidenceEngine to fetch/verify website signals dynamically
+          const evidence = await runEvidenceEngine({
+            website: d.website || null,
+            sector: cleanSector,
+            businessName: d.name,
+            rating: d.rating || null,
+            reviewCount: d.user_ratings_total || 0,
+          })
+
+          const qr = runQualityEngine({
+            lead: {
+              business_name: d.name,
+              sector: cleanSector,
+              city: loc.city,
+              phone,
+              website: d.website || null,
+              rating: d.rating || null,
+              review_count: d.user_ratings_total || 0,
+              google_place_id: placeId,
+            },
+            evidence
+          })
+
+          // Exclude disqualified or low tier
+          if (qr.disqualification_reason) {
+            rejectedLeads.push({
+              name: d.name,
+              reason: `Diskalifiye: ${qr.disqualification_reason}`
+            })
+            continue
+          }
+
+          // Strict Quality Gate: acceptedLeads must have pain_signals.length > 0
+          const painSignalsList = evidence.pain_signals || []
+          const proofPointsList = evidence.proof_points || []
+
+          if (painSignalsList.length === 0) {
+            rejectedLeads.push({
+              name: d.name,
+              reason: 'Doğrulanmış acil problem sinyali yok.'
+            })
+            continue
+          }
+
+          const why_now = evidence.why_now
+
+          // If evidence.why_now is generic (contains 'sağlam bir temele sahip' or similar), reject the lead
+          if (!why_now || why_now.includes('sağlam bir temele sahip') || why_now.includes('AI çözümü değerlendirebilir')) {
+            rejectedLeads.push({
+              name: d.name,
+              reason: 'Doğrulanmış acil problem sinyali yok.'
+            })
+            continue
+          }
+
+          let finalTier = qr.lead_tier
+          let finalLabel = qr.quality_label
+          let finalAction = qr.next_action_priority
+
+          if (finalTier !== 'A' && finalTier !== 'B') {
+            rejectedLeads.push({
+              name: d.name,
+              reason: `Düşük kalite seviyesi (Tier: ${finalTier || 'C/D'})`
+            })
+            continue
+          }
+
+          // Complete Clean Payload
+          const leadData = {
+            google_place_id: placeId,
+            business_name: d.name,
+            sector: cleanSector,
+            normalized_sector: qr.normalized_sector,
+            city: loc.city,
+            district: loc.district,
+            city_slug: loc.citySlug,
+            district_slug: loc.districtSlug || null,
+            phone,
+            website: d.website || null,
+            has_website: !!d.website,
+            priority: qr.quality_score >= 70 ? 'high' : 'normal',
+            latitude: lat,
+            longitude: lng,
+            rating: d.rating || null,
+            review_count: d.user_ratings_total || 0,
+            potential_score: qr.quality_score,
+            quality_score: qr.quality_score,
+            conversion_probability: qr.conversion_probability,
+            lead_tier: finalTier,
+            quality_label: finalLabel,
+            why_this_will_convert: qr.why_this_will_convert,
+            why_now,
+            pain_signals: painSignalsList,
+            proof_points: proofPointsList,
+            next_action_priority: finalAction,
+            conversion_angle: qr.conversion_angle,
+            first_30_seconds_pitch: qr.first_30_seconds_pitch,
+            expected_monthly_value_tl: qr.expected_monthly_value_tl,
+            expected_offer_value_tl: qr.expected_offer_value_tl,
+            status: 'new',
+            enrichment_status: 'done',
+            last_quality_scored_at: new Date().toISOString(),
+            last_enriched_at: new Date().toISOString(),
+            recommended_offer_name: qr.expected_monthly_value_tl ? 'Web Tasarım / AI Entegrasyon' : null,
+            recommended_offer_id: 'review_engine',
+          }
+
+          if (!isDryRun) {
+            const { data: inserted, error: insertErr } = await supabaseAdmin
+              .from('leads')
+              .insert(leadData)
+              .select('id')
+              .single()
+
+            if (insertErr) {
+              console.error(`[DAILY CRON] DB Insert error for ${d.name}:`, insertErr.message)
+              rejectedLeads.push({
+                name: d.name,
+                reason: `Veritabanı kayıt hatası: ${insertErr.message}`
+              })
+              continue
+            }
+
+            acceptedLeads.push({
+              id: inserted.id,
+              name: d.name,
+              sector: cleanSector,
+              district: loc.district,
+              tier: finalTier,
+              score: qr.quality_score,
+              why_now: why_now,
+              pitch: qr.first_30_seconds_pitch,
+              action: finalAction === 'call_now' ? 'Bugün ara' : 'Mini audit gönder',
+              pain_signals: painSignalsList,
+              proof_points: proofPointsList
+            })
+          } else {
+            acceptedLeads.push({
+              id: 'DRY-RUN-ID',
+              name: d.name,
+              sector: cleanSector,
+              district: loc.district,
+              tier: finalTier,
+              score: qr.quality_score,
+              why_now: why_now,
+              pitch: qr.first_30_seconds_pitch,
+              action: finalAction === 'call_now' ? 'Bugün ara' : 'Mini audit gönder',
+              pain_signals: painSignalsList,
+              proof_points: proofPointsList
+            })
+          }
+        }
+      }
+
+      // Rotate district or sector if targets not hit
+      districtIdx++
+      if (districtIdx % districts.length === 0) {
+        sectorIdx++
+      }
+    }
+
+    // Save scan outcome to settings
+    if (!isDryRun && acceptedLeads.length > 0) {
+      await supabaseAdmin.from('settings').upsert({
+        key: 'last_daily_scan',
+        value: JSON.stringify({
+          date: todayStr,
+          status: 'success',
+          scanned: scannedQueries,
+          added: acceptedLeads.length,
+          timestamp: new Date().toISOString()
+        })
+      }, { onConflict: 'key' })
+    }
+
+    const responsePayload: Record<string, any> = {
+      date: todayStr,
+      scannedQueries,
+      skippedDuplicates,
+      acceptedLeads,
+      rejectedLeads,
+      nextRun: 'Yarın Sabah 08:00 (TR)'
+    }
+
+    if (acceptedLeads.length < 5) {
+      responsePayload.accepted = acceptedLeads.length
+      responsePayload.target = 5
+      responsePayload.reason = 'Kalite kapısı korunarak yeterli lead bulunamadı.'
+    }
+
+    if (isDryRun) {
+      responsePayload.wouldInsertCount = acceptedLeads.length
+      responsePayload.dryRun = true
+    } else {
+      responsePayload.insertedCount = acceptedLeads.length
+    }
+
+    return NextResponse.json(responsePayload)
+
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Unknown fatal error'
+    console.error('[DAILY CRON] Fatal cron execution crash:', msg)
+    return NextResponse.json({ success: false, error: msg }, { status: 500 })
   }
 }

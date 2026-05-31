@@ -2,16 +2,20 @@
 
 import React, { useState } from 'react'
 import { usePathname } from 'next/navigation'
+import { Bell, Search } from 'lucide-react'
 import { Sidebar } from './Sidebar'
-import { Search } from 'lucide-react'
 
 const PAGE_TITLES: Record<string, string> = {
   '/dashboard': 'Komuta Merkezi',
+  '/harita': 'Lead Radar',
   '/radar': 'Lead Radar',
   '/pipeline': 'Müşteri Akışı',
   '/projects': 'Proje Takibi',
   '/services': 'Hizmetlerim',
-  '/settings': 'Sistem Ayarları',
+  '/bilgi': 'Bilgi Merkezi',
+  '/icraat-firsatlari': 'İcraat Fırsatları',
+  '/konsey': 'Konsey',
+  '/settings': 'Sistem Ayarları'
 }
 
 interface AppLayoutProps {
@@ -19,7 +23,7 @@ interface AppLayoutProps {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(true)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const pathname = usePathname()
   const pageTitle = PAGE_TITLES[pathname] ?? 'Dashboard'
 
@@ -33,18 +37,24 @@ export function AppLayout({ children }: AppLayoutProps) {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="h-[58px] border-b border-[var(--border-subtle)] flex items-center justify-between px-6 shrink-0">
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-[var(--text-muted)] text-xs">Dashboard</span>
-            <span className="text-[var(--text-muted)] text-xs">/</span>
-            <span className="text-[var(--text-primary)] text-xs font-medium">{pageTitle}</span>
+        <header className="h-[52px] border-b border-[var(--border-subtle)] flex items-center justify-between px-5 shrink-0 bg-[var(--bg-base)]">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-[var(--text-muted)]">Dashboard</span>
+            <span className="text-[var(--text-muted)]">/</span>
+            <span className="text-[var(--text-primary)] font-semibold">{pageTitle}</span>
           </div>
-          <div className="relative w-64">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-            <input
-              placeholder="Ara..."
-              className="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg text-xs py-2 pl-9 pr-3 outline-none focus:border-[var(--border-highlight)] text-[var(--text-secondary)] placeholder:text-[var(--text-muted)] transition-all"
-            />
+          <div className="flex items-center gap-3">
+            <div className="relative w-56">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+              <input
+                placeholder="Ara..."
+                className="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg text-xs py-2 pl-9 pr-3 outline-none focus:border-[var(--accent)] text-[var(--text-secondary)] placeholder:text-[var(--text-muted)] transition-all"
+              />
+            </div>
+            <button className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-all relative">
+              <Bell className="w-4 h-4" />
+              <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
+            </button>
           </div>
         </header>
 

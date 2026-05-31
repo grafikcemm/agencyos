@@ -1,0 +1,173 @@
+// Proposal Builder — bir lead + seçilen hizmetlerden teklif taslağı üretir.
+// Callers (future): LeadDrawer Teklif Oluştur butonu, LeadModal, ProposalView (Phase 2).
+// No existing proposal* file (Glob boş). Saf hesaplama; date format: ISO 8601.
+
+import { Lead, Proposal, ProposalStatus } from './types'
+import { findOfferById } from './offers'
+import { matchSectorProfile } from './sectorPriority'
+
+export interface BuildProposalInput {
+  lead: Partial<Lead> & { id: string; business_name: string }
+  offerIds: string[]
+  problemOverride?: string
+}
+
+function formatCurrency(n: number): string {
+  return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(n)
+}
+
+function deriveProblem(lead: Partial<Lead>, fallback: string): string {
+  if (lead.pain_points && lead.pain_points.length) {
+    return lead.pain_points.join('; ')
+  }
+  const profile = matchSectorProfile(lead.sector)
+  return fallback || profile.primaryNeed
+}
+
+function buildSolutionText(offerNames: string[], lead: Partial<Lead>): string {
+  const profile = matchSectorProfile(lead.sector)
+  const intro = `${profile.displayName} için, mevcut akışınıza entegre 3 katmanlı bir çözüm öneriyoruz:`
+  const list = offerNames.map((n, i) => `${i + 1}. ${n}`).join('\n')
+  return `${intro}\n${list}`
+}
+
+function maxDeliveryDays(deliveryDays: number[]): number {
+  return deliveryDays.length ? Math.max(...deliveryDays) : 14
+}
+
+interface DraftCore {
+  clientName: string
+  problem: string
+  solution: string
+  services: Proposal['services']
+  setupPrice: number
+  monthlyPrice: number
+  timeline: string
+  scope: string[]
+  expectedOutcome: string
+  nextStep: string
+}
+
+function buildWhatsappText(p: DraftCore): string {
+  const lines: string[] = []
+  lines.push(`Merhaba ${p.clientName},`)
+  lines.push('')
+  lines.push('Konuştuğumuz noktalardan yola çıkarak şu çözümü öneriyoruz:')
+  for (const s of p.services) lines.push(`• ${s.offerName}`)
+  lines.push('')
+  lines.push(`Kurulum: ${formatCurrency(p.setupPrice)}`)
+  if (p.monthlyPrice > 0) lines.push(`Aylık: ${formatCurrency(p.monthlyPrice)}`)
+  lines.push(`Kurulum süresi: ${p.timeline}`)
+  lines.push('')
+  lines.push(`Beklenen sonuç: ${p.expectedOutcome}`)
+  lines.push('')
+  lines.push('Detayları görüşmek için uygun olduğunuz bir zamanı paylaşır mısınız?')
+  return lines.join('\n')
+}
+
+function buildEmailText(p: DraftCore): string {
+  const lines: string[] = []
+  lines.push(`Sayın ${p.clientName} yetkilisi,`)
+  lines.push('')
+  lines.push('Görüşmemizin ardından tespit ettiğimiz ihtiyacı ve önerdiğimiz çözümü aşağıda paylaşıyoruz.')
+  lines.push('')
+  lines.push('İhtiyaç / Problem')
+  lines.push(p.problem)
+  lines.push('')
+  lines.push('Önerilen Çözüm')
+  lines.push(p.solution)
+  lines.push('')
+  lines.push('Kapsam')
+  for (const item of p.scope) lines.push(`• ${item}`)
+  lines.push('')
+  lines.push('Yatırım')
+  lines.push(`• Kurulum (tek seferlik): ${formatCurrency(p.setupPrice)}`)
+  if (p.monthlyPrice > 0) lines.push(`• Aylık: ${formatCurrency(p.monthlyPrice)}`)
+  lines.push(`• Kurulum süresi: ${p.timeline}`)
+  lines.push('')
+  lines.push('Beklenen Sonuç')
+  lines.push(p.expectedOutcome)
+  lines.push('')
+  lines.push('Sonraki Adım')
+  lines.push(p.nextStep)
+  lines.push('')
+  lines.push('Saygılarımızla.')
+  return lines.join('\n')
+}
+
+function addDays(d: Date, days: number): Date {
+  const c = new Date(d.getTime())
+  c.setDate(c.getDate() + days)
+  return c
+}
+
+export function buildProposal(input: BuildProposalInput): Proposal {
+  const { lead, offerIds, problemOverride } = input
+  const offers = offerIds
+    .map(id => findOfferById(id))
+    .filter((o): o is NonNullable<ReturnType<typeof findOfferById>> => !!o)
+
+  const services: Proposal['services'] = offers.map(o => ({
+    offerId: o.id,
+    offerName: o.name,
+    setupPrice: o.setupPrice,
+    monthlyPrice: o.monthlyPrice,
+  }))
+
+  const setupPrice = services.reduce((s, o) => s + o.setupPrice, 0)
+  const monthlyPrice = services.reduce((s, o) => s + o.monthlyPrice, 0)
+  const deliveryDays = maxDeliveryDays(offers.map(o => o.deliveryDays))
+
+  const problem = problemOverride || deriveProblem(lead, '')
+  const solution = buildSolutionText(offers.map(o => o.name), lead)
+
+  const scope: string[] = []
+  for (const o of offers) {
+    for (const item of o.checklist.slice(0, 2)) scope.push(`${o.name}: ${item}`)
+  }
+
+  const expectedOutcome = offers.map(o => o.salesPromise).join(' ')
+  const timeline = `${deliveryDays} iş günü`
+  const nextStep = 'Onayınızla birlikte kickoff toplantısı planlanır ve gerekli erişimler talep edilir.'
+
+  const now = new Date()
+  const followUpAt = addDays(now, 2).toISOString()
+
+  const draft: DraftCore = {
+    clientName: lead.business_name,
+    problem,
+    solution,
+    services,
+    setupPrice,
+    monthlyPrice,
+    timeline,
+    scope,
+    expectedOutcome,
+    nextStep,
+  }
+
+  const whatsappText = buildWhatsappText(draft)
+  const emailText = buildEmailText(draft)
+
+  const status: ProposalStatus = 'draft'
+
+  return {
+    id: `prop_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    leadId: lead.id,
+    clientName: lead.business_name,
+    services,
+    problem,
+    solution,
+    scope,
+    setupPrice,
+    monthlyPrice,
+    timeline,
+    expectedOutcome,
+    nextStep,
+    whatsappText,
+    emailText,
+    createdAt: now.toISOString(),
+    followUpAt,
+    status,
+  }
+}

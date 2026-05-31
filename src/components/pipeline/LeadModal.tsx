@@ -2,15 +2,16 @@
 
 import { useState } from 'react'
 import { X, Sparkles, Building2, Copy, Trash2, CheckCircle2, Phone, MessageSquare, ShieldAlert, ChevronDown, ChevronUp, Check } from 'lucide-react'
+import type { EnrichedLead } from '@/lib/enrichLead'
 
 // ─── Script generation ───────────────────────────────────────────────────────
 
-function buildScripts(lead: any) {
+function buildScripts(lead: EnrichedLead) {
   const b = lead.business_name
   const sector = lead.sector || 'işletme'
   const city = lead.city || 'bölgeniz'
   const noWeb = !lead.has_website
-  const score = lead.score || lead.potential_score || 50
+  const score = lead.quality_score || lead.potential_score || 50
   const rating = lead.rating ? `${lead.rating} yıldız` : 'iyi bir puan'
   const service = noWeb ? 'Logo + Web Sitesi + Sosyal Medya' : 'Sosyal Medya Yönetimi + AI Görsel'
   const value = score >= 80 ? '8.000–15.000₺' : score >= 60 ? '5.000–10.000₺' : '3.000–6.000₺'
@@ -74,7 +75,7 @@ const OBJECTIONS = [
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function LeadModal({ lead, onClose, onUpdate }: { lead: any; onClose: () => void; onUpdate: () => void }) {
+export function LeadModal({ lead, onClose, onUpdate }: { lead: EnrichedLead; onClose: () => void; onUpdate: () => void }) {
   const [status, setStatus] = useState(lead.status || 'new')
   const [loading, setLoading] = useState(false)
   const [tab, setTab] = useState<'overview' | 'scripts'>('overview')
@@ -133,7 +134,7 @@ export function LeadModal({ lead, onClose, onUpdate }: { lead: any; onClose: () 
       : lead.sector === 'kafe' || lead.sector === 'kahve dükkanı'
       ? '• AI Görsel Üretimi\n• Sosyal Medya Yönetimi\n• Logo'
       : '• Logo & Kurumsal Kimlik\n• Sosyal Medya Şablonu'
-    const estimatedValue = lead.score >= 80 ? '8.000–15.000₺' : lead.score >= 60 ? '5.000–10.000₺' : '3.000–6.000₺'
+    const estimatedValue = (lead.quality_score || lead.potential_score || 0) >= 80 ? '8.000–15.000₺' : (lead.quality_score || lead.potential_score || 0) >= 60 ? '5.000–10.000₺' : '3.000–6.000₺'
     const text = `🎯 YENİ LEAD — ${lead.priority === 'high' ? '⚡ YÜKSEK ÖNCELİK' : ''}
 
 İşletme: ${lead.business_name}
@@ -143,7 +144,7 @@ Sektör: ${lead.sector || 'Belirtilmedi'}
 ⭐ Google: ${lead.rating || '?'}/5 (${lead.review_count || 0} yorum)
 
 ❌ Eksikler:
-${!lead.has_website ? '• Web sitesi YOK\n' : ''}${lead.score >= 80 ? '• Dijital görünürlük yetersiz\n' : ''}
+${!lead.has_website ? '• Web sitesi YOK\n' : ''}${(lead.quality_score || lead.potential_score || 0) >= 80 ? '• Dijital görünürlük yetersiz\n' : ''}
 💡 Önerilen Hizmetler:
 ${services}
 
@@ -155,7 +156,7 @@ ${services}
 
   const scripts = buildScripts(lead)
 
-  const CopyBtn = ({ label, textKey, text }: { label: string; textKey: string; text: string }) => (
+  const renderCopyBtn = (label: string, textKey: string, text: string) => (
     <button
       onClick={() => copy(text, textKey)}
       className="flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1.5 rounded-lg border border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-all"
@@ -259,7 +260,7 @@ ${services}
                 <div className="bg-[var(--accent-muted)] border border-[var(--accent)]/20 p-4 rounded-xl flex flex-col">
                   <h3 className="text-[10px] text-[var(--accent)] font-bold uppercase tracking-widest mb-3">Pitch Taslağı</h3>
                   <p className="text-[12px] text-[var(--text-primary)] leading-relaxed flex-1 italic opacity-90 mb-4">
-                    "{lead.pitch || 'Sayın yetkili, dijital varlığınızı güçlendirmek için size özel bir teklifimiz var.'}"
+                    {"\""}{lead.first_30_seconds_pitch || lead.first_message || 'Sayın yetkili, dijital varlığınızı güçlendirmek için size özel bir teklifimiz var.'}{"\""}
                   </p>
                   <button
                     onClick={handleCopySummary}
@@ -273,7 +274,7 @@ ${services}
                 {/* Lead score / meta */}
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { label: 'Skor', value: lead.score || lead.potential_score || '–' },
+                    { label: 'Skor', value: lead.quality_score || lead.potential_score || '–' },
                     { label: 'Google', value: lead.rating ? `${lead.rating}★` : '–' },
                     { label: 'Yorum', value: lead.review_count || 0 },
                   ].map(m => (
@@ -297,7 +298,7 @@ ${services}
                   <h3 className="text-[11px] font-bold text-[var(--text-primary)] uppercase tracking-widest flex items-center gap-2">
                     <Phone className="w-3.5 h-3.5 text-[var(--accent)]" /> İlk Arama Scripti
                   </h3>
-                  <CopyBtn label="Kopyala" textKey="call" text={scripts.call} />
+                  {renderCopyBtn("Kopyala", "call", scripts.call)}
                 </div>
                 <pre className="p-4 text-[11px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap font-sans">
                   {scripts.call}
@@ -310,7 +311,7 @@ ${services}
                   <h3 className="text-[11px] font-bold text-[var(--text-primary)] uppercase tracking-widest flex items-center gap-2">
                     <MessageSquare className="w-3.5 h-3.5 text-[var(--accent)]" /> WhatsApp / DM Mesajı
                   </h3>
-                  <CopyBtn label="Kopyala" textKey="wa" text={scripts.whatsapp} />
+                  {renderCopyBtn("Kopyala", "wa", scripts.whatsapp)}
                 </div>
                 <pre className="p-4 text-[11px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap font-sans">
                   {scripts.whatsapp}
@@ -339,7 +340,7 @@ ${services}
                         {openObj === i && (
                           <div className="px-4 pb-4 space-y-3">
                             <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed">{answer}</p>
-                            <CopyBtn label="Yanıtı Kopyala" textKey={`obj-${i}`} text={answer.replace(/^"|"$/g, '')} />
+                            {renderCopyBtn("Yanıtı Kopyala", `obj-${i}`, answer.replace(/^"|"$/g, ''))}
                           </div>
                         )}
                       </div>

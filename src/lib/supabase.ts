@@ -10,7 +10,7 @@ export const supabaseAdmin = typeof window === 'undefined'
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
-  : (null as any)
+  : (null as unknown as ReturnType<typeof createClient>)
 
 
 export type Lead = {

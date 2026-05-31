@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic'
 import { useState, useEffect, useCallback } from 'react'
 import { JarvisPanel } from '@/components/map/JarvisPanel'
 import { Search, ChevronDown, Loader2 } from 'lucide-react'
+import { enrichLeads, EnrichedLead } from '@/lib/enrichLead'
 
 const LeadMapMap = dynamic(() => import('@/components/map/LeadMap'), {
   ssr: false,
@@ -35,8 +36,7 @@ const SECTOR_QUERY_MAP: Record<string, string> = {
 }
 
 export default function RadarPage() {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [leads, setLeads] = useState<any[]>([])
+  const [leads, setLeads] = useState<EnrichedLead[]>([])
   const [cityFilter, setCityFilter] = useState('')
   const [sectorFilter, setSectorFilter] = useState('Tümü')
   const [scanning, setScanning] = useState(false)
@@ -47,13 +47,18 @@ export default function RadarPage() {
       const res = await fetch('/api/db/leads')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
-      if (Array.isArray(data)) setLeads(data)
-    } catch (e: any) {
-      console.error('Lead fetch error:', e.message)
+      if (Array.isArray(data)) setLeads(enrichLeads(data))
+    } catch (e: unknown) {
+      const err = e as Error
+      console.error('Lead fetch error:', err.message)
     }
   }, [])
 
-  useEffect(() => { fetchLeads() }, [fetchLeads])
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      fetchLeads()
+    })
+  }, [fetchLeads])
 
   const handleScan = async () => {
     const city = cityFilter.trim() || 'İstanbul'
@@ -86,7 +91,7 @@ export default function RadarPage() {
       (l.city || '').toLowerCase().includes(cityFilter.toLowerCase()) ||
       (l.district || '').toLowerCase().includes(cityFilter.toLowerCase())
     const sectorMatch = sectorFilter === 'Tümü' ||
-      (l.category || l.sector || '').toLowerCase().includes(sectorFilter.toLowerCase())
+      (l.sector || l.normalized_sector || '').toLowerCase().includes(sectorFilter.toLowerCase())
     return cityMatch && sectorMatch
   })
 

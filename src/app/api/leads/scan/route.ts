@@ -1,95 +1,158 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { normalizeLocation, normalizeSector } from '@/lib/geo'
+import { runEvidenceEngine } from '@/lib/evidenceEngine'
+import { calculateLeadScoreV3 } from '@/lib/leadScoringV3'
+import { runQualityEngine } from '@/lib/highQualityLeadEngine'
 
 export async function POST(req: Request) {
   try {
-    const { sector, city, limit = 10 } = await req.json()
-    const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY
+    const { sector, city, district, limit = 10 } = await req.json()
+    const apiKey = process.env.GOOGLE_MAPS_KEY
 
-    // Mock response for missing API KEY case to keep app running
-    if (!apiKey || apiKey === 'your_google_maps_key') {
-      console.warn("GOOGLE MAPS API KEY NOT SET. Using mock data.")
-      return NextResponse.json({ success: true, count: 0, message: "API key eksik, tarama atlandı." })
+    if (!apiKey) {
+      return NextResponse.json({ success: true, count: 0, message: 'API key eksik, tarama atlandı.' })
     }
 
-    // 1. Text Search
-    const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(`${sector} ${city}`)}&key=${apiKey}&language=tr&region=tr`
+    const loc = normalizeLocation(city ?? '', district ?? '')
+    const cleanSector = normalizeSector(sector)
+    const searchQuery = `${cleanSector} ${loc.googleQuery}`
+
+    const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(searchQuery)}&key=${apiKey}&language=tr&region=tr`
     const searchRes = await fetch(searchUrl)
     const searchData = await searchRes.json()
 
-    if (!searchData.results) {
-      return NextResponse.json({ success: false, error: 'No results found' }, { status: 404 })
+    if (searchData.status !== 'OK' && searchData.status !== 'ZERO_RESULTS') {
+      return NextResponse.json({ success: false, error: searchData.status, message: searchData.error_message }, { status: 400 })
+    }
+    if (searchData.status === 'ZERO_RESULTS' || !searchData.results) {
+      return NextResponse.json({ success: true, count: 0 })
     }
 
-    const places = searchData.results.slice(0, limit)
+    const places = (searchData.results as Record<string, unknown>[]).slice(0, limit)
     let addedCount = 0
 
-    // 2. Place Details
     for (const place of places) {
-      const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,formatted_phone_number,website,formatted_address,geometry,rating,user_ratings_total&key=${apiKey}&language=tr`
+      const placeId = place.place_id as string
+      const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,formatted_phone_number,website,formatted_address,geometry,rating,user_ratings_total&key=${apiKey}&language=tr`
       const detailsRes = await fetch(detailsUrl)
       const detailsData = await detailsRes.json()
-      
-      const d = detailsData.result
-      if (!d || !d.formatted_phone_number) continue // Telefon zorunlu
+      const d = detailsData.result as Record<string, unknown> | null
 
-      const YUKSEK_ONCELIK_SEKTORLER = [
-        'güzellik salonu', 'estetik merkezi', 'kuaför salonu',
-        'nail art studio', 'butik mağaza', 'kafe', 'kahve dükkanı',
-        'diş kliniği', 'özel klinik'
-      ]
+      if (!d || !d.formatted_phone_number) continue
 
-      // 3. Score & Priority calculation
-      const website = d.website
-      const phone = d.formatted_phone_number
-      let potential_score = 50
-      let priority = 'normal'
+      const evidence = await runEvidenceEngine({
+        website: (d.website as string) ?? null,
+        sector: cleanSector,
+        businessName: d.name as string,
+        rating: (d.rating as number) ?? null,
+        reviewCount: (d.user_ratings_total as number) ?? 0,
+      })
 
-      // Web sitesi YOK + telefon VAR
-      // Küçük işletme sektöründe (güzellik, kuaför, kafe, butik)
-      if (!website && phone && YUKSEK_ONCELIK_SEKTORLER.includes(sector.toLowerCase())) {
-        potential_score = 90
-        priority = 'high'
-      }
-      // Web sitesi VAR ama Instagram yok (Google'dan anlaşılıyorsa)
-      else if (website && phone) {
-        potential_score = 60
-        priority = 'normal'
-      }
-      // Telefon YOK
-      else if (!phone) {
-        potential_score = 20
-        priority = 'low'
-      }
+      const scoreResult = calculateLeadScoreV3({
+        sector: cleanSector,
+        city: loc.city,
+        rating: (d.rating as number) ?? null,
+        reviewCount: (d.user_ratings_total as number) ?? 0,
+        phone: d.formatted_phone_number as string,
+        evidence,
+      })
 
-      // 4. Supabase Upsert — omit ai_analysis/pitch/status to preserve existing values on re-scan
-      const { error } = await supabaseAdmin.from('leads').upsert(
-        {
-          google_place_id: place.place_id,
-          business_name: d.name,
-          sector: sector,
-          city: city,
-          phone: d.formatted_phone_number,
-          website: d.website || null,
-          has_website: !!d.website,
-          priority: priority,
-          latitude: d.geometry?.location?.lat || null,
-          longitude: d.geometry?.location?.lng || null,
-          rating: d.rating || null,
-          review_count: d.user_ratings_total || 0,
-          potential_score: potential_score,
-          status: 'new',
+      const qualityResult = runQualityEngine({
+        lead: {
+          business_name: d.name as string,
+          sector: cleanSector,
+          city: loc.city,
+          phone: d.formatted_phone_number as string,
+          website: (d.website as string) ?? null,
+          rating: (d.rating as number) ?? null,
+          review_count: (d.user_ratings_total as number) ?? 0,
+          has_whatsapp: evidence.has_whatsapp,
         },
-        { onConflict: 'google_place_id', ignoreDuplicates: false }
-      )
+        evidence,
+      })
+
+      const geometry = d.geometry as { location?: { lat?: number; lng?: number } } | null
+      const payload = {
+        google_place_id: placeId,
+        business_name: d.name as string,
+        sector: cleanSector,
+        normalized_sector: qualityResult.normalized_sector,
+        city: loc.city,
+        district: loc.district || null,
+        city_slug: loc.citySlug,
+        district_slug: loc.districtSlug || null,
+        phone: d.formatted_phone_number as string,
+        website: (d.website as string) ?? null,
+        has_website: evidence.has_real_website || !!(d.website),
+        latitude: geometry?.location?.lat ?? null,
+        longitude: geometry?.location?.lng ?? null,
+        rating: (d.rating as number) ?? null,
+        review_count: (d.user_ratings_total as number) ?? 0,
+        status: 'new',
+        // V3 scores
+        potential_score: scoreResult.potential_score,
+        evidence_score: scoreResult.evidence_score,
+        fit_score: scoreResult.fit_score,
+        urgency_score: scoreResult.urgency_score,
+        money_score: scoreResult.money_score,
+        contactability_score: scoreResult.contactability_score,
+        priority: scoreResult.priority,
+        score_reasons: scoreResult.score_reasons,
+        // Evidence signals
+        has_real_website: evidence.has_real_website,
+        has_whatsapp: evidence.has_whatsapp,
+        has_form: evidence.has_form,
+        has_online_booking: evidence.has_online_booking,
+        has_ads_signal: evidence.has_ads_signal,
+        instagram_as_site: evidence.instagram_as_site,
+        // Evidence intelligence
+        why_now: evidence.why_now,
+        pain_signals: evidence.pain_signals,
+        proof_points: evidence.proof_points,
+        recommended_offer_id: evidence.recommended_offer_id,
+        recommended_offer_name: evidence.recommended_offer_name,
+        sales_angle: evidence.sales_angle,
+        first_message: evidence.first_message,
+        next_best_action: evidence.next_best_action,
+        confidence: evidence.confidence,
+        // Quality engine
+        quality_score: qualityResult.quality_score,
+        conversion_probability: qualityResult.conversion_probability,
+        money_potential_score: qualityResult.money_potential_score,
+        pain_intensity_score: qualityResult.pain_intensity_score,
+        agency_fit_score: qualityResult.agency_fit_score,
+        confidence_score: qualityResult.confidence_score,
+        lead_tier: qualityResult.lead_tier,
+        quality_label: qualityResult.quality_label,
+        disqualification_reason: qualityResult.disqualification_reason,
+        qualification_reasons: qualityResult.qualification_reasons,
+        conversion_angle: qualityResult.conversion_angle,
+        why_this_will_convert: qualityResult.why_this_will_convert,
+        expected_offer_value_tl: qualityResult.expected_offer_value_tl,
+        expected_monthly_value_tl: qualityResult.expected_monthly_value_tl,
+        best_channel: qualityResult.best_channel,
+        first_30_seconds_pitch: qualityResult.first_30_seconds_pitch,
+        objection_risks: qualityResult.objection_risks,
+        next_action_priority: qualityResult.next_action_priority,
+        last_quality_scored_at: new Date().toISOString(),
+        // Lifecycle
+        enrichment_status: 'done',
+        last_enriched_at: new Date().toISOString(),
+      }
+
+      const { error } = await supabaseAdmin
+        .from('leads')
+        .upsert(payload, { onConflict: 'google_place_id', ignoreDuplicates: false })
 
       if (!error) addedCount++
+      else console.error('Scan upsert error:', error.message)
     }
 
     return NextResponse.json({ success: true, count: addedCount })
-
-  } catch (error) {
-    console.error('Scan Error:', error)
-    return NextResponse.json({ success: false, error: 'Sunucu hatası.' }, { status: 500 })
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : 'Sunucu hatası'
+    console.error('Scan error:', msg)
+    return NextResponse.json({ success: false, error: msg }, { status: 500 })
   }
 }

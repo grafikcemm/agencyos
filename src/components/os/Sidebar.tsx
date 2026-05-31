@@ -25,7 +25,7 @@ export function Sidebar() {
           </div>
           <div>
             <div className="text-[var(--text-primary)] font-bold tracking-widest text-sm">AGENCYOS</div>
-            <div className="text-[var(--os-cyan)] text-[9px] tracking-[0.2em] mt-0.5 opacity-80">// COMMAND INTERFACE</div>
+            <div className="text-[var(--os-cyan)] text-[9px] tracking-[0.2em] mt-0.5 opacity-80">{"// COMMAND INTERFACE"}</div>
           </div>
         </div>
 

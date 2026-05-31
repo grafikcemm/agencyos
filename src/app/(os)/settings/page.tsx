@@ -6,7 +6,6 @@ import { Badge } from '@/components/ui/Badge'
 
 export default function SettingsPage() {
   const [seedLoading, setSeedLoading] = useState(false)
-  const [clearLoading, setClearLoading] = useState(false)
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
 
   const showMsg = (text: string, ok: boolean) => {
@@ -31,22 +30,8 @@ export default function SettingsPage() {
     }
   }
 
-  const handleClearLeads = async () => {
-    if (!confirm('Tüm leadler silinecek. Bu işlem geri alınamaz. Devam etmek istiyor musunuz?')) return
-    setClearLoading(true)
-    try {
-      const res = await fetch('/api/db/leads?all=true', { method: 'DELETE' })
-      const data = await res.json()
-      if (data.success) {
-        showMsg('✓ Tüm leadler silindi. Sistem hazır.', true)
-      } else {
-        showMsg(data.error || 'Silme işlemi başarısız.', false)
-      }
-    } catch {
-      showMsg('Bağlantı hatası.', false)
-    } finally {
-      setClearLoading(false)
-    }
+  const handleClearLeads = () => {
+    showMsg('Toplu silme devre dışı bırakıldı. Manuel silme için Supabase SQL Editor kullanın.', false)
   }
 
   return (
@@ -199,11 +184,11 @@ export default function SettingsPage() {
             </div>
             <button
               onClick={handleClearLeads}
-              disabled={clearLoading}
-              className="flex items-center gap-2 px-4 py-2 border border-red-500/40 text-red-400 text-xs font-semibold rounded-lg hover:bg-red-500/10 transition-all disabled:opacity-50 shrink-0 ml-4"
+              className="flex items-center gap-2 px-4 py-2 border border-red-500/40 text-red-400/50 text-xs font-semibold rounded-lg opacity-50 cursor-not-allowed shrink-0 ml-4"
+              title="Devre dışı — Supabase SQL Editor kullanın"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              {clearLoading ? 'Siliniyor...' : 'Leadleri Temizle'}
+              Leadleri Temizle
             </button>
           </div>
         </div>

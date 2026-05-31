@@ -2,7 +2,11 @@
   "crons": [
     {
       "path": "/api/cron/daily-scan",
-      "schedule": "0 8 * * *"
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/opportunity-scan",
+      "schedule": "0 6 * * 1"
     }
   ]
 }

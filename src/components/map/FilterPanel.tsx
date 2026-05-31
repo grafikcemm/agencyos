@@ -5,7 +5,7 @@ export function FilterPanel() {
     <div className="absolute top-16 left-6 z-[400] w-64">
       <div className="os-card bg-[#050810]/90 backdrop-blur-md p-4 space-y-5">
         
-        <h3 className="text-[10px] text-[var(--os-cyan)] font-bold tracking-widest uppercase">// FİLTRE</h3>
+        <h3 className="text-[10px] text-[var(--os-cyan)] font-bold tracking-widest uppercase">{"// FİLTRE"}</h3>
         
         {/* Şehir Seçimi Placeholder */}
         <div className="space-y-1.5">

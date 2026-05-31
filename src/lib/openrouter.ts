@@ -2,21 +2,81 @@ import { supabaseAdmin } from './supabase'
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 const BASE_URL = 'https://openrouter.ai/api/v1'
+const MONTHLY_COST_CAP_USD = 20
 
 type ModelTier = 'light' | 'medium' | 'heavy'
 
+// Per-operation routing table — every JARVIS tool calls getModel() to pick the right tier
+const OPERATION_MODEL_MAP: Record<string, { model: string; tier: ModelTier }> = {
+  // Light: conversational, briefing summaries, quick intent detection
+  jarvis_chat:         { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
+  session_briefing:    { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
+  read_knowledge:      { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
+  wrap_session:        { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
+  build_visual_prompt: { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
+  analyze_lead:        { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
+  batch_enrichment:    { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
+
+  // Medium: structured generation, cold email, briefing reports
+  generate_briefing:   { model: 'anthropic/claude-haiku-4-5', tier: 'medium' },
+  draft_email:         { model: 'anthropic/claude-haiku-4-5', tier: 'medium' },
+  build_carousel_brief:{ model: 'anthropic/claude-haiku-4-5', tier: 'medium' },
+  intent_detection:    { model: 'anthropic/claude-haiku-4-5', tier: 'medium' },
+
+  // Heavy: full proposals only — explicit user approval required before any send
+  draft_proposal:      { model: 'deepseek/deepseek-v4-pro', tier: 'heavy' },
+}
+
+// Per-million-token cost rates (USD) for accurate cost logging
+const TOKEN_RATES_PER_M: Record<string, number> = {
+  'google/gemini-2.5-flash-lite': 0.05,
+  'anthropic/claude-haiku-4-5':   0.25,
+  'deepseek/deepseek-v4-flash':   0.1,
+  'deepseek/deepseek-v4-pro':     0.5,
+}
+
+export function getModel(operation: string): { model: string; tier: ModelTier } {
+  return OPERATION_MODEL_MAP[operation] ?? { model: 'google/gemini-2.5-flash-lite', tier: 'light' }
+}
+
 interface OpenRouterResponse {
-  choices: {
-    message: {
-      content: string
-    }
-  }[]
-  usage: {
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-  }
+  choices: { message: { content: string; tool_calls?: ToolCall[] } }[]
+  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
   model: string
+}
+
+export interface ToolCall {
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
+}
+
+export interface JarvisTool {
+  type: 'function'
+  function: {
+    name: string
+    description: string
+    parameters: Record<string, unknown>
+  }
+}
+
+async function getMonthlySpend(): Promise<number> {
+  const now = new Date()
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+
+  try {
+    const { data } = await supabaseAdmin
+      .from('ai_cost_logs')
+      .select('cost_usd')
+      .gte('created_at', startOfMonth)
+
+    return (data ?? []).reduce(
+      (sum: number, row: { cost_usd: number }) => sum + (row.cost_usd ?? 0),
+      0
+    )
+  } catch {
+    return 0
+  }
 }
 
 async function logAiCost(
@@ -27,8 +87,6 @@ async function logAiCost(
   outputTokens: number,
   costUsd: number
 ) {
-  const costTl = costUsd * 38
-
   try {
     await supabaseAdmin.from('ai_cost_logs').insert({
       operation,
@@ -37,7 +95,7 @@ async function logAiCost(
       input_tokens: inputTokens,
       output_tokens: outputTokens,
       cost_usd: costUsd,
-      cost_tl: costTl,
+      cost_tl: costUsd * 38,
       created_at: new Date().toISOString()
     })
   } catch (error) {
@@ -46,85 +104,147 @@ async function logAiCost(
 }
 
 async function callOpenRouter(
+  operation: string,
   tier: ModelTier,
   model: string,
   systemPrompt: string,
   userPrompt: string,
+  maxTokens: number = 1000,
+  tools?: JarvisTool[]
+): Promise<{ content: string; toolCalls?: ToolCall[] }> {
+  if (!OPENROUTER_API_KEY) {
+    throw new Error('OPENROUTER_API_KEY ortam değişkeni ayarlanmamış.')
+  }
+
+  const monthlySpend = await getMonthlySpend()
+  if (monthlySpend >= MONTHLY_COST_CAP_USD) {
+    throw new Error(
+      `Aylık AI maliyet limiti aşıldı ($${MONTHLY_COST_CAP_USD}). Ay sıfırlanana kadar AI kullanılamaz.`
+    )
+  }
+
+  const body: Record<string, unknown> = {
+    model,
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ],
+    max_tokens: maxTokens,
+    temperature: 0.7
+  }
+
+  if (tools && tools.length > 0) {
+    body.tools = tools
+    body.tool_choice = 'auto'
+  }
+
+  const response = await fetch(`${BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://grafikcem.agency',
+      'X-Title': 'Grafikcem Agency OS'
+    },
+    body: JSON.stringify(body)
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json()
+    throw new Error(`OpenRouter API Hatası: ${errorData.error?.message || response.statusText}`)
+  }
+
+  const data: OpenRouterResponse = await response.json()
+  const message = data.choices[0]?.message
+  const content = message?.content ?? ''
+  const toolCalls = message?.tool_calls
+
+  const ratePerM = TOKEN_RATES_PER_M[model] ?? 0.1
+  const costUsd = (data.usage.total_tokens / 1_000_000) * ratePerM
+
+  await logAiCost(
+    operation,
+    data.model,
+    tier,
+    data.usage.prompt_tokens,
+    data.usage.completion_tokens,
+    costUsd
+  )
+
+  return { content, toolCalls }
+}
+
+// Operation-aware call — preferred entry point for all JARVIS tools
+export async function callWithOperation(
+  operation: string,
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number = 1000,
+  tools?: JarvisTool[]
+): Promise<{ content: string; toolCalls?: ToolCall[] }> {
+  const { model, tier } = getModel(operation)
+  return callOpenRouter(operation, tier, model, systemPrompt, userPrompt, maxTokens, tools)
+}
+
+// Monthly spend stats — used by dashboard cost widget
+export async function getMonthlyAiStats(): Promise<{
+  spentUsd: number
+  capUsd: number
+  percentUsed: number
+}> {
+  const spentUsd = await getMonthlySpend()
+  return {
+    spentUsd,
+    capUsd: MONTHLY_COST_CAP_USD,
+    percentUsed: Math.round((spentUsd / MONTHLY_COST_CAP_USD) * 100)
+  }
+}
+
+// Legacy tier-based calls — kept for backward compatibility with existing routes
+export async function callLight(
+  systemPrompt: string,
+  userPrompt: string,
   maxTokens: number = 1000
 ): Promise<string> {
-  if (!OPENROUTER_API_KEY) {
-    throw new Error('OPENROUTER_API_KEY is not configured in environment variables.')
-  }
-
-  try {
-    const response = await fetch(`${BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': 'https://grafikcem.agency', // Optional
-        'X-Title': 'Grafikcem Agency OS' // Optional
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
-        ],
-        max_tokens: maxTokens,
-        temperature: 0.7
-      })
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(`OpenRouter API Error: ${errorData.error?.message || response.statusText}`)
-    }
-
-    const data: OpenRouterResponse = await response.json()
-    const content = data.choices[0]?.message?.content || ''
-
-    // Calculate approximate cost (This is a simplified calculation as prices vary by model)
-    // For production, you might want to fetch current pricing or use model-specific rates.
-    // Here we use a placeholder cost calculation if OpenRouter doesn't return it directly in usage.
-    // OpenRouter usage usually doesn't include cost in the standard response, so we might need a lookup table.
-    
-    // Simple placeholder rates (per 1M tokens) for logging:
-    // deepseek-v4-flash: ~$0.1
-    // claude-haiku-4-5: ~$0.25 (estimated)
-    // deepseek-v4-pro: ~$0.5
-    const rates: Record<ModelTier, number> = {
-      light: 0.1 / 1000000,
-      medium: 0.25 / 1000000,
-      heavy: 0.5 / 1000000
-    }
-
-    const costUsd = (data.usage.total_tokens) * rates[tier]
-
-    await logAiCost(
-      'AI_GENERATION',
-      data.model,
-      tier,
-      data.usage.prompt_tokens,
-      data.usage.completion_tokens,
-      costUsd
-    )
-
-    return content
-  } catch (error: any) {
-    console.error(`OpenRouter ${tier} call failed:`, error.message)
-    throw new Error(`AI Servisi Hatası (${tier}): ${error.message}`)
-  }
+  const result = await callOpenRouter(
+    'light_generic',
+    'light',
+    'google/gemini-2.5-flash-lite',
+    systemPrompt,
+    userPrompt,
+    maxTokens
+  )
+  return result.content
 }
 
-export async function callLight(systemPrompt: string, userPrompt: string, maxTokens: number = 1000) {
-  return callOpenRouter('light', 'deepseek/deepseek-v4-flash', systemPrompt, userPrompt, maxTokens)
+export async function callMedium(
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number = 1000
+): Promise<string> {
+  const result = await callOpenRouter(
+    'medium_generic',
+    'medium',
+    'anthropic/claude-haiku-4-5',
+    systemPrompt,
+    userPrompt,
+    maxTokens
+  )
+  return result.content
 }
 
-export async function callMedium(systemPrompt: string, userPrompt: string, maxTokens: number = 1000) {
-  return callOpenRouter('medium', 'anthropic/claude-haiku-4-5', systemPrompt, userPrompt, maxTokens)
-}
-
-export async function callHeavy(systemPrompt: string, userPrompt: string, maxTokens: number = 1000) {
-  return callOpenRouter('heavy', 'deepseek/deepseek-v4-pro', systemPrompt, userPrompt, maxTokens)
+export async function callHeavy(
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number = 1000
+): Promise<string> {
+  const result = await callOpenRouter(
+    'heavy_generic',
+    'heavy',
+    'deepseek/deepseek-v4-pro',
+    systemPrompt,
+    userPrompt,
+    maxTokens
+  )
+  return result.content
 }

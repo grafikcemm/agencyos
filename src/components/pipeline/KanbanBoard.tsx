@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { MoreHorizontal, Calendar, MapPin, Zap } from 'lucide-react'
 import { LeadModal } from './LeadModal'
 import { Badge } from '@/components/ui/Badge'
+import type { EnrichedLead } from '@/lib/enrichLead'
 
 const COLUMNS = [
   { id: 'new', title: 'YENİ LEAD', color: '#378ADD' },
@@ -25,9 +26,9 @@ const STATUS_MAP: Record<string, string> = {
 }
 
 export function KanbanBoard() {
-  const [leads, setLeads] = useState<any[]>([])
+  const [leads, setLeads] = useState<EnrichedLead[]>([])
   const [draggedId, setDraggedId] = useState<string | null>(null)
-  const [selectedLead, setSelectedLead] = useState<any | null>(null)
+  const [selectedLead, setSelectedLead] = useState<EnrichedLead | null>(null)
   const [batchLoading, setBatchLoading] = useState(false)
 
   const fetchLeads = async () => {
@@ -39,7 +40,9 @@ export function KanbanBoard() {
   }
 
   useEffect(() => {
-    fetchLeads()
+    Promise.resolve().then(() => {
+      fetchLeads()
+    })
   }, [])
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
@@ -126,7 +129,7 @@ export function KanbanBoard() {
               const aPrio = priorityOrder[a.priority || 'normal']
               const bPrio = priorityOrder[b.priority || 'normal']
               if (aPrio !== bPrio) return bPrio - aPrio
-              return (b.score || b.potential_score || 0) - (a.score || a.potential_score || 0)
+              return (b.quality_score || b.potential_score || 0) - (a.quality_score || a.potential_score || 0)
             })
           
           return (
@@ -168,8 +171,8 @@ export function KanbanBoard() {
                     
                     <div className="flex flex-wrap gap-2 mb-3">
                       <Badge variant="muted">{lead.sector || 'Sektör Yok'}</Badge>
-                      <Badge variant={(lead.score || lead.potential_score) >= 60 ? 'success' : 'default'}>
-                        {lead.score || lead.potential_score || 0} OBP
+                      <Badge variant={(lead.quality_score || lead.potential_score) >= 60 ? 'success' : 'default'}>
+                        {lead.quality_score || lead.potential_score || 0} OBP
                       </Badge>
                       {lead.priority === 'high' && <Badge variant="warning">YÜKSEK</Badge>}
                     </div>
