@@ -12,7 +12,8 @@
     "clean:daily-start": "node scripts/clean-daily-start.js",
     "daily:scan": "node scripts/daily-scan.js",
     "opportunity:scan": "node scripts/opportunity-scan.js",
-    "opportunity:seed": "node scripts/seed-opportunities.js"
+    "opportunity:seed": "node scripts/seed-opportunities.js",
+    "knowledge:seed": "node scripts/seed-knowledge.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

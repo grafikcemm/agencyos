@@ -86,7 +86,7 @@ async function buildPlan(
   if (!ceo) throw new Error('CEO ajanı yüklenemedi.')
 
   const roster = specialists.map((s) => `- ${s.key}: ${s.role}`).join('\n')
-  const systemPrompt = buildAgentSystemPrompt(
+  const systemPrompt = await buildAgentSystemPrompt(
     ceo,
     `Uzman ajan kadrosu (yalnızca bu key'leri kullan):\n${roster}`
   )
@@ -175,7 +175,7 @@ async function buildDebrief(
     const { content } = await callAgentModel({
       model: ceo.model,
       agentKey: ceo.key,
-      systemPrompt: buildAgentSystemPrompt(ceo),
+      systemPrompt: await buildAgentSystemPrompt(ceo),
       userPrompt: `Operatör direktifi: "${operatorInput}"
 
 Uzman ajanların görev çıktıları:

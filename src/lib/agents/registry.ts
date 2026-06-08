@@ -1,6 +1,6 @@
 import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
-import { readKnowledgeFile } from '@/lib/knowledge'
+import { getKnowledgeDocs } from '@/lib/knowledge'
 
 // One row of the `agents` registry (migration 009). model + system_prompt are
 // editable from the DB so the operator can re-tune or upgrade a model without a
@@ -61,13 +61,19 @@ export async function setAgentStatus(key: string, status: AgentStatus): Promise<
 }
 
 // Compose the full system prompt for an agent: the editable DB prompt plus the
-// shared knowledge files (and the sales framework for the Sales Rep). Missing
-// knowledge files read as '' so this never throws on an incomplete vault.
-export function buildAgentSystemPrompt(agent: AgentRow, extraContext = ''): string {
-  const profile = readKnowledgeFile('00_GRAFIKCEM_CONTEXT.md')
-  const pricing = readKnowledgeFile('PRICING_RULES.md')
-  const business = readKnowledgeFile('BUSINESS_MODEL.md')
-  const salesFramework = agent.key === 'sales_rep' ? readKnowledgeFile('SALES_FRAMEWORK.md') : ''
+// shared knowledge docs (and the sales framework for the Sales Rep). Knowledge
+// docs are read from the DB (migration 004) and read as '' when missing, so this
+// never throws on an incomplete vault.
+export async function buildAgentSystemPrompt(agent: AgentRow, extraContext = ''): Promise<string> {
+  const isSales = agent.key === 'sales_rep'
+  const keys = ['00_GRAFIKCEM_CONTEXT.md', 'PRICING_RULES.md', 'BUSINESS_MODEL.md']
+  if (isSales) keys.push('SALES_FRAMEWORK.md')
+
+  const docs = await getKnowledgeDocs(keys)
+  const profile = docs['00_GRAFIKCEM_CONTEXT.md'] ?? ''
+  const pricing = docs['PRICING_RULES.md'] ?? ''
+  const business = docs['BUSINESS_MODEL.md'] ?? ''
+  const salesFramework = isSales ? docs['SALES_FRAMEWORK.md'] ?? '' : ''
 
   const sections: string[] = [
     `Sen ${agent.name}'sin — Grafikcem agentic growth engine'inin "${agent.role}" katmanı.`,

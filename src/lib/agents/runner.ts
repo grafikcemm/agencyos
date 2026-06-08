@@ -44,7 +44,7 @@ export async function runTask(task: AgentTask): Promise<TaskResult> {
 
   try {
     const context = await gatherContext(task.agent_key, task.input)
-    const systemPrompt = buildAgentSystemPrompt(agent, context)
+    const systemPrompt = await buildAgentSystemPrompt(agent, context)
     const userPrompt = buildUserPrompt(task)
 
     const { content, tokensIn, tokensOut } = await callAgentModel({

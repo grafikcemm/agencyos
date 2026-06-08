@@ -1,21 +1,21 @@
 import { callWithOperation, JarvisTool, ToolCall } from '@/lib/openrouter'
 import { supabaseAdmin } from '@/lib/supabase'
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs'
+import { writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { requireApiAccess } from '@/lib/auth'
+import { getKnowledgeDoc, getKnowledgeDocs } from '@/lib/knowledge'
 
 // --- Knowledge injection ---
 
-function readKnowledgeFile(filename: string): string {
-  const filePath = join(process.cwd(), 'knowledge', filename)
-  if (!existsSync(filePath)) return ''
-  try { return readFileSync(filePath, 'utf-8') } catch { return '' }
-}
-
-function buildSystemPrompt(contextData: string): string {
-  const profile = readKnowledgeFile('00_GRAFIKCEM_CONTEXT.md')
-  const pricing = readKnowledgeFile('PRICING_RULES.md')
-  const business = readKnowledgeFile('BUSINESS_MODEL.md')
+async function buildSystemPrompt(contextData: string): Promise<string> {
+  const docs = await getKnowledgeDocs([
+    '00_GRAFIKCEM_CONTEXT.md',
+    'PRICING_RULES.md',
+    'BUSINESS_MODEL.md',
+  ])
+  const profile = docs['00_GRAFIKCEM_CONTEXT.md'] ?? ''
+  const pricing = docs['PRICING_RULES.md'] ?? ''
+  const business = docs['BUSINESS_MODEL.md'] ?? ''
 
   return `Sen JARVIS'sin — Ali Cem Bozma'nın kişisel iş geliştirme asistanısın.
 Türkçe konuş. Yanıtların kısa (max 3 cümle) ve doğrudan olsun.
@@ -606,7 +606,7 @@ async function executeTool(toolName: string, args: Record<string, unknown>): Pro
       const { data: lead } = await supabaseAdmin
         .from('leads').select('*').eq('id', args.lead_id as string).single()
       if (!lead) return 'Lead bulunamadı.'
-      const pricing = readKnowledgeFile('PRICING_RULES.md')
+      const pricing = await getKnowledgeDoc('PRICING_RULES.md')
       const { content } = await callWithOperation(
         'generate_briefing',
         `Asistan için WhatsApp brief raporu oluştur. Şu başlıkları içermeli:
@@ -639,7 +639,7 @@ Türkçe yaz.`,
       const { data: lead } = await supabaseAdmin
         .from('leads').select('*').eq('id', args.lead_id as string).single()
       if (!lead) return 'Lead bulunamadı.'
-      const pricing = readKnowledgeFile('PRICING_RULES.md')
+      const pricing = await getKnowledgeDoc('PRICING_RULES.md')
       const services = (args.services as string[]) ?? []
       const { content } = await callWithOperation(
         'draft_proposal',
@@ -670,7 +670,7 @@ Türkçe yaz.`,
         }
       }
 
-      const pricing = readKnowledgeFile('PRICING_RULES.md')
+      const pricing = await getKnowledgeDoc('PRICING_RULES.md')
       const { content } = await callWithOperation(
         'generate_briefing',
         `Müşteriye özel pitch metni yaz. Kısa, ikna edici, Türkçe. Telefon veya WhatsApp üzerinden gönderilebilecek formatta.${serviceInfo}\nFiyatlandırma: ${pricing.slice(0, 400)}`,
@@ -1017,7 +1017,7 @@ export async function POST(req: Request) {
     }
 
     const contextData = await getContextData()
-    const systemPrompt = buildSystemPrompt(contextData)
+    const systemPrompt = await buildSystemPrompt(contextData)
 
     const { content, toolCalls } = await callWithOperation(
       'jarvis_chat',

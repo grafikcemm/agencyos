@@ -40,7 +40,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ key: st
       .map(m => `[${m.role}]: ${m.content}`)
       .join('\n')
 
-    const systemPrompt = buildAgentSystemPrompt(agent)
+    const systemPrompt = await buildAgentSystemPrompt(agent)
     const userPrompt = history ? `${history}\n\noperator: ${message}` : message
 
     const { content, tokensIn, tokensOut } = await callAgentModel({

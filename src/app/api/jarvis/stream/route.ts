@@ -1,17 +1,10 @@
 import { getModel } from '@/lib/openrouter'
 import { supabaseAdmin } from '@/lib/supabase'
-import { readFileSync, existsSync } from 'fs'
-import { join } from 'path'
 import { requireApiAccess } from '@/lib/auth'
+import { getKnowledgeDoc } from '@/lib/knowledge'
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 const BASE_URL = 'https://openrouter.ai/api/v1'
-
-function readKnowledgeFile(filename: string): string {
-  const filePath = join(process.cwd(), 'knowledge', filename)
-  if (!existsSync(filePath)) return ''
-  try { return readFileSync(filePath, 'utf-8') } catch { return '' }
-}
 
 async function getContextData(): Promise<string> {
   try {
@@ -39,7 +32,7 @@ export async function POST(req: Request) {
     if (!OPENROUTER_API_KEY) return Response.json({ error: 'API key eksik' }, { status: 500 })
 
     const contextData = await getContextData()
-    const profile = readKnowledgeFile('00_GRAFIKCEM_CONTEXT.md')
+    const profile = await getKnowledgeDoc('00_GRAFIKCEM_CONTEXT.md')
     const { model } = getModel('jarvis_chat')
 
     const systemPrompt = `Sen JARVIS'sin — Ali Cem Bozma'nın kişisel asistanısın. Türkçe, kısa yanıtlar ver.
