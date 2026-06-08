@@ -85,7 +85,8 @@ async function logAiCost(
   tier: ModelTier,
   inputTokens: number,
   outputTokens: number,
-  costUsd: number
+  costUsd: number,
+  agentKey?: string
 ) {
   try {
     await supabaseAdmin.from('ai_cost_logs').insert({
@@ -96,6 +97,7 @@ async function logAiCost(
       output_tokens: outputTokens,
       cost_usd: costUsd,
       cost_tl: costUsd * 38,
+      agent_key: agentKey ?? null,
       created_at: new Date().toISOString()
     })
   } catch (error) {
@@ -110,8 +112,9 @@ async function callOpenRouter(
   systemPrompt: string,
   userPrompt: string,
   maxTokens: number = 1000,
-  tools?: JarvisTool[]
-): Promise<{ content: string; toolCalls?: ToolCall[] }> {
+  tools?: JarvisTool[],
+  agentKey?: string
+): Promise<{ content: string; toolCalls?: ToolCall[]; usage: { promptTokens: number; completionTokens: number } }> {
   if (!OPENROUTER_API_KEY) {
     throw new Error('OPENROUTER_API_KEY ortam değişkeni ayarlanmamış.')
   }
@@ -168,10 +171,18 @@ async function callOpenRouter(
     tier,
     data.usage.prompt_tokens,
     data.usage.completion_tokens,
-    costUsd
+    costUsd,
+    agentKey
   )
 
-  return { content, toolCalls }
+  return {
+    content,
+    toolCalls,
+    usage: {
+      promptTokens: data.usage.prompt_tokens,
+      completionTokens: data.usage.completion_tokens,
+    },
+  }
 }
 
 // Operation-aware call — preferred entry point for all JARVIS tools
@@ -184,6 +195,42 @@ export async function callWithOperation(
 ): Promise<{ content: string; toolCalls?: ToolCall[] }> {
   const { model, tier } = getModel(operation)
   return callOpenRouter(operation, tier, model, systemPrompt, userPrompt, maxTokens, tools)
+}
+
+// Map an arbitrary model id to a cost tier (used only for logging classification).
+function getTierForModel(model: string): ModelTier {
+  if (model.includes('pro') || model.includes('opus') || model.includes('gpt-5')) return 'heavy'
+  if (model.includes('haiku') || model.includes('sonnet') || model.includes('flash-lite')) return 'medium'
+  return 'light'
+}
+
+// Agent-scoped call: runs a specific model (from the agents registry), tags the
+// cost log with the agent key, and returns token usage for task telemetry.
+export async function callAgentModel(opts: {
+  model: string
+  agentKey: string
+  systemPrompt: string
+  userPrompt: string
+  maxTokens?: number
+  tools?: JarvisTool[]
+}): Promise<{ content: string; toolCalls?: ToolCall[]; tokensIn: number; tokensOut: number }> {
+  const tier = getTierForModel(opts.model)
+  const result = await callOpenRouter(
+    `agent:${opts.agentKey}`,
+    tier,
+    opts.model,
+    opts.systemPrompt,
+    opts.userPrompt,
+    opts.maxTokens ?? 1200,
+    opts.tools,
+    opts.agentKey
+  )
+  return {
+    content: result.content,
+    toolCalls: result.toolCalls,
+    tokensIn: result.usage.promptTokens,
+    tokensOut: result.usage.completionTokens,
+  }
 }
 
 // Monthly spend stats — used by dashboard cost widget

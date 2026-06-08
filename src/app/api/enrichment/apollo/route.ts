@@ -4,14 +4,19 @@
 
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { requireApiAccess } from '@/lib/auth'
 
 const APOLLO_API_KEY = process.env.APOLLO_API_KEY
 
 export async function GET() {
+  const access = await requireApiAccess()
+  if ('response' in access) return access.response
   return NextResponse.json({ configured: !!APOLLO_API_KEY })
 }
 
 export async function POST(req: Request) {
+  const access = await requireApiAccess(req)
+  if ('response' in access) return access.response
   if (!APOLLO_API_KEY) {
     return NextResponse.json(
       { error: 'Apollo enrichment not configured. Add APOLLO_API_KEY to .env.local to enable.' },

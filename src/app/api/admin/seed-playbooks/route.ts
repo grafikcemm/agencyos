@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { requireApiAccess } from '@/lib/auth'
 
 const DEFAULT_PLAYBOOKS = [
   // ============================================
@@ -788,6 +789,8 @@ async function safeInsert(playbooksData: any[]) {
 
 export async function POST() {
   try {
+    const access = await requireApiAccess()
+    if ('response' in access) return access.response
     const { data: existing } = await supabaseAdmin.from('playbooks').select('id').limit(1)
     if (existing && existing.length > 0) {
       return NextResponse.json({ success: false, message: 'Paketler zaten mevcut. PUT ile force-reseed yapın.' })
@@ -801,6 +804,8 @@ export async function POST() {
 
 export async function PUT() {
   try {
+    const access = await requireApiAccess()
+    if ('response' in access) return access.response
     // Delete existing playbooks to prevent unique constraints or duplication
     await supabaseAdmin.from('playbooks').delete().neq('id', '00000000-0000-0000-0000-000000000000')
     const result = await safeInsert(DEFAULT_PLAYBOOKS)

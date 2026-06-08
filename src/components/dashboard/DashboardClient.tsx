@@ -1,10 +1,73 @@
 "use client"
 
 import { useMemo, useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { TrendingUp, TrendingDown, Cpu, Flame, Clock, Activity, Search, Filter, ArrowRight, Wallet, CheckCircle, Star, AlertTriangle, ChevronRight } from 'lucide-react'
 import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
 import { LeadDrawer } from '@/components/map/LeadDrawer'
 import type { EnrichedLead } from '@/lib/enrichLead'
+import { fetchProjects } from '@/lib/repositories/projects'
+import { dbGet } from '@/lib/repositories/base'
+
+const MONTH_LABELS_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
+const USD_TO_TL = 38
+
+interface CashFlowPoint {
+  name: string
+  inflow: number
+  outflow: number
+}
+
+interface CostLogRow {
+  cost_tl?: number | null
+  cost_usd?: number | null
+  created_at?: string | null
+}
+
+// Build a last-6-months cash-flow series from real projects (recurring MRR) and
+// ai_cost_logs (monthly AI spend). No fabricated numbers — empty data yields zeros.
+function buildCashFlow(
+  projects: { status: string; monthly_fee?: number | null; created_at?: string | null }[],
+  costLogs: CostLogRow[]
+): CashFlowPoint[] {
+  const now = new Date()
+  const months = Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+    return { year: d.getFullYear(), month: d.getMonth() }
+  })
+
+  // Recurring revenue: active projects contribute their monthly_fee to every month
+  // at or after their start (created_at) — that is when the recurring fee began.
+  const activeProjects = projects.filter((p) => p.status === 'active')
+
+  // AI cost grouped by year-month.
+  const costByMonth = new Map<string, number>()
+  for (const log of costLogs) {
+    if (!log.created_at) continue
+    const d = new Date(log.created_at)
+    const key = `${d.getFullYear()}-${d.getMonth()}`
+    const tl = (log.cost_tl ?? 0) || (log.cost_usd ?? 0) * USD_TO_TL
+    costByMonth.set(key, (costByMonth.get(key) ?? 0) + tl)
+  }
+
+  return months.map(({ year, month }) => {
+    const monthStart = new Date(year, month, 1)
+    const inflow = activeProjects.reduce((sum, p) => {
+      const started = p.created_at ? new Date(p.created_at) : null
+      // Count MRR for any month from the project's start month onward.
+      if (!started || started <= new Date(year, month + 1, 0, 23, 59, 59)) {
+        return sum + (p.monthly_fee ?? 0)
+      }
+      return sum
+    }, 0)
+    const outflow = costByMonth.get(`${year}-${month}`) ?? 0
+    return {
+      name: MONTH_LABELS_TR[monthStart.getMonth()],
+      inflow,
+      outflow: -outflow,
+    }
+  })
+}
 
 interface DashboardProject {
   id: string
@@ -117,16 +180,27 @@ export function DashboardClient(props: DashboardClientProps) {
     return { overdue, hottest, fastMoney, potentialMRR }
   }, [actionLeads])
 
-  // Mock Cash Flow data mirroring Fintrixity's mockup bar chart
-  const cashFlowData = [
-    { name: 'Oca', inflow: 28000, outflow: -12000 },
-    { name: 'Şub', inflow: 34000, outflow: -15000 },
-    { name: 'Mar', inflow: 540323, outflow: -80000 }, // Highlighted March bar matching mockup
-    { name: 'Nis', inflow: 42000, outflow: -18000 },
-    { name: 'May', inflow: 59000, outflow: -22000 },
-    { name: 'Haz', inflow: 73000, outflow: -25000 },
-    { name: 'Tem', inflow: 81000, outflow: -30000 }
-  ]
+  // Live Cash Flow: derived from real projects (MRR) + ai_cost_logs (monthly cost).
+  const {
+    data: cashFlowData = [],
+    isLoading: cashFlowLoading,
+    isError: cashFlowError,
+  } = useQuery({
+    queryKey: ['cash-flow'],
+    queryFn: async (): Promise<CashFlowPoint[]> => {
+      const [projects, costLogs] = await Promise.all([
+        fetchProjects({ limit: 500 }),
+        dbGet<CostLogRow>('ai_cost_logs', { limit: 5000 }),
+      ])
+      return buildCashFlow(projects, costLogs)
+    },
+  })
+
+  const hasCashFlow = cashFlowData.some((p) => p.inflow !== 0 || p.outflow !== 0)
+  const peakInflow = cashFlowData.reduce(
+    (max, p) => (p.inflow > max.inflow ? p : max),
+    { name: '—', inflow: 0, outflow: 0 } as CashFlowPoint
+  )
 
   // Filter recent projects based on search query
   const filteredProjects = props.recentProjects.filter(p => {
@@ -137,7 +211,7 @@ export function DashboardClient(props: DashboardClientProps) {
   const remainingTarget = Math.max(0, props.revenueTarget - props.monthlyRevenue)
 
   return (
-    <div className="flex h-full overflow-hidden bg-[#08080a]">
+    <div className="flex h-full overflow-hidden">
       {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto p-6 min-w-0 scrollbar-thin">
         <div className="space-y-6 max-w-[1200px]">
@@ -145,7 +219,7 @@ export function DashboardClient(props: DashboardClientProps) {
           {/* Page Sub-Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-black tracking-tight text-[#f5f5f7]">Komuta Merkezi</h1>
+              <h1 className="font-display text-2xl font-medium tracking-tight text-[#f5f5f7]">Komuta <span className="italic font-normal">Merkezi</span></h1>
               <p className="text-xs text-[#5f5f69] mt-0.5">Sisteminizin genel durum özeti ve performans verileri.</p>
             </div>
             <div className="flex items-center gap-3">
@@ -230,7 +304,7 @@ export function DashboardClient(props: DashboardClientProps) {
 
           {/* Bugün Hangi Sektörü Taramalıyım? */}
           {props.sectorSuggestions && props.sectorSuggestions.length > 0 && (
-            <div className="bg-[#0f0f12] border border-[#1c1c22] rounded-2xl p-4">
+            <div className="glass-card rounded-2xl p-4">
               <h3 className="text-xs font-black text-[#f5f5f7] uppercase tracking-wider flex items-center gap-2 mb-3">
                 <Search className="w-3.5 h-3.5 text-[var(--accent)]" />
                 Bugün Taranacak Sektörler
@@ -342,7 +416,7 @@ export function DashboardClient(props: DashboardClientProps) {
 
           {/* Bugünün Satış Planı */}
           {(plan.overdue.length > 0 || plan.hottest.length > 0 || plan.fastMoney.length > 0) && (
-            <div className="bg-[#0f0f12] border border-[#1c1c22] rounded-2xl overflow-hidden">
+            <div className="glass-card rounded-2xl overflow-hidden">
               <div className="px-5 py-4 border-b border-[#1c1c22] flex items-center justify-between flex-wrap gap-3">
                 <div>
                   <h3 className="text-xs font-black text-[#f5f5f7] uppercase tracking-wider flex items-center gap-2">
@@ -423,7 +497,7 @@ export function DashboardClient(props: DashboardClientProps) {
             </div>
 
             {/* Card 2: Savings Account style (Hedef & Kalan Ciro) */}
-            <div className="bg-[#0f0f12] border border-[#1c1c22] hover:border-[#2c2c35] rounded-2xl p-5 flex flex-col justify-between min-h-[160px] transition-all duration-300">
+            <div className="glass-card rounded-2xl p-5 flex flex-col justify-between min-h-[160px] transition-all duration-300 hover:-translate-y-0.5">
               <div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -454,7 +528,7 @@ export function DashboardClient(props: DashboardClientProps) {
             </div>
 
             {/* Card 3: Investment Portfolio style (Yapay Zekâ Operasyonel ROI) */}
-            <div className="bg-[#0f0f12] border border-[#1c1c22] hover:border-[#2c2c35] rounded-2xl p-5 flex flex-col justify-between min-h-[160px] transition-all duration-300">
+            <div className="glass-card rounded-2xl p-5 flex flex-col justify-between min-h-[160px] transition-all duration-300 hover:-translate-y-0.5">
               <div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -486,7 +560,7 @@ export function DashboardClient(props: DashboardClientProps) {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             
             {/* Left Col (5/12 width): My Wallet style Active Sectors */}
-            <div className="lg:col-span-5 bg-[#0f0f12] border border-[#1c1c22] rounded-2xl p-5 flex flex-col justify-between">
+            <div className="lg:col-span-5 glass-card rounded-2xl p-5 flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-4 border-b border-[#1c1c22] pb-3">
                   <div>
@@ -541,7 +615,7 @@ export function DashboardClient(props: DashboardClientProps) {
             </div>
 
             {/* Right Col (7/12 width): Cash Flow Glowing Bar Chart */}
-            <div className="lg:col-span-7 bg-[#0f0f12] border border-[#1c1c22] rounded-2xl p-5">
+            <div className="lg:col-span-7 glass-card rounded-2xl p-5">
               <div className="flex items-center justify-between mb-4 border-b border-[#1c1c22] pb-3 flex-wrap gap-2">
                 <div>
                   <h3 className="text-xs font-black text-[#f5f5f7] uppercase tracking-wider">Ciro Akışı</h3>
@@ -572,7 +646,16 @@ export function DashboardClient(props: DashboardClientProps) {
               </div>
 
               <div className="h-48">
-                {mounted ? (
+                {!mounted || cashFlowLoading ? (
+                  <div className="w-full h-[192px] bg-[#0f0f12] rounded-lg animate-pulse border border-[#1c1c22] flex items-center justify-center text-[10px] text-[#5f5f69] font-black uppercase">Grafik Yükleniyor...</div>
+                ) : cashFlowError ? (
+                  <div className="w-full h-[192px] bg-[#0f0f12] rounded-lg border border-red-500/20 flex items-center justify-center text-[10px] text-red-400 font-bold uppercase tracking-wider">Ciro akışı yüklenemedi</div>
+                ) : !hasCashFlow ? (
+                  <div className="w-full h-[192px] bg-[#0f0f12] rounded-lg border border-[#1c1c22] flex flex-col items-center justify-center gap-1 text-[#5f5f69]">
+                    <span className="text-[10px] font-black uppercase tracking-wider">Henüz ciro verisi yok</span>
+                    <span className="text-[9px] text-[#5f5f69]/70">Aktif proje eklendiğinde MRR burada görünecek.</span>
+                  </div>
+                ) : (
                   <ResponsiveContainer width="100%" height={192}>
                     <BarChart data={cashFlowData}>
                       <defs>
@@ -597,21 +680,23 @@ export function DashboardClient(props: DashboardClientProps) {
                       <Bar dataKey="inflow" fill="url(#barGrad)" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
-                ) : (
-                  <div className="w-full h-[192px] bg-[#0f0f12] rounded-lg animate-pulse border border-[#1c1c22] flex items-center justify-center text-[10px] text-[#5f5f69] font-black uppercase">Grafik Yükleniyor...</div>
                 )}
               </div>
 
               <div className="flex justify-between items-center text-[10px] text-[#5f5f69] font-black uppercase mt-3 pt-2 border-t border-[#1c1c22]">
-                <span>2026 Nakit Akışı</span>
-                <span className="text-[var(--accent)]">En yüksek giriş: Mart (₺540.323)</span>
+                <span>{new Date().getFullYear()} Nakit Akışı (Son 6 Ay)</span>
+                {hasCashFlow && (
+                  <span className="text-[var(--accent)]">
+                    En yüksek giriş: {peakInflow.name} (₺{peakInflow.inflow.toLocaleString('tr-TR')})
+                  </span>
+                )}
               </div>
             </div>
 
           </div>
 
           {/* ROW 3: Recent Activities Table */}
-          <div className="bg-[#0f0f12] border border-[#1c1c22] rounded-2xl overflow-hidden">
+          <div className="glass-card rounded-2xl overflow-hidden">
             <div className="px-5 py-4 border-b border-[#1c1c22] flex items-center justify-between flex-wrap gap-3">
               <div>
                 <h3 className="text-xs font-black text-[#f5f5f7] uppercase tracking-wider">Son Projeler & Aktiviteler</h3>
@@ -691,7 +776,7 @@ export function DashboardClient(props: DashboardClientProps) {
         <div className="p-5 space-y-6">
 
           {/* Follow-ups */}
-          <div className="bg-[#0f0f12] border border-[#1c1c22] rounded-xl p-4 space-y-3">
+          <div className="glass-card rounded-xl p-4 space-y-3">
             <div className="flex items-center gap-2 border-b border-[#1c1c22] pb-2">
               <Clock className="w-4 h-4 text-[var(--warning)]" />
               <h3 className="text-[10px] font-black text-[#f5f5f7] tracking-widest uppercase">Takip Listesi</h3>
@@ -712,7 +797,7 @@ export function DashboardClient(props: DashboardClientProps) {
           </div>
 
           {/* Activity Feed */}
-          <div className="bg-[#0f0f12] border border-[#1c1c22] rounded-xl p-4 space-y-3">
+          <div className="glass-card rounded-xl p-4 space-y-3">
             <div className="flex items-center gap-2 border-b border-[#1c1c22] pb-2">
               <Activity className="w-4 h-4 text-[#3b82f6]" />
               <h3 className="text-[10px] font-black text-[#f5f5f7] tracking-widest uppercase">Son Aktivite</h3>
@@ -738,7 +823,7 @@ export function DashboardClient(props: DashboardClientProps) {
           </div>
 
           {/* AI Cost Breakdown */}
-          <div className="bg-[#0f0f12] border border-[#1c1c22] rounded-xl p-4 space-y-3">
+          <div className="glass-card rounded-xl p-4 space-y-3">
             <div className="flex items-center gap-2 border-b border-[#1c1c22] pb-2">
               <Cpu className="w-4 h-4 text-[var(--accent)]" />
               <h3 className="text-[10px] font-black text-[#f5f5f7] tracking-widest uppercase">AI Dağılımı</h3>

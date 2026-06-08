@@ -1,4 +1,5 @@
 import { AppLayout } from '@/components/layout/AppLayout'
+import QueryProvider from '@/components/providers/QueryProvider'
 
 export default function OsLayout({
   children,
@@ -6,8 +7,10 @@ export default function OsLayout({
   children: React.ReactNode
 }) {
   return (
-    <AppLayout>
-      {children}
-    </AppLayout>
+    <QueryProvider>
+      <AppLayout>
+        {children}
+      </AppLayout>
+    </QueryProvider>
   )
 }

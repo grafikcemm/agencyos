@@ -1,16 +1,57 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { EyeOff, Shield, Server, Activity, Save, AlertTriangle, Package, Trash2, RefreshCw } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { fetchSettings, saveSetting } from '@/lib/repositories/settings'
+
+const AGENCY_NAME_KEY = 'agency_name'
+const AGENCY_EMAIL_KEY = 'agency_email'
+const DEFAULT_AGENCY_NAME = 'GrafikCem Studio'
+const DEFAULT_AGENCY_EMAIL = 'info@grafikcem.com'
 
 export default function SettingsPage() {
+  const queryClient = useQueryClient()
   const [seedLoading, setSeedLoading] = useState(false)
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
+
+  const [agencyName, setAgencyName] = useState(DEFAULT_AGENCY_NAME)
+  const [agencyEmail, setAgencyEmail] = useState(DEFAULT_AGENCY_EMAIL)
+  const [savingAgency, setSavingAgency] = useState(false)
+
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: fetchSettings,
+  })
+
+  // Hydrate form fields from persisted settings once they load.
+  useEffect(() => {
+    if (!settings) return
+    const name = settings.find((s) => s.key === AGENCY_NAME_KEY)?.value
+    const email = settings.find((s) => s.key === AGENCY_EMAIL_KEY)?.value
+    if (name) setAgencyName(name)
+    if (email) setAgencyEmail(email)
+  }, [settings])
 
   const showMsg = (text: string, ok: boolean) => {
     setMsg({ text, ok })
     setTimeout(() => setMsg(null), 4000)
+  }
+
+  const handleSaveAgency = async () => {
+    setSavingAgency(true)
+    try {
+      await saveSetting(AGENCY_NAME_KEY, agencyName.trim())
+      await saveSetting(AGENCY_EMAIL_KEY, agencyEmail.trim())
+      await queryClient.invalidateQueries({ queryKey: ['settings'] })
+      showMsg('✓ Ajans bilgileri kaydedildi.', true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bilinmeyen hata'
+      showMsg(`Kaydetme başarısız: ${message}`, false)
+    } finally {
+      setSavingAgency(false)
+    }
   }
 
   const handleSeedPlaybooks = async (force = false) => {
@@ -65,7 +106,8 @@ export default function SettingsPage() {
                 <label className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">Ajans Adı</label>
                 <input
                   type="text"
-                  defaultValue="GrafikCem Studio"
+                  value={agencyName}
+                  onChange={(e) => setAgencyName(e.target.value)}
                   className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg text-sm p-2.5 text-[var(--text-primary)] outline-none focus:border-[var(--border-highlight)] transition-all"
                 />
               </div>
@@ -73,12 +115,17 @@ export default function SettingsPage() {
                 <label className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">E-posta</label>
                 <input
                   type="email"
-                  defaultValue="info@grafikcem.com"
+                  value={agencyEmail}
+                  onChange={(e) => setAgencyEmail(e.target.value)}
                   className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg text-sm p-2.5 text-[var(--text-primary)] outline-none focus:border-[var(--border-highlight)] transition-all"
                 />
               </div>
-              <button className="w-full flex items-center justify-center gap-2 py-2.5 bg-[var(--accent)] text-black text-sm font-semibold rounded-lg hover:bg-[var(--accent-hover)] transition-all">
-                <Save className="w-3.5 h-3.5" /> Kaydet
+              <button
+                onClick={handleSaveAgency}
+                disabled={savingAgency}
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-[var(--accent)] text-black text-sm font-semibold rounded-lg hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Save className="w-3.5 h-3.5" /> {savingAgency ? 'Kaydediliyor...' : 'Kaydet'}
               </button>
             </div>
           </div>

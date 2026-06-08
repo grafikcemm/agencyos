@@ -25,6 +25,10 @@
 # misc
 .DS_Store
 *.pem
+.tmp/
+dogfood-*.png
+redesign-*.png
+HANDOFF.md
 
 # debug
 npm-debug.log*

@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from 'react'
-import { X, Phone, Globe, MapPin, Star, Zap, FileText, Briefcase, Copy } from 'lucide-react'
+import { X, Phone, Globe, MapPin, Star, Zap, FileText, Briefcase, Copy, MessageCircle } from 'lucide-react'
 import { enrichLead, EnrichedLead } from '@/lib/enrichLead'
 import { buildProposal } from '@/lib/proposalBuilder'
 import type { Lead, Proposal } from '@/lib/types'
@@ -25,6 +25,20 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 function formatTL(n: number): string {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(n || 0)
+}
+
+// Normalize a Turkish phone to wa.me digits (e.g. "0534 887 14 35" -> "905348871435").
+function normalizeTrPhone(phone: string): string {
+  let d = (phone || '').replace(/\D/g, '')
+  if (d.startsWith('90')) return d
+  if (d.startsWith('0')) return '90' + d.slice(1)
+  if (d.length === 10) return '90' + d
+  return d
+}
+
+function waLink(phone: string, text?: string): string {
+  const d = normalizeTrPhone(phone)
+  return `https://wa.me/${d}${text ? `?text=${encodeURIComponent(text)}` : ''}`
 }
 
 const SUB_SCORE_LABELS: Record<string, string> = {
@@ -61,6 +75,15 @@ export function LeadDrawer({ lead: rawLead, onClose }: LeadDrawerProps) {
       .then(data => setApolloConfigured(!!data.configured))
       .catch(() => setApolloConfigured(false))
   }, [])
+
+  // Close the drawer on Escape — expected behavior for an overlay panel.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   const handleApolloEnrich = async () => {
     if (enrichingApollo) return
@@ -169,11 +192,11 @@ export function LeadDrawer({ lead: rawLead, onClose }: LeadDrawerProps) {
     <>
       <div className="fixed inset-0 bg-black/40 z-[500] transition-opacity" onClick={onClose} />
 
-      <div className="fixed top-0 right-0 h-full w-[440px] bg-[var(--bg-surface)] border-l border-[var(--border-subtle)] z-[501] flex flex-col animate-slideInRight shadow-2xl">
+      <div className="fixed top-0 right-0 h-full w-[440px] bg-[var(--glass-bg)] backdrop-blur-xl border-l border-[var(--border-highlight)] z-[501] flex flex-col animate-slideInRight shadow-2xl">
 
         <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-start justify-between shrink-0">
           <div className="flex-1 min-w-0">
-            <h2 className="text-sm font-bold text-[var(--text-primary)] truncate">{lead.business_name}</h2>
+            <h2 className="font-display text-lg font-semibold text-[var(--text-primary)] truncate">{lead.business_name}</h2>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <span
                 className="text-[9px] font-bold tracking-widest uppercase px-1.5 py-0.5 rounded"
@@ -190,6 +213,29 @@ export function LeadDrawer({ lead: rawLead, onClose }: LeadDrawerProps) {
           </button>
         </div>
 
+        {/* PRIMARY CONTACT ACTIONS — calling is the #1 daily action, keep it
+            unmissable and always visible above the scroll area. */}
+        {lead.phone && (
+          <div className="px-5 py-3 border-b border-[var(--border-subtle)] shrink-0 grid grid-cols-2 gap-2 bg-[var(--bg-base)]/40">
+            <a
+              href={`tel:${lead.phone}`}
+              className="flex items-center justify-center gap-2 py-2.5 bg-gradient-to-b from-[var(--accent)] to-[var(--accent-2)] text-white text-sm font-bold rounded-lg shadow-[0_2px_14px_-4px_var(--accent-glow)] hover:brightness-110 transition-all"
+            >
+              <Phone className="w-4 h-4" />
+              Ara
+            </a>
+            <a
+              href={waLink(lead.phone, lead.first_message || undefined)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 py-2.5 bg-[#25D366]/15 border border-[#25D366]/40 hover:bg-[#25D366]/25 text-[#25D366] text-sm font-bold rounded-lg transition-all"
+            >
+              <MessageCircle className="w-4 h-4" />
+              WhatsApp
+            </a>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto p-5 space-y-5 scrollbar-thin">
 
           {/* QUALITY HEADER */}
@@ -203,8 +249,8 @@ export function LeadDrawer({ lead: rawLead, onClose }: LeadDrawerProps) {
                 'bg-orange-500/10 text-orange-400 border-orange-500/20'
               }`}>{lead.quality_label}</span>
               {(lead.conversion_probability ?? 0) > 0 && (
-                <span className="text-xs font-bold text-[var(--text-secondary)]">
-                  Dönüşüm: <span className="text-[var(--accent)]">%{lead.conversion_probability}</span>
+                <span className="text-[11px] font-semibold text-[var(--text-muted)]" title="Model tahmini — gerçek dönüşüm satış icraatına bağlıdır.">
+                  Dönüşüm tahmini: <span className="font-bold text-[var(--accent)]">~%{lead.conversion_probability}</span>
                 </span>
               )}
             </div>

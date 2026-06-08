@@ -262,7 +262,7 @@ export default function HaritaPage() {
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Top scan bar */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-base)] shrink-0 flex-wrap">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/70 backdrop-blur-md shrink-0 flex-wrap">
         <select
           value={sector}
           onChange={e => setSector(e.target.value)}
@@ -477,7 +477,7 @@ export default function HaritaPage() {
           </div>
 
           {/* Lead Radar Listesi */}
-          <div className="h-[260px] border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] flex flex-col overflow-hidden shrink-0">
+          <div className="h-[260px] border-t border-[var(--border-subtle)] bg-[var(--glass-bg)] backdrop-blur-md flex flex-col overflow-hidden shrink-0">
             <div className="px-4 py-2 border-b border-[var(--border-subtle)] flex items-center justify-between shrink-0 bg-[var(--bg-elevated)]">
               <div className="flex items-center gap-3">
                 <span className="text-[10px] font-black tracking-widest text-[var(--text-primary)] uppercase">

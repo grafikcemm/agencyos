@@ -7,6 +7,7 @@ import { normalizeLocation, normalizeSector } from '@/lib/geo'
 import { runEvidenceEngine } from '@/lib/evidenceEngine'
 import { calculateLeadScoreV3 } from '@/lib/leadScoringV3'
 import { runQualityEngine } from '@/lib/highQualityLeadEngine'
+import { requireApiAccess } from '@/lib/auth'
 
 interface RawLead {
   id: string
@@ -105,6 +106,8 @@ function checkLeadState(lead: RawLead): LeadState {
 
 export async function POST(req: Request) {
   try {
+    const access = await requireApiAccess(req)
+    if ('response' in access) return access.response
     let force = false
     let dryRun = false
 
@@ -295,6 +298,8 @@ export async function POST(req: Request) {
 
 export async function GET() {
   try {
+    const access = await requireApiAccess()
+    if ('response' in access) return access.response
     const { data: leads, error: fetchErr } = await supabaseAdmin
       .from('leads')
       .select('id, business_name, sector, normalized_sector, city, district, city_slug, district_slug, website, phone, rating, review_count, enrichment_status, why_now, pain_signals, proof_points, recommended_offer_name, recommended_offer_id, expected_monthly_value_tl, expected_offer_value_tl, quality_score, lead_tier, last_quality_scored_at, why_this_will_convert, first_30_seconds_pitch, google_place_id, latitude, longitude')

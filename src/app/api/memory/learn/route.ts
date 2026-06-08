@@ -3,9 +3,12 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { callLight } from '@/lib/openrouter'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
+import { requireApiAccess } from '@/lib/auth'
 
 export async function POST() {
   try {
+    const access = await requireApiAccess()
+    if ('response' in access) return access.response
     // 1. Fetch converted and lost leads
     let leads: any[] = []
     try {

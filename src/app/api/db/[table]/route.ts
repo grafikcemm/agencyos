@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { requireApiUser } from '@/lib/auth'
 
 // Strict whitelist — prevents arbitrary table access via this proxy
 const READ_ALLOWED = new Set(['leads', 'follow_ups', 'ai_cost_logs', 'settings', 'projects', 'playbooks', 'sessions', 'memories', 'strategy', 'hypotheses', 'decisions', 'autoresearch_runs', 'council_debates'])
-const WRITE_ALLOWED = new Set(['leads', 'projects', 'follow_ups', 'sessions', 'memories', 'strategy', 'hypotheses', 'decisions', 'autoresearch_runs', 'playbooks', 'council_debates'])
+const WRITE_ALLOWED = new Set(['leads', 'projects', 'follow_ups', 'sessions', 'memories', 'strategy', 'hypotheses', 'decisions', 'autoresearch_runs', 'playbooks', 'council_debates', 'settings'])
 
 const TIMEOUT_MS = 5000
 
@@ -28,6 +29,9 @@ function withTimeout(promise: PromiseLike<any>, ms: number = TIMEOUT_MS): Promis
 
 export async function GET(req: Request, { params }: { params: Promise<{ table: string }> }) {
   try {
+    const auth = await requireApiUser()
+    if ('response' in auth) return auth.response
+
     const { table } = await params
     const guard = tableGuard(table)
     if (guard) return guard
@@ -58,6 +62,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ table: s
 
 export async function POST(req: Request, { params }: { params: Promise<{ table: string }> }) {
   try {
+    const auth = await requireApiUser()
+    if ('response' in auth) return auth.response
+
     const { table } = await params
     const guard = tableGuard(table, true)
     if (guard) return guard
@@ -76,6 +83,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ table: 
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ table: string }> }) {
   try {
+    const auth = await requireApiUser()
+    if ('response' in auth) return auth.response
+
     const { table } = await params
     const guard = tableGuard(table, true)
     if (guard) return guard
@@ -97,6 +107,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ table:
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ table: string }> }) {
   try {
+    const auth = await requireApiUser()
+    if ('response' in auth) return auth.response
+
     const { table } = await params
     const guard = tableGuard(table, true)
     if (guard) return guard

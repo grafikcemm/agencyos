@@ -2,6 +2,7 @@ import { callWithOperation, JarvisTool, ToolCall } from '@/lib/openrouter'
 import { supabaseAdmin } from '@/lib/supabase'
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
+import { requireApiAccess } from '@/lib/auth'
 
 // --- Knowledge injection ---
 
@@ -467,7 +468,7 @@ async function executeTool(toolName: string, args: Record<string, unknown>): Pro
         const base = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
         const res = await fetch(`${base}/api/leads/scan`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.CRON_SECRET ?? ''}` },
           body: JSON.stringify({ sector: niche, city, district: district ?? '', limit })
         })
         const data = await res.json()
@@ -861,6 +862,8 @@ Projeler: ${projects.filter((p: { status: string }) => p.status === 'active').le
 
 export async function POST(req: Request) {
   try {
+    const access = await requireApiAccess(req)
+    if ('response' in access) return access.response
     const { message } = await req.json()
     if (!message) return Response.json({ error: 'message gerekli' }, { status: 400 })
 

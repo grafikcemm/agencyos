@@ -4,9 +4,12 @@ import { normalizeLocation, normalizeSector } from '@/lib/geo'
 import { runEvidenceEngine } from '@/lib/evidenceEngine'
 import { calculateLeadScoreV3 } from '@/lib/leadScoringV3'
 import { runQualityEngine } from '@/lib/highQualityLeadEngine'
+import { requireApiAccess } from '@/lib/auth'
 
 export async function POST(req: Request) {
   try {
+    const access = await requireApiAccess(req)
+    if ('response' in access) return access.response
     const { sector, city, district, limit = 10 } = await req.json()
     const apiKey = process.env.GOOGLE_MAPS_KEY
 

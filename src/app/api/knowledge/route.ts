@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import { readFileSync, readdirSync, existsSync } from 'fs'
 import { join } from 'path'
+import { requireApiAccess } from '@/lib/auth'
 
 export async function GET(req: Request) {
+  const access = await requireApiAccess(req)
+  if ('response' in access) return access.response
   const { searchParams } = new URL(req.url)
   const file = searchParams.get('file')
   const list = searchParams.get('list')

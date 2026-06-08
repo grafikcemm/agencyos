@@ -7,33 +7,42 @@ import {
   Map,
   GitMerge,
   Briefcase,
-  Package,
   BookOpen,
   Settings,
   ChevronLeft,
   ChevronRight,
   Zap,
   Users,
+  ListChecks,
+  CalendarClock,
+  Package,
   Target
 } from 'lucide-react'
 
 const NAV_GROUPS = [
   {
-    title: 'DASHBOARDS',
+    title: 'KOMUTA',
     items: [
-      { label: 'Dashboard',  icon: LayoutDashboard, href: '/dashboard' },
-      { label: 'Harita',     icon: Map,              href: '/harita' },
-      { label: 'Pipeline',   icon: GitMerge,         href: '/pipeline' },
-      { label: 'Projeler',   icon: Briefcase,        href: '/projects' },
+      { label: 'Command Center', icon: LayoutDashboard, href: '/command-center' },
+      { label: 'Ajanlar',        icon: Users,           href: '/agents' },
+      { label: 'Görevler',       icon: ListChecks,      href: '/tasks' },
+      { label: 'Zamanlama',      icon: CalendarClock,   href: '/schedule' },
     ]
   },
   {
-    title: 'ARAÇLAR',
+    title: 'PIPELINE',
     items: [
-      { label: 'Hizmetlerim', icon: Package,  href: '/services' },
-      { label: 'İcraat Fırsatları', icon: Target, href: '/icraat-firsatlari' },
-      { label: 'Bilgi',       icon: BookOpen,  href: '/bilgi' },
-      { label: 'Konsey',      icon: Users,     href: '/konsey' },
+      { label: 'Lead Radar',        icon: Map,       href: '/harita' },
+      { label: 'Pipeline',          icon: GitMerge,  href: '/pipeline' },
+      { label: 'Projeler',          icon: Briefcase, href: '/projects' },
+      { label: 'Hizmetlerim',       icon: Package,   href: '/services' },
+      { label: 'İcraat Fırsatları', icon: Target,    href: '/icraat-firsatlari' },
+    ]
+  },
+  {
+    title: 'ÜRETİM',
+    items: [
+      { label: 'Bilgi Hazinesi', icon: BookOpen, href: '/bilgi' },
     ]
   }
 ]
@@ -55,7 +64,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             <div className="w-7 h-7 rounded-lg bg-[var(--accent)] flex items-center justify-center">
               <Zap className="w-4 h-4 text-black" />
             </div>
-            <span className="font-bold text-sm text-[var(--text-primary)] tracking-tight">Grafikcem</span>
+            <span className="font-display text-base font-semibold text-[var(--text-primary)] tracking-tight">Grafikcem</span>
           </div>
         )}
         {isCollapsed && (
@@ -97,11 +106,11 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                       isCollapsed ? 'justify-center' : ''
                     } ${
                       isActive
-                        ? 'text-[#f5f5f7] bg-white/10 border-l-4 border-[#ff4e17] font-bold shadow-[inset_1px_0_0_rgba(255,78,23,0.1)]'
+                        ? 'text-[var(--text-primary)] bg-[var(--accent-muted)] font-semibold shadow-[inset_0_0_0_1px_rgba(249,115,22,0.18),0_4px_16px_-8px_var(--accent-glow)]'
                         : 'text-[#8e8d99] hover:text-white hover:bg-white/5'
                     }`}
                   >
-                    <item.icon className={`w-[18px] h-[18px] shrink-0 transition-transform duration-200 ${isActive ? 'text-[#ff4e17] scale-110' : 'text-[#5f5f69]'}`} />
+                    <item.icon className={`w-[18px] h-[18px] shrink-0 transition-transform duration-200 ${isActive ? 'text-[var(--accent)] scale-105' : 'text-[#5f5f69]'}`} />
                     {!isCollapsed && <span className="text-[13px] font-semibold truncate tracking-wide">{item.label}</span>}
                   </Link>
                 )
@@ -131,7 +140,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
               : 'text-[#8e8d99] hover:text-white hover:bg-white/5'
           }`}
         >
-          <Settings className={`w-[18px] h-[18px] shrink-0 transition-transform duration-200 ${pathname === '/settings' ? 'text-[#ff4e17] scale-110' : 'text-[#5f5f69]'}`} />
+          <Settings className={`w-[18px] h-[18px] shrink-0 transition-transform duration-200 ${pathname === '/settings' ? 'text-[var(--accent)] scale-105' : 'text-[#5f5f69]'}`} />
           {!isCollapsed && <span className="text-[13px] font-semibold truncate tracking-wide">Ayarlar</span>}
         </Link>
 

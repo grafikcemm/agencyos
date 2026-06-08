@@ -1,10 +1,36 @@
 "use client"
 
 import { useMemo, useState } from 'react'
-import { Package, Clock, Target, TrendingUp, Wallet, AlertTriangle, ChevronDown, ChevronUp, Copy, Check, Filter } from 'lucide-react'
+import { Package, Clock, Target, TrendingUp, Wallet, AlertTriangle, ChevronDown, ChevronUp, Copy, Check, Filter, Search, ArrowUpDown, Rocket, Loader2 } from 'lucide-react'
 import { OFFERS } from '@/lib/offers'
 import { SECTOR_PROFILES } from '@/lib/sectorPriority'
 import type { Offer, OfferCategory } from '@/lib/types'
+import { useDirective } from '@/lib/useDirective'
+import { DirectiveResultModal } from '@/components/agentic/DirectiveResultModal'
+
+type SortKey = 'annual' | 'monthly' | 'setup' | 'fast'
+
+const SORT_LABEL: Record<SortKey, string> = {
+  annual: 'Yıllık değer ↓',
+  monthly: 'Aylık gelir ↓',
+  setup: 'Kurulum ↓',
+  fast: 'En hızlı teslim',
+}
+
+// Builds a Turkish operator directive that hands an offer to the agent engine:
+// find matching leads, draft personalised outreach, plan the follow-up.
+function buildOfferDirective(o: Offer, sectorNames: string[]): string {
+  const sectors = sectorNames.length > 0 ? sectorNames.join(', ') : 'tüm uygun sektörler'
+  const monthly = o.monthlyPrice > 0 ? `aylık ${o.monthlyPrice} TL` : 'tek seferlik'
+  return [
+    `"${o.name}" hizmetini satışa çıkar.`,
+    `Hedef sektörler: ${sectors}.`,
+    `Çözdüğü problem: ${o.problemSolved}`,
+    `Satış vaadi: "${o.salesPromise}".`,
+    `Fiyat: kurulum ${o.setupPrice} TL, ${monthly}.`,
+    'Bu hizmete uygun mevcut leadleri tara, en yüksek potansiyelli olanları seç ve her biri için kişiselleştirilmiş outreach taslağı ile takip planı hazırla.',
+  ].join(' ')
+}
 
 const CATEGORY_LABEL: Record<OfferCategory, string> = {
   revenue: 'Para Kazandıran Paketler',
@@ -35,16 +61,38 @@ function annualValue(o: Offer): number {
 export default function ServicesPage() {
   const [category, setCategory] = useState<'all' | OfferCategory>('all')
   const [sectorFilter, setSectorFilter] = useState<string>('all')
+  const [query, setQuery] = useState('')
+  const [sortBy, setSortBy] = useState<SortKey>('annual')
   const [expanded, setExpanded] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
 
+  const directive = useDirective()
+
   const filtered = useMemo(() => {
-    return OFFERS.filter(o => {
+    const q = query.trim().toLowerCase()
+    const list = OFFERS.filter(o => {
       if (category !== 'all' && o.category !== category) return false
       if (sectorFilter !== 'all' && !o.targetSectors.includes(sectorFilter)) return false
+      if (q) {
+        const haystack = `${o.name} ${o.description} ${o.problemSolved} ${o.salesPromise}`.toLowerCase()
+        if (!haystack.includes(q)) return false
+      }
       return true
     })
-  }, [category, sectorFilter])
+    return [...list].sort((a, b) => {
+      if (sortBy === 'monthly') return b.monthlyPrice - a.monthlyPrice
+      if (sortBy === 'setup') return b.setupPrice - a.setupPrice
+      if (sortBy === 'fast') return a.deliveryDays - b.deliveryDays
+      return annualValue(b) - annualValue(a)
+    })
+  }, [category, sectorFilter, query, sortBy])
+
+  const launchCampaign = (offer: Offer) => {
+    const names = offer.targetSectors
+      .map(sid => SECTOR_PROFILES.find(s => s.id === sid)?.displayName)
+      .filter((n): n is string => Boolean(n))
+    directive.run(buildOfferDirective(offer, names), offer.name)
+  }
 
   const summary = useMemo(() => {
     const total = OFFERS.length
@@ -99,6 +147,31 @@ export default function ServicesPage() {
               <option key={s.id} value={s.id}>{s.displayName}</option>
             ))}
           </select>
+
+          <div className="flex items-center gap-2 bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-md px-2 flex-1 min-w-[160px] focus-within:border-[var(--accent)] transition-colors">
+            <Search className="w-3.5 h-3.5 text-[var(--text-muted)] shrink-0" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Hizmet ara…"
+              aria-label="Hizmet ara"
+              className="bg-transparent text-[11px] py-1.5 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none w-full"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <ArrowUpDown className="w-3.5 h-3.5 text-[var(--text-muted)]" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortKey)}
+              aria-label="Sırala"
+              className="bg-[var(--bg-base)] border border-[var(--border-subtle)] text-[10px] py-1 px-2 rounded-md text-[var(--text-secondary)] outline-none focus:border-[var(--accent)]"
+            >
+              {(Object.keys(SORT_LABEL) as SortKey[]).map(k => (
+                <option key={k} value={k}>{SORT_LABEL[k]}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -106,8 +179,9 @@ export default function ServicesPage() {
             const isOpen = expanded === offer.id
             const color = CATEGORY_COLOR[offer.category]
             return (
-              <div key={offer.id} className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl overflow-hidden flex flex-col">
-                <div className="p-4 border-b border-[var(--border-subtle)] space-y-2">
+              <div key={offer.id} className="group/card bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/20 hover:border-[var(--accent)]/40">
+                <div className="p-4 border-b border-[var(--border-subtle)] space-y-2 relative">
+                  <div className="absolute left-0 top-0 bottom-0 w-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity" style={{ background: color }} />
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 mb-1">
@@ -210,6 +284,16 @@ export default function ServicesPage() {
                     )}
 
                     <button
+                      onClick={() => launchCampaign(offer)}
+                      disabled={directive.running}
+                      className="w-full flex items-center justify-center gap-1.5 py-2 bg-[var(--accent)] hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed text-black text-[10px] font-black rounded-md transition-opacity"
+                    >
+                      {directive.running && directive.label === offer.name
+                        ? <><Loader2 className="w-3 h-3 animate-spin" /> Ajanlara devrediliyor…</>
+                        : <><Rocket className="w-3 h-3" /> Ajanlarla kampanya başlat</>}
+                    </button>
+
+                    <button
                       onClick={() => copyText(offer.id, `${offer.name}\n\n${offer.salesPromise}\n\nKurulum: ${formatTL(offer.setupPrice)}\nAylık: ${formatTL(offer.monthlyPrice)}`)}
                       className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-[var(--bg-elevated)] hover:bg-[var(--accent)] hover:text-black text-[10px] font-bold text-[var(--text-primary)] rounded-md transition-all"
                     >
@@ -236,6 +320,14 @@ export default function ServicesPage() {
           </div>
         )}
       </div>
+
+      <DirectiveResultModal
+        running={directive.running}
+        result={directive.result}
+        error={directive.error}
+        label={directive.label}
+        onClose={directive.reset}
+      />
     </div>
   )
 }

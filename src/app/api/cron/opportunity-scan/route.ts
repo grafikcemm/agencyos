@@ -6,6 +6,7 @@ import {
   type WatchTopic,
   type ScoredSignal
 } from '@/lib/opportunityIntelligenceEngine'
+import { guardCronEnv, notifyOps } from '@/lib/env'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,6 +46,12 @@ export async function GET(request: NextRequest) {
         error: 'Unauthorized'
       }, { status: 401 })
     }
+
+    const envGuard = await guardCronEnv('opportunity-scan', [
+      'NEXT_PUBLIC_SUPABASE_URL',
+      'SUPABASE_SERVICE_ROLE_KEY',
+    ])
+    if (envGuard) return envGuard
 
     const dryRun = request.nextUrl.searchParams.get('dryRun') === 'true'
 
@@ -190,6 +197,12 @@ export async function GET(request: NextRequest) {
     })
   } catch (err) {
     console.error('[opportunity-scan] Fatal error:', err)
+    await notifyOps({
+      source: 'opportunity-scan',
+      level: 'error',
+      message: `Fırsat taraması çöktü: ${String(err)}`,
+      detail: String(err),
+    })
     return Response.json({
       success: false,
       error: 'Opportunity scan failed',

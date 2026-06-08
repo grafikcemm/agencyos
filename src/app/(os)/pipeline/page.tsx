@@ -108,7 +108,7 @@ export default function PipelinePage() {
             {COLUMNS.map(col => {
               const colLeads = getColumnLeads(col.id)
               return (
-                <div key={col.id} className="w-[260px] flex flex-col bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-xl overflow-hidden shrink-0">
+                <div key={col.id} className="w-[260px] flex flex-col glass-card rounded-xl overflow-hidden shrink-0">
                   <div className="px-3 py-2.5 border-b border-[var(--border-subtle)] flex items-center justify-between shrink-0">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: col.color }} />
@@ -234,7 +234,7 @@ export default function PipelinePage() {
 
 function SummaryCard({ icon: Icon, label, value, color }: { icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; label: string; value: number | string; color: string }) {
   return (
-    <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 flex items-center gap-2.5">
+    <div className="glass-card rounded-lg px-3 py-2 flex items-center gap-2.5">
       <div className="w-7 h-7 rounded-md flex items-center justify-center shrink-0" style={{ background: `${color}15`, border: `1px solid ${color}25` }}>
         <Icon className="w-3.5 h-3.5" style={{ color }} />
       </div>

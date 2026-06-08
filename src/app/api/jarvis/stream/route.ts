@@ -2,6 +2,7 @@ import { getModel } from '@/lib/openrouter'
 import { supabaseAdmin } from '@/lib/supabase'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
+import { requireApiAccess } from '@/lib/auth'
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 const BASE_URL = 'https://openrouter.ai/api/v1'
@@ -31,6 +32,8 @@ async function getContextData(): Promise<string> {
 
 export async function POST(req: Request) {
   try {
+    const access = await requireApiAccess(req)
+    if ('response' in access) return access.response
     const { message } = await req.json()
     if (!message) return Response.json({ error: 'message gerekli' }, { status: 400 })
     if (!OPENROUTER_API_KEY) return Response.json({ error: 'API key eksik' }, { status: 500 })

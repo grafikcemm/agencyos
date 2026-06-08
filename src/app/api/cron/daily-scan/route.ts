@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { normalizeLocation, normalizeSector } from '@/lib/geo'
 import { runQualityEngine } from '@/lib/highQualityLeadEngine'
 import { runEvidenceEngine } from '@/lib/evidenceEngine'
+import { guardCronEnv, notifyOps } from '@/lib/env'
 
 export async function GET(req: Request) {
   return handleScan(req)
@@ -26,6 +27,16 @@ async function handleScan(req: Request) {
       console.warn("[DAILY CRON] Unauthorized access attempt")
       return new Response('Unauthorized', { status: 401 })
     }
+
+    // Env guard: fail loudly with the exact missing vars BEFORE any client that
+    // throws on a missing key (supabaseAdmin), so a misconfigured deploy produces
+    // an actionable alert instead of a silent generic 500.
+    const envGuard = await guardCronEnv('daily-scan', [
+      'NEXT_PUBLIC_SUPABASE_URL',
+      'SUPABASE_SERVICE_ROLE_KEY',
+      'GOOGLE_MAPS_KEY',
+    ])
+    if (envGuard) return envGuard
 
     const { searchParams } = new URL(req.url)
     const isDryRun = searchParams.get('dryRun') === 'true'
@@ -427,6 +438,12 @@ async function handleScan(req: Request) {
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Unknown fatal error'
     console.error('[DAILY CRON] Fatal cron execution crash:', msg)
+    await notifyOps({
+      source: 'daily-scan',
+      level: 'error',
+      message: `Günlük lead taraması çöktü: ${msg}`,
+      detail: msg,
+    })
     return NextResponse.json({ success: false, error: msg }, { status: 500 })
   }
 }

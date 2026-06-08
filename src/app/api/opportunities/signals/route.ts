@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase'
+import { requireApiAccess } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
@@ -8,6 +9,8 @@ export const dynamic = 'force-dynamic'
  */
 export async function GET() {
   try {
+    const access = await requireApiAccess()
+    if ('response' in access) return access.response
     // 1. Fetch recent signals (last 30 days, top 100 by confidence)
     const { data: signals, error: sigError } = await supabaseAdmin
       .from('opportunity_trend_signals')
@@ -57,6 +60,8 @@ export async function GET() {
  */
 export async function POST(request: Request) {
   try {
+    const access = await requireApiAccess(request)
+    if ('response' in access) return access.response
     const { id, status, linked_product_id } = await request.json()
     if (!id || !status) {
       return Response.json({ success: false, error: 'id and status are required' }, { status: 400 })

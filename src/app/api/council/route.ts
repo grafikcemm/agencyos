@@ -3,9 +3,12 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { callLight } from '@/lib/openrouter'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
+import { requireApiAccess } from '@/lib/auth'
 
 export async function GET() {
   try {
+    const access = await requireApiAccess()
+    if ('response' in access) return access.response
     const { data, error } = await supabaseAdmin
       .from('council_debates')
       .select('*')
@@ -38,6 +41,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
+    const access = await requireApiAccess(req)
+    if ('response' in access) return access.response
     const { topic, context = '', leadId } = await req.json()
 
     if (!topic) {
@@ -231,6 +236,8 @@ JSON Şeması:
 
 export async function PATCH(req: Request) {
   try {
+    const access = await requireApiAccess(req)
+    if ('response' in access) return access.response
     const { id, status, outcome, leadId } = await req.json()
 
     if (!id) {

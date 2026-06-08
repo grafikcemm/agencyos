@@ -6,6 +6,10 @@ import { Bell, Search } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 
 const PAGE_TITLES: Record<string, string> = {
+  '/command-center': 'Command Center',
+  '/agents': 'Ajanlar',
+  '/tasks': 'Görev Kuyruğu',
+  '/schedule': 'Zamanlama',
   '/dashboard': 'Komuta Merkezi',
   '/harita': 'Lead Radar',
   '/radar': 'Lead Radar',
@@ -14,7 +18,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/services': 'Hizmetlerim',
   '/bilgi': 'Bilgi Merkezi',
   '/icraat-firsatlari': 'İcraat Fırsatları',
-  '/konsey': 'Konsey',
   '/settings': 'Sistem Ayarları'
 }
 
@@ -37,29 +40,32 @@ export function AppLayout({ children }: AppLayoutProps) {
       </aside>
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="h-[52px] border-b border-[var(--border-subtle)] flex items-center justify-between px-5 shrink-0 bg-[var(--bg-base)]">
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-[var(--text-muted)]">Dashboard</span>
-            <span className="text-[var(--text-muted)]">/</span>
-            <span className="text-[var(--text-primary)] font-semibold">{pageTitle}</span>
+        <header className="relative z-20 h-[60px] border-b border-[var(--border-subtle)] flex items-center justify-between px-6 shrink-0 bg-[var(--bg-base)]/70 backdrop-blur-xl">
+          <div className="flex items-baseline gap-2.5">
+            <span className="text-[11px] text-[var(--text-muted)] tracking-wide">Dashboard /</span>
+            <h1 className="font-display text-lg font-medium text-[var(--text-primary)] leading-none">{pageTitle}</h1>
           </div>
           <div className="flex items-center gap-3">
-            <div className="relative w-56">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+            <div className="relative w-60">
+              <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] z-10" />
               <input
                 placeholder="Ara..."
-                className="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg text-xs py-2 pl-9 pr-3 outline-none focus:border-[var(--accent)] text-[var(--text-secondary)] placeholder:text-[var(--text-muted)] transition-all"
+                className="glass-pill w-full text-xs py-2 pl-9 pr-3.5 outline-none focus:border-[var(--accent)] text-[var(--text-secondary)] placeholder:text-[var(--text-muted)] transition-all"
               />
             </div>
-            <button className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] transition-all relative">
+            <button className="w-9 h-9 flex items-center justify-center glass-pill text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all relative">
               <Bell className="w-4 h-4" />
-              <div className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[var(--accent)]" />
+              <div className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-[var(--accent)] shadow-[0_0_6px_var(--accent-glow)]" />
             </button>
           </div>
         </header>
 
-        <main className="flex-1 overflow-hidden">
-          {children}
+        <main className="relative flex-1 overflow-hidden">
+          <div
+            aria-hidden
+            className="glow-bg top-0 left-1/2 -translate-x-1/2 h-[420px] w-[1100px] max-w-full opacity-70"
+          />
+          <div className="relative z-10 h-full">{children}</div>
         </main>
       </div>
     </div>

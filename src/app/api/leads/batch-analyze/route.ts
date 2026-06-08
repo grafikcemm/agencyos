@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server'
 import { callHeavy } from '@/lib/openrouter'
 import { supabaseAdmin } from '@/lib/supabase'
+import { requireApiAccess } from '@/lib/auth'
 
 export async function POST(req: Request) {
   try {
+    const access = await requireApiAccess(req)
+    if ('response' in access) return access.response
     const { lead_ids } = await req.json()
 
     if (!lead_ids || !Array.isArray(lead_ids) || lead_ids.length === 0) {
