@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/agent-tick",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/job-scan",
+      "schedule": "0 4 * * *"
     }
   ]
 }

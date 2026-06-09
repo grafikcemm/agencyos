@@ -16,7 +16,8 @@ import {
   ListChecks,
   CalendarClock,
   Package,
-  Target
+  Target,
+  Compass
 } from 'lucide-react'
 
 const NAV_GROUPS = [
@@ -37,6 +38,7 @@ const NAV_GROUPS = [
       { label: 'Projeler',          icon: Briefcase, href: '/projects' },
       { label: 'Hizmetlerim',       icon: Package,   href: '/services' },
       { label: 'İcraat Fırsatları', icon: Target,    href: '/icraat-firsatlari' },
+      { label: 'Kariyer Radarı',    icon: Compass,   href: '/kariyer' },
     ]
   },
   {

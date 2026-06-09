@@ -66,14 +66,17 @@ export async function setAgentStatus(key: string, status: AgentStatus): Promise<
 // never throws on an incomplete vault.
 export async function buildAgentSystemPrompt(agent: AgentRow, extraContext = ''): Promise<string> {
   const isSales = agent.key === 'sales_rep'
+  const isJob = agent.key.startsWith('job_')
   const keys = ['00_GRAFIKCEM_CONTEXT.md', 'PRICING_RULES.md', 'BUSINESS_MODEL.md']
   if (isSales) keys.push('SALES_FRAMEWORK.md')
+  if (isJob) keys.push('JOB_PROFILE.md')
 
   const docs = await getKnowledgeDocs(keys)
   const profile = docs['00_GRAFIKCEM_CONTEXT.md'] ?? ''
   const pricing = docs['PRICING_RULES.md'] ?? ''
   const business = docs['BUSINESS_MODEL.md'] ?? ''
   const salesFramework = isSales ? docs['SALES_FRAMEWORK.md'] ?? '' : ''
+  const jobProfile = isJob ? docs['JOB_PROFILE.md'] ?? '' : ''
 
   const sections: string[] = [
     `Sen ${agent.name}'sin — Grafikcem agentic growth engine'inin "${agent.role}" katmanı.`,
@@ -85,6 +88,7 @@ export async function buildAgentSystemPrompt(agent: AgentRow, extraContext = '')
     pricing ? `\n--- FİYATLANDIRMA KURALLARI ---\n${pricing}` : '',
     business ? `\n--- İŞ MODELİ ---\n${business}` : '',
     salesFramework ? `\n--- SATIŞ ÇERÇEVESİ ---\n${salesFramework}` : '',
+    jobProfile ? `\n--- İŞ ARAMA PROFİLİ ---\n${jobProfile}` : '',
     extraContext ? `\n--- GÜNCEL VERİ ---\n${extraContext}` : '',
   ]
 

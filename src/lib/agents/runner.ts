@@ -2,6 +2,7 @@ import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { callAgentModel } from '@/lib/openrouter'
 import { getAgent, setAgentStatus, buildAgentSystemPrompt } from './registry'
+import { isJobAgent, gatherJobContext, handleJobTaskResult } from '@/lib/jobs/pipeline'
 
 export type TaskStatus = 'queued' | 'working' | 'done' | 'error'
 
@@ -65,6 +66,16 @@ export async function runTask(task: AgentTask): Promise<TaskResult> {
       })
       .eq('id', task.id)
 
+    // İş motoru boru hattı: skor/scam/taslak sonucunu işle ve sıradaki uzmanı
+    // kuyruğa at. Zincirleme hatası ana task'i başarısız yapmamalı.
+    if (isJobAgent(agent.key)) {
+      try {
+        await handleJobTaskResult(task, content, agent.model)
+      } catch (chainError) {
+        console.error(`job pipeline chain error (${agent.key}):`, chainError)
+      }
+    }
+
     await setAgentStatus(agent.key, 'idle')
     return { ok: true, output: content, tokensIn, tokensOut }
   } catch (error: unknown) {
@@ -97,7 +108,7 @@ function buildUserPrompt(task: AgentTask): string {
 // --- Deterministic context: pull real data per agent and feed it to the model.
 // v1 avoids live tool-calling; this is the data the agent reasons over. ---
 
-async function gatherContext(agentKey: string, _input: Record<string, unknown>): Promise<string> {
+async function gatherContext(agentKey: string, input: Record<string, unknown>): Promise<string> {
   try {
     switch (agentKey) {
       case 'sales_rep':
@@ -108,6 +119,11 @@ async function gatherContext(agentKey: string, _input: Record<string, unknown>):
         return await funnelContext()
       case 'cmo':
         return await sectorMixContext()
+      case 'job_evaluator':
+      case 'job_legitimacy':
+      case 'job_writer':
+      case 'job_scout':
+        return await gatherJobContext(agentKey, input)
       default:
         return ''
     }

@@ -36,6 +36,7 @@ const DOCS = [
   { key: 'PROMPT_STYLE_GUIDE.md', label: 'Prompt Stil Rehberi' },
   { key: 'TURKEY_STRATEGY_MUSE.md', label: 'Türkiye Stratejisi' },
   { key: 'LIFE_GOALS.md', label: 'Yaşam Hedefleri' },
+  { key: 'JOB_PROFILE.md', label: 'İş Arama Profili' },
 ]
 
 async function main() {
