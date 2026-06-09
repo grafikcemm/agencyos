@@ -51,6 +51,14 @@ function scoreOfferForLead(offer: Offer, lead: Partial<Lead>, sectorId: string):
     score += 15
     reasons.push('Aktif WhatsApp kanalı')
   }
+  if (offer.id === 'ai_sales_assistant' && lead.has_whatsapp === false) {
+    score += 25
+    reasons.push('WhatsApp kanalı yok — AI asistan en acil ihtiyaç')
+  }
+  if (offer.id === 'ai_sales_assistant' && lead.has_online_booking === false) {
+    score += 10
+    reasons.push('Online randevu yok — asistan randevuyu otomatik alır')
+  }
   if (offer.id === 'appointment_recovery' && (lead.has_online_booking || lead.has_form)) {
     score += 12
     reasons.push('Randevu kanalı mevcut')

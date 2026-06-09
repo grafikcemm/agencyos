@@ -22,6 +22,11 @@ export interface EvidenceResult extends EvidenceSignals {
   first_message: string
   next_best_action: string
   confidence: number
+  // true when the lead's website HTML was actually fetched and parsed —
+  // signals like has_whatsapp/has_form are verified facts only in that case.
+  evidence_verified: boolean
+  // e-mail found on the lead's website (mailto: or plain text), if any.
+  found_email: string | null
 }
 
 function isInstagramUrl(url: string): boolean {
@@ -30,6 +35,29 @@ function isInstagramUrl(url: string): boolean {
 
 function isSocialOnlyUrl(url: string): boolean {
   return /instagram\.com|facebook\.com|fb\.com|linktr\.ee|linktree/i.test(url)
+}
+
+// Junk e-mail patterns: image filenames matched by the regex, CDN/platform
+// noise (wix/sentry), and placeholder domains.
+const EMAIL_JUNK = /\.(png|jpe?g|gif|webp|svg)$|@(example\.|sentry\.|wixpress\.|placeholder|domain\.com)/i
+
+export function extractEmails(html: string): string[] {
+  const found = new Set<string>()
+  const mailtoRe = /mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g
+  const plainRe = /\b([a-zA-Z0-9._%+-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,})\b/g
+  for (const re of [mailtoRe, plainRe]) {
+    let m: RegExpExecArray | null
+    while ((m = re.exec(html)) !== null) {
+      const email = m[1].toLowerCase()
+      if (!EMAIL_JUNK.test(email) && email.length <= 254) found.add(email)
+    }
+  }
+  // Prefer business-looking addresses (info@, iletisim@, contact@) first.
+  return [...found].sort((a, b) => {
+    const aBiz = /^(info|iletisim|iletişim|contact|destek|merhaba|hello)@/.test(a) ? 0 : 1
+    const bBiz = /^(info|iletisim|iletişim|contact|destek|merhaba|hello)@/.test(b) ? 0 : 1
+    return aBiz - bBiz
+  })
 }
 
 function extractSignals(html: string, url: string): Omit<EvidenceSignals, 'has_ads_signal' | 'is_slow_or_dead'> {
@@ -74,6 +102,8 @@ interface BuildContext {
   rating: number | null
   reviewCount: number
   businessName: string
+  // Website HTML fetched & parsed — absence claims are verified facts.
+  verified: boolean
 }
 
 function buildPainAndProof(ctx: BuildContext): {
@@ -94,22 +124,29 @@ function buildPainAndProof(ctx: BuildContext): {
     if (ctx.signals.is_slow_or_dead) pain.push('Web sitesi yavaş veya erişilemiyor')
   }
 
+  // Absence of WhatsApp/form/booking is a verified fact only when the site
+  // HTML was actually parsed; otherwise phrase it as "not detectable" so the
+  // operator never opens a call with a false claim.
   if (ctx.signals.has_whatsapp) {
-    proof.push('WhatsApp kanalı var')
-  } else if (!ctx.signals.has_real_website || ctx.signals.instagram_as_site || !ctx.signals.is_slow_or_dead) {
-    pain.push('WhatsApp iletişim kanalı yok — lead kaçışı riski')
+    proof.push('WhatsApp kanalı var (sitede doğrulandı)')
+  } else if (ctx.verified) {
+    pain.push('Web sitesinde WhatsApp kanalı yok — lead kaçışı riski')
+  } else {
+    pain.push('WhatsApp kanalı tespit edilemedi (site doğrulanamadı)')
   }
 
   if (ctx.signals.has_form) {
-    proof.push('İletişim formu var')
-  } else if (!ctx.signals.has_real_website || ctx.signals.instagram_as_site || !ctx.signals.is_slow_or_dead) {
-    pain.push('İletişim/randevu formu yok')
+    proof.push('İletişim formu var (sitede doğrulandı)')
+  } else if (ctx.verified) {
+    pain.push('Sitede iletişim/randevu formu yok')
   }
 
   if (ctx.signals.has_online_booking) {
-    proof.push('Online randevu sistemi mevcut')
-  } else if (!ctx.signals.has_real_website || ctx.signals.instagram_as_site || !ctx.signals.is_slow_or_dead) {
+    proof.push('Online randevu sistemi mevcut (sitede doğrulandı)')
+  } else if (ctx.verified) {
     pain.push('Online randevu sistemi yok')
+  } else if (!ctx.signals.has_real_website) {
+    pain.push('Online randevu kanalı görünmüyor')
   }
 
   if (ctx.rating !== null) {
@@ -149,17 +186,35 @@ function selectOffer(sector: string, signals: EvidenceSignals, businessName: str
   const s = (sector ?? '').toLowerCase()
 
   if (!signals.has_real_website || signals.instagram_as_site) {
+    // Only claim "you use Instagram" when an Instagram URL was actually detected.
+    const missingWebsiteCopy = signals.instagram_as_site
+      ? 'web siteniz yerine Instagram kullanıyorsunuz'
+      : 'Google profilinizde doğrulanabilir bir web sitesi görünmüyor'
     return {
       recommended_offer_id: 'website',
       recommended_offer_name: 'Web Sitesi',
       sales_angle: 'Dijital varlık sıfırdan kurulacak — en acil temel ihtiyaç',
-      first_message: `Merhaba ${businessName}, web siteniz yerine Instagram kullanıyorsunuz — bu durum ciddi müşteri kaybına yol açıyor. Sizi 5 dakikada değerlendirelim mi?`,
+      first_message: `Merhaba ${businessName}, ${missingWebsiteCopy} — bu durum ciddi müşteri kaybına yol açabilir. Sizi 5 dakikada değerlendirelim mi?`,
       next_best_action: 'Web sitesi ihtiyacını tespit eden mini audit gönder',
     }
   }
 
   const isHealthClinic = /diş|klinik|estetik|doktor|sağlık|fizyoterapi|göz|plastik/.test(s)
   const isBeauty = /güzellik|kuaför|berber|nail|tırnak|spa/.test(s)
+  // Tweet-validated "esnaf" verticals: small businesses losing ~2h/day to
+  // repetitive WhatsApp/Instagram answering — prime AI sales assistant targets.
+  const isEsnafAIFit = isBeauty || isHealthClinic ||
+    /emlak|mobilya|butik|oto yıkama|oto kuaför|spor salonu|fitness|pilates|kafe|restoran/.test(s)
+
+  if (isEsnafAIFit && !signals.has_whatsapp && !signals.has_online_booking) {
+    return {
+      recommended_offer_id: 'ai_sales_assistant',
+      recommended_offer_name: 'AI Satış Asistanı (WhatsApp/Instagram)',
+      sales_angle: 'Soruları, randevuyu ve fiyat bilgisini 7/24 otomatik yanıtlayan satış asistanı — günde 2 saat kazandırır',
+      first_message: `Merhaba ${businessName}, müşterileriniz mesaj atıp geç yanıt aldığında rakibe geçiyor. WhatsApp/Instagram'da soruları yanıtlayan, randevu alan ve müşteri bilgisi toplayan bir AI asistan kuruyoruz. 5 dakikalık bir demo paylaşabilir miyim?`,
+      next_best_action: 'AI asistan demo videosu/linki gönder',
+    }
+  }
 
   if (isHealthClinic) {
     if (!signals.has_online_booking) {
@@ -227,6 +282,8 @@ export async function runEvidenceEngine(params: {
     instagram_as_site: false,
     is_slow_or_dead: false,
   }
+  let evidence_verified = false
+  let found_email: string | null = null
 
   if (website) {
     if (isSocialOnlyUrl(website)) {
@@ -240,18 +297,20 @@ export async function runEvidenceEngine(params: {
       } else {
         const extracted = extractSignals(html, website)
         signals = { ...signals, ...extracted }
+        evidence_verified = true
+        found_email = extractEmails(html)[0] ?? null
       }
     }
   }
 
   const { pain_signals, proof_points, why_now, disqualification_reason } = buildPainAndProof({
-    sector, signals, rating, reviewCount, businessName,
+    sector, signals, rating, reviewCount, businessName, verified: evidence_verified,
   })
 
   const offerHint = selectOffer(sector, signals, businessName)
 
-  const signalCount = [website, rating !== null, reviewCount > 0].filter(Boolean).length
-  const confidence = Math.min(0.4 + signalCount * 0.2, 1.0)
+  const signalCount = [website, rating !== null, reviewCount > 0, evidence_verified].filter(Boolean).length
+  const confidence = Math.min(0.3 + signalCount * 0.175, 1.0)
 
   return {
     ...signals,
@@ -260,6 +319,8 @@ export async function runEvidenceEngine(params: {
     proof_points,
     disqualification_reason,
     confidence,
+    evidence_verified,
+    found_email,
     ...offerHint,
   }
 }

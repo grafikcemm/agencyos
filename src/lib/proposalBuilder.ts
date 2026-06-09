@@ -6,10 +6,14 @@ import { Lead, Proposal, ProposalStatus } from './types'
 import { findOfferById } from './offers'
 import { matchSectorProfile } from './sectorPriority'
 
+export type ProposalTone = 'samimi' | 'kurumsal'
+
 export interface BuildProposalInput {
   lead: Partial<Lead> & { id: string; business_name: string }
   offerIds: string[]
   problemOverride?: string
+  /** Mesaj tonu — 'samimi' (KOBİ/esnaf) veya 'kurumsal' (klinik/şirket). Varsayılan: samimi. */
+  tone?: ProposalTone
 }
 
 function formatCurrency(n: number): string {
@@ -46,12 +50,24 @@ interface DraftCore {
   scope: string[]
   expectedOutcome: string
   nextStep: string
+  tone: ProposalTone
+  /** Lead'in doğrulanmış sıkıntısı — kişiselleştirilmiş açılış için. */
+  whyNow: string | null
 }
 
 function buildWhatsappText(p: DraftCore): string {
   const lines: string[] = []
-  lines.push(`Merhaba ${p.clientName},`)
+  if (p.tone === 'kurumsal') {
+    lines.push(`Sayın ${p.clientName} yetkilisi,`)
+  } else {
+    lines.push(`Merhaba ${p.clientName},`)
+  }
   lines.push('')
+  // Kanıt-temelli kişiselleştirme: lead'in gerçek sıkıntısıyla aç.
+  if (p.whyNow) {
+    lines.push(p.whyNow)
+    lines.push('')
+  }
   lines.push('Konuştuğumuz noktalardan yola çıkarak şu çözümü öneriyoruz:')
   for (const s of p.services) lines.push(`• ${s.offerName}`)
   lines.push('')
@@ -61,7 +77,9 @@ function buildWhatsappText(p: DraftCore): string {
   lines.push('')
   lines.push(`Beklenen sonuç: ${p.expectedOutcome}`)
   lines.push('')
-  lines.push('Detayları görüşmek için uygun olduğunuz bir zamanı paylaşır mısınız?')
+  lines.push(p.tone === 'kurumsal'
+    ? 'Detayları görüşmek üzere uygun olduğunuz bir zamanı iletmenizi rica ederiz.'
+    : 'Detayları görüşmek için uygun olduğunuz bir zamanı paylaşır mısınız?')
   return lines.join('\n')
 }
 
@@ -102,7 +120,7 @@ function addDays(d: Date, days: number): Date {
 }
 
 export function buildProposal(input: BuildProposalInput): Proposal {
-  const { lead, offerIds, problemOverride } = input
+  const { lead, offerIds, problemOverride, tone = 'samimi' } = input
   const offers = offerIds
     .map(id => findOfferById(id))
     .filter((o): o is NonNullable<ReturnType<typeof findOfferById>> => !!o)
@@ -144,6 +162,8 @@ export function buildProposal(input: BuildProposalInput): Proposal {
     scope,
     expectedOutcome,
     nextStep,
+    tone,
+    whyNow: lead.why_now ?? null,
   }
 
   const whatsappText = buildWhatsappText(draft)

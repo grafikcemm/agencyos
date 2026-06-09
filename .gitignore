@@ -57,3 +57,7 @@ harita.jpeg
 next-env.d.ts
 
 .vercel
+
+# Yerel arastirma/guncelleme materyali
+agencyos guncelleme/
+agencyos g*ncelleme/

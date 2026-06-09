@@ -28,5 +28,6 @@ export async function requireApiUser(): Promise<{ user: User } | { response: Nex
 // `req` is accepted for call-site compatibility (some routes pass the request);
 // it is no longer inspected since there is nothing to authenticate.
 export async function requireApiAccess(_req?: Request): Promise<{ ok: true } | { response: NextResponse }> {
+  void _req
   return { ok: true }
 }

@@ -1,10 +1,17 @@
 "use client"
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { EyeOff, Shield, Server, Activity, Save, AlertTriangle, Package, Trash2, RefreshCw } from 'lucide-react'
+import { Shield, Server, Activity, Save, AlertTriangle, Package, Trash2, RefreshCw } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { fetchSettings, saveSetting } from '@/lib/repositories/settings'
+
+interface ConfigHealth {
+  success: boolean
+  healthy: boolean
+  missingRequired: string[]
+  checks: Array<{ key: string; label: string; configured: boolean; required: boolean }>
+}
 
 const AGENCY_NAME_KEY = 'agency_name'
 const AGENCY_EMAIL_KEY = 'agency_email'
@@ -16,8 +23,9 @@ export default function SettingsPage() {
   const [seedLoading, setSeedLoading] = useState(false)
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
 
-  const [agencyName, setAgencyName] = useState(DEFAULT_AGENCY_NAME)
-  const [agencyEmail, setAgencyEmail] = useState(DEFAULT_AGENCY_EMAIL)
+  // User edits override persisted values; until edited, render persisted/defaults.
+  const [agencyNameInput, setAgencyNameInput] = useState<string | null>(null)
+  const [agencyEmailInput, setAgencyEmailInput] = useState<string | null>(null)
   const [savingAgency, setSavingAgency] = useState(false)
 
   const { data: settings } = useQuery({
@@ -25,14 +33,21 @@ export default function SettingsPage() {
     queryFn: fetchSettings,
   })
 
-  // Hydrate form fields from persisted settings once they load.
-  useEffect(() => {
-    if (!settings) return
-    const name = settings.find((s) => s.key === AGENCY_NAME_KEY)?.value
-    const email = settings.find((s) => s.key === AGENCY_EMAIL_KEY)?.value
-    if (name) setAgencyName(name)
-    if (email) setAgencyEmail(email)
-  }, [settings])
+  // Live config health — real configured/missing status instead of dummy values.
+  const { data: configHealth } = useQuery({
+    queryKey: ['config-health'],
+    queryFn: async (): Promise<ConfigHealth> => {
+      const res = await fetch('/api/health/config')
+      if (!res.ok) throw new Error('Health check failed')
+      return res.json()
+    },
+    staleTime: 60_000,
+  })
+
+  const persistedName = settings?.find((s) => s.key === AGENCY_NAME_KEY)?.value
+  const persistedEmail = settings?.find((s) => s.key === AGENCY_EMAIL_KEY)?.value
+  const agencyName = agencyNameInput ?? persistedName ?? DEFAULT_AGENCY_NAME
+  const agencyEmail = agencyEmailInput ?? persistedEmail ?? DEFAULT_AGENCY_EMAIL
 
   const showMsg = (text: string, ok: boolean) => {
     setMsg({ text, ok })
@@ -45,6 +60,8 @@ export default function SettingsPage() {
       await saveSetting(AGENCY_NAME_KEY, agencyName.trim())
       await saveSetting(AGENCY_EMAIL_KEY, agencyEmail.trim())
       await queryClient.invalidateQueries({ queryKey: ['settings'] })
+      setAgencyNameInput(null)
+      setAgencyEmailInput(null)
       showMsg('✓ Ajans bilgileri kaydedildi.', true)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Bilinmeyen hata'
@@ -107,7 +124,7 @@ export default function SettingsPage() {
                 <input
                   type="text"
                   value={agencyName}
-                  onChange={(e) => setAgencyName(e.target.value)}
+                  onChange={(e) => setAgencyNameInput(e.target.value)}
                   className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg text-sm p-2.5 text-[var(--text-primary)] outline-none focus:border-[var(--border-highlight)] transition-all"
                 />
               </div>
@@ -116,7 +133,7 @@ export default function SettingsPage() {
                 <input
                   type="email"
                   value={agencyEmail}
-                  onChange={(e) => setAgencyEmail(e.target.value)}
+                  onChange={(e) => setAgencyEmailInput(e.target.value)}
                   className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg text-sm p-2.5 text-[var(--text-primary)] outline-none focus:border-[var(--border-highlight)] transition-all"
                 />
               </div>
@@ -136,34 +153,36 @@ export default function SettingsPage() {
               <Shield className="w-3.5 h-3.5 text-[var(--accent)]" />
               <span className="text-xs font-semibold text-[var(--text-primary)] uppercase tracking-wider">API Güvenliği</span>
             </div>
-            <form onSubmit={e => e.preventDefault()} className="space-y-4">
-              {[
-                { label: 'Google Maps API', value: 'AIzaSyA-dummy-key' },
-                { label: 'OpenRouter API', value: 'sk-or-dummy-key' },
-              ].map(item => (
-                <div key={item.label} className="space-y-1.5">
-                  <div className="flex justify-between items-center">
-                    <label className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">{item.label}</label>
-                    <Badge variant="success">Aktif</Badge>
+            <div className="space-y-2.5">
+              {!configHealth && (
+                <p className="text-[11px] text-[var(--text-muted)] animate-pulse">Yapılandırma durumu kontrol ediliyor...</p>
+              )}
+              {configHealth?.checks.map(item => (
+                <div key={item.key} className="flex justify-between items-center py-1.5 border-b border-[var(--border-subtle)]/50 last:border-0">
+                  <div className="min-w-0">
+                    <span className="text-xs text-[var(--text-secondary)] block truncate">{item.label}</span>
+                    <span className="text-[9px] text-[var(--text-muted)] uppercase tracking-wider">
+                      {item.required ? 'Zorunlu' : 'Opsiyonel'}
+                    </span>
                   </div>
-                  <div className="relative">
-                    <input
-                      type="password"
-                      defaultValue={item.value}
-                      disabled
-                      autoComplete="off"
-                      className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg text-sm p-2.5 text-[var(--text-muted)] outline-none pr-10"
-                    />
-                    <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]">
-                      <EyeOff className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                  {item.configured ? (
+                    <Badge variant="success">Yapılandırıldı</Badge>
+                  ) : item.required ? (
+                    <Badge variant="danger">Eksik</Badge>
+                  ) : (
+                    <Badge variant="muted">Kurulmadı</Badge>
+                  )}
                 </div>
               ))}
+              {configHealth && !configHealth.healthy && (
+                <p className="text-[10px] text-red-400 pt-1">
+                  ⚠ Eksik zorunlu anahtar: {configHealth.missingRequired.join(', ')}
+                </p>
+              )}
               <p className="text-[10px] text-[var(--text-muted)] pt-1">
-                Anahtarlar <code className="text-[var(--text-secondary)]">.env.local</code> üzerinden yönetilmektedir.
+                Anahtarlar <code className="text-[var(--text-secondary)]">.env.local</code> üzerinden yönetilmektedir — değerler asla bu ekranda gösterilmez.
               </p>
-            </form>
+            </div>
           </div>
         </div>
 
@@ -203,13 +222,19 @@ export default function SettingsPage() {
             <span className="text-xs font-semibold text-[var(--text-primary)] uppercase tracking-wider">Sistem Logları</span>
           </div>
           <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg p-4 font-mono text-[11px] space-y-2 h-36 overflow-y-auto">
-            {[
-              { level: 'OK', color: 'text-[var(--success)]', msg: 'Supabase bağlantısı: supabaseAdmin (server-only) ✓' },
-              { level: 'OK', color: 'text-[var(--success)]', msg: 'Client fetch yönlendirmesi: /api/db/* ✓' },
-              { level: 'OK', color: 'text-[var(--success)]', msg: 'OpenRouter API yapılandırıldı.' },
-              { level: 'INFO', color: 'text-[var(--accent)]', msg: 'Cron /daily-scan her gün otomatik çalışır.' },
-              { level: 'WARN', color: 'text-[var(--warning)]', msg: 'CRON_SECRET .env.local\'a eklenmeli.' },
-            ].map((log, i) => (
+            {(configHealth
+              ? [
+                  ...configHealth.checks
+                    .filter(c => c.required)
+                    .map(c => ({
+                      level: c.configured ? 'OK' : 'WARN',
+                      color: c.configured ? 'text-[var(--success)]' : 'text-[var(--warning)]',
+                      msg: c.configured ? `${c.label} yapılandırıldı ✓` : `${c.key} .env.local'a eklenmeli.`,
+                    })),
+                  { level: 'INFO', color: 'text-[var(--accent)]', msg: 'Cron /daily-scan her gün otomatik çalışır.' },
+                ]
+              : [{ level: 'INFO', color: 'text-[var(--accent)]', msg: 'Yapılandırma durumu yükleniyor...' }]
+            ).map((log, i) => (
               <div key={i} className="flex gap-3">
                 <span className={`${log.color} shrink-0`}>[{log.level}]</span>
                 <span className="text-[var(--text-secondary)]">{log.msg}</span>

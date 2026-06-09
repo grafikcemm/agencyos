@@ -29,7 +29,7 @@ function formatTL(n: number): string {
 
 // Normalize a Turkish phone to wa.me digits (e.g. "0534 887 14 35" -> "905348871435").
 function normalizeTrPhone(phone: string): string {
-  let d = (phone || '').replace(/\D/g, '')
+  const d = (phone || '').replace(/\D/g, '')
   if (d.startsWith('90')) return d
   if (d.startsWith('0')) return '90' + d.slice(1)
   if (d.length === 10) return '90' + d

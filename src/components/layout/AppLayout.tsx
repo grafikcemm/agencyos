@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { Bell, Search } from 'lucide-react'
+import { Bell, Menu, Search, X } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 
 const PAGE_TITLES: Record<string, string> = {
@@ -27,26 +27,58 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const pathname = usePathname()
   const pageTitle = PAGE_TITLES[pathname] ?? 'Dashboard'
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[var(--bg-base)] text-[var(--text-primary)]">
+      {/* Desktop sidebar */}
       <aside
-        className="shrink-0 bg-[var(--bg-sidebar)] border-r border-[var(--border-subtle)] transition-all duration-300"
+        className="hidden md:block shrink-0 bg-[var(--bg-sidebar)] border-r border-[var(--border-subtle)] transition-all duration-300"
         style={{ width: sidebarCollapsed ? '64px' : '220px' }}
       >
         <Sidebar isCollapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(c => !c)} />
       </aside>
 
+      {/* Mobile off-canvas sidebar */}
+      {mobileNavOpen && (
+        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="Gezinme menüsü">
+          <button
+            aria-label="Menüyü kapat"
+            onClick={() => setMobileNavOpen(false)}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          />
+          <aside className="absolute left-0 top-0 h-full w-[240px] bg-[var(--bg-sidebar)] border-r border-[var(--border-subtle)] shadow-2xl animate-in slide-in-from-left duration-200">
+            <button
+              aria-label="Menüyü kapat"
+              onClick={() => setMobileNavOpen(false)}
+              className="absolute right-3 top-4 z-10 w-7 h-7 flex items-center justify-center rounded-md text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <Sidebar isCollapsed={false} onToggle={() => setMobileNavOpen(false)} onNavigate={() => setMobileNavOpen(false)} />
+          </aside>
+        </div>
+      )}
+
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="relative z-20 h-[60px] border-b border-[var(--border-subtle)] flex items-center justify-between px-6 shrink-0 bg-[var(--bg-base)]/70 backdrop-blur-xl">
-          <div className="flex items-baseline gap-2.5">
-            <span className="text-[11px] text-[var(--text-muted)] tracking-wide">Dashboard /</span>
-            <h1 className="font-display text-lg font-medium text-[var(--text-primary)] leading-none">{pageTitle}</h1>
+        <header className="relative z-20 h-[60px] border-b border-[var(--border-subtle)] flex items-center justify-between px-4 md:px-6 shrink-0 bg-[var(--bg-base)]/70 backdrop-blur-xl">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <button
+              aria-label="Menüyü aç"
+              onClick={() => setMobileNavOpen(true)}
+              className="md:hidden w-9 h-9 flex items-center justify-center glass-pill text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all shrink-0"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
+            <div className="flex items-baseline gap-2.5 min-w-0">
+              <span className="hidden sm:inline text-[11px] text-[var(--text-muted)] tracking-wide">Dashboard /</span>
+              <h1 className="font-display text-lg font-medium text-[var(--text-primary)] leading-none truncate">{pageTitle}</h1>
+            </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="relative w-60">
+            <div className="relative w-60 hidden lg:block">
               <Search className="w-3.5 h-3.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] z-10" />
               <input
                 placeholder="Ara..."

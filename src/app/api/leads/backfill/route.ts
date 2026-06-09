@@ -193,6 +193,9 @@ export async function POST(req: Request) {
             first_message: lead.first_message || '',
             next_best_action: lead.next_best_action || '',
             confidence: lead.confidence ?? 0.8,
+            // Cached DB evidence: site HTML'i bu turda doğrulanmadı.
+            evidence_verified: false,
+            found_email: null,
           }
         } else {
           evidence = await runEvidenceEngine({

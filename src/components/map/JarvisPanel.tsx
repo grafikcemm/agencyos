@@ -22,9 +22,14 @@ const SAMPLE_COMMANDS = [
 interface JarvisPanelProps {
   leadsCount?: number
   stats?: { new: number; contacted: number; won: number }
+  /** Called after a JARVIS tool changed lead data (e.g. scan_leads) so the page can refetch. */
+  onLeadsChanged?: () => void | Promise<void>
 }
 
-export function JarvisPanel({ leadsCount = 0, stats }: JarvisPanelProps) {
+// Tools whose completion means lead rows changed in the DB.
+const LEAD_MUTATING_TOOLS = ['scan_leads', 'update_lead_stage', 'create_project', 'disqualify_low_quality']
+
+export function JarvisPanel({ leadsCount = 0, stats, onLeadsChanged }: JarvisPanelProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -49,6 +54,7 @@ export function JarvisPanel({ leadsCount = 0, stats }: JarvisPanelProps) {
     scrollToBottom()
   }, [messages, isTyping])
 
+  // onLeadsChanged is intentionally a dependency: parent passes a stable useCallback.
   const sendClassic = useCallback(async (textToSend: string, existingId?: string) => {
     if (!existingId) {
       const userMsg: Message = { id: Date.now().toString(), role: 'user', content: textToSend }
@@ -86,6 +92,9 @@ export function JarvisPanel({ leadsCount = 0, stats }: JarvisPanelProps) {
 
       if (data.tool_count) setToolCounter(prev => prev + data.tool_count)
       if (data.tool_calls?.includes('scan_leads')) setCitiesScanned(prev => prev + 1)
+      if (data.tool_calls?.some((t: string) => LEAD_MUTATING_TOOLS.includes(t))) {
+        await onLeadsChanged?.()
+      }
 
     } catch {
       const errMsg: Message = { id: existingId || 'err', role: 'assistant', content: '// CATASTROPHIC FAILURE: API ulaşılamıyor.' }
@@ -97,7 +106,7 @@ export function JarvisPanel({ leadsCount = 0, stats }: JarvisPanelProps) {
     } finally {
       setIsTyping(false)
     }
-  }, [])
+  }, [onLeadsChanged])
 
   const sendStreaming = useCallback(async (textToSend: string) => {
     const userMsg: Message = { id: Date.now().toString(), role: 'user', content: textToSend }

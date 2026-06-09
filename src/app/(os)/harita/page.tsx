@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic'
 import { useState, useEffect, useCallback } from 'react'
 import { JarvisPanel } from '@/components/map/JarvisPanel'
 import { LeadDrawer } from '@/components/map/LeadDrawer'
-import { Search, Loader2, MapPin, Globe, Phone, Filter, ChevronDown } from 'lucide-react'
+import { Search, Loader2, MapPin, Globe, Phone, Filter, ChevronDown, MessageCircle, Eye, Bot, X } from 'lucide-react'
 import { Lead } from '@/lib/types'
 import { enrichLeads, EnrichedLead } from '@/lib/enrichLead'
 import { matchesCity, citySlugify } from '@/lib/geo'
@@ -29,18 +29,22 @@ const LeadMap = dynamic(() => import('@/components/map/LeadMap'), {
   )
 })
 
-const SECTORS = ['Tümü', 'Güzellik', 'Kuaför', 'Kafe', 'Butik', 'Nail Art', 'Dişçi', 'Spor', 'Restoran', 'Emlak']
+// Sıralama gelir önceliğine göre: yüksek bilet (dental/estetik/emlak/oto) önce,
+// düşük bilet (güzellik/kafe) sonra — 2026 TR pazar araştırması + tier verisiyle uyumlu.
+const SECTORS = ['Tümü', 'Dişçi', 'Estetik', 'Emlak', 'Oto Servis', 'Spor', 'Güzellik', 'Kuaför', 'Restoran', 'Kafe', 'Butik', 'Nail Art']
 
 const SECTOR_QUERY_MAP: Record<string, string> = {
+  'Dişçi': 'diş kliniği',
+  'Estetik': 'medikal estetik merkezi',
+  'Emlak': 'emlak ofisi',
+  'Oto Servis': 'oto servis',
+  'Spor': 'spor salonu',
   'Güzellik': 'güzellik salonu',
   'Kuaför': 'kuaför',
+  'Restoran': 'restoran',
   'Kafe': 'kafe',
   'Butik': 'butik mağaza',
   'Nail Art': 'nail art studio',
-  'Dişçi': 'diş kliniği',
-  'Spor': 'spor salonu',
-  'Restoran': 'restoran',
-  'Emlak': 'emlak ofisi',
 }
 
 const CITIES = ['İstanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya']
@@ -62,6 +66,15 @@ const STATUS_FILTERS = [
 
 function formatTL(n: number): string {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(n || 0)
+}
+
+// Türk telefonunu wa.me formatına çevirir ("0534 887 14 35" -> "905348871435").
+function normalizeTrPhone(phone: string): string {
+  const d = (phone || '').replace(/\D/g, '')
+  if (d.startsWith('90')) return d
+  if (d.startsWith('0')) return '90' + d.slice(1)
+  if (d.length === 10) return '90' + d
+  return d
 }
 
 function getQualityBadge(lead: Lead) {
@@ -117,6 +130,9 @@ export default function HaritaPage() {
 
   // Drawer
   const [selectedLead, setSelectedLead] = useState<EnrichedLead | null>(null)
+
+  // Mobile JARVIS overlay
+  const [jarvisOpen, setJarvisOpen] = useState(false)
 
   const fetchLeads = useCallback(async () => {
     try {
@@ -205,14 +221,16 @@ export default function HaritaPage() {
     setScanning(true)
     setScanMessage('')
     setScanProgress(null)
-    const sectorQuery = sector === 'Tümü' ? 'güzellik salonu' : (SECTOR_QUERY_MAP[sector] ?? sector)
+    // "Tümü" seçiliyken varsayılan tarama yüksek bilet sektörden başlar.
+    const sectorQuery = sector === 'Tümü' ? 'diş kliniği' : (SECTOR_QUERY_MAP[sector] ?? sector)
 
     // Determine districts to scan
     const targetDistricts = (districts.length > 0 && !districts.includes('Tümü'))
       ? districts
       : [city]
 
-    let totalAdded = 0
+    let totalInserted = 0
+    let totalUpdated = 0
 
     for (let i = 0; i < targetDistricts.length; i++) {
       const dist = targetDistricts[i]
@@ -225,16 +243,19 @@ export default function HaritaPage() {
           body: JSON.stringify({ sector: sectorQuery, city, district: dist === city ? '' : dist, limit: 15 })
         })
         const data = await res.json()
-        if (data.success) totalAdded += (data.count || 0)
+        if (data.success) {
+          totalInserted += (data.insertedCount ?? data.count ?? 0)
+          totalUpdated += (data.updatedCount ?? 0)
+        }
       } catch {
         // Continue with next district
       }
     }
 
-    setScanMessage(`${totalAdded} yeni lead eklendi.`)
+    setScanMessage(`${totalInserted} yeni lead, ${totalUpdated} güncelleme.`)
     setScanProgress(null)
     setScanning(false)
-    if (totalAdded > 0) await fetchLeads()
+    if (totalInserted + totalUpdated > 0) await fetchLeads()
   }
 
   const toggleStatus = (key: string) => {
@@ -504,7 +525,9 @@ export default function HaritaPage() {
                   <p className="text-[10px] text-[var(--text-muted)] mt-1">Farklı filtreleri deneyebilir veya yukarıdaki &quot;Tara&quot; butonuyla bölge taraması başlatabilirsiniz.</p>
                 </div>
               ) : (
-                <table className="w-full border-collapse text-left text-xs">
+                <>
+                {/* Desktop table */}
+                <table className="hidden md:table w-full border-collapse text-left text-xs">
                   <thead className="sticky top-0 bg-[var(--bg-base)] text-[9px] text-[var(--text-muted)] font-bold tracking-widest uppercase border-b border-[var(--border-subtle)] z-10">
                     <tr>
                       <th className="px-4 py-2">Öncelik</th>
@@ -514,7 +537,7 @@ export default function HaritaPage() {
                       <th className="px-4 py-2 text-center">Skor</th>
                       <th className="px-4 py-2">Önerilen Hizmet</th>
                       <th className="px-4 py-2 text-right">Tahmini Değer</th>
-                      <th className="px-4 py-2">Sonraki Aksiyon</th>
+                      <th className="px-4 py-2">Aksiyonlar</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-subtle)]">
@@ -525,6 +548,7 @@ export default function HaritaPage() {
                       return (
                         <tr
                           key={lead.id}
+                          data-testid={`lead-row-${lead.id}`}
                           onClick={() => setSelectedLead(lead)}
                           className="hover:bg-[var(--bg-elevated)] cursor-pointer transition-colors group"
                         >
@@ -551,24 +575,157 @@ export default function HaritaPage() {
                           <td className="px-4 py-3 text-right font-bold text-[var(--text-primary)] whitespace-nowrap">
                             {monthlyVal > 0 ? `${formatTL(monthlyVal)}/ay` : '-'}
                           </td>
-                          <td className="px-4 py-3 text-[var(--text-muted)] whitespace-nowrap truncate max-w-[200px]" title={lead.next_action}>
-                            {lead.next_action || '-'}
+                          <td className="px-4 py-3 whitespace-nowrap" title={lead.next_action}>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                data-testid={`lead-detail-${lead.id}`}
+                                aria-label={`${lead.business_name} detayını aç`}
+                                onClick={(e) => { e.stopPropagation(); setSelectedLead(lead) }}
+                                className="w-7 h-7 flex items-center justify-center rounded-md border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                              {lead.phone && (
+                                <a
+                                  href={`tel:${lead.phone}`}
+                                  data-testid={`lead-call-${lead.id}`}
+                                  aria-label={`${lead.business_name} işletmesini ara`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-7 h-7 flex items-center justify-center rounded-md border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-blue-400 hover:border-blue-400/50 transition-all"
+                                >
+                                  <Phone className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                              {lead.phone && (
+                                <a
+                                  href={`https://wa.me/${normalizeTrPhone(lead.phone)}${lead.first_message ? `?text=${encodeURIComponent(lead.first_message)}` : ''}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  data-testid={`lead-whatsapp-${lead.id}`}
+                                  aria-label={`${lead.business_name} işletmesine WhatsApp mesajı gönder`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-7 h-7 flex items-center justify-center rounded-md border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-green-400 hover:border-green-400/50 transition-all"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                </a>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       )
                     })}
                   </tbody>
                 </table>
+
+                {/* Mobile card list */}
+                <div className="md:hidden divide-y divide-[var(--border-subtle)]">
+                  {filteredLeads.map((lead) => {
+                    const badge = getQualityBadge(lead)
+                    const monthlyVal = lead.estimated_monthly_value || 0
+                    return (
+                      <div
+                        key={lead.id}
+                        data-testid={`lead-card-${lead.id}`}
+                        className="p-3 space-y-2 active:bg-[var(--bg-elevated)]"
+                        onClick={() => setSelectedLead(lead)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-bold text-sm text-[var(--text-primary)] truncate">{lead.business_name}</div>
+                            <div className="text-[10px] text-[var(--text-muted)] truncate">
+                              {lead.sector} · {lead.city}{lead.district ? ` / ${lead.district}` : ''}
+                            </div>
+                          </div>
+                          <span className="text-sm font-black text-[var(--accent)] shrink-0">{lead.quality_score || lead.potential_score || 0}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={`text-[8px] font-bold tracking-widest px-2 py-0.5 rounded-full border ${badge.color}`}>
+                            {badge.label}
+                          </span>
+                          {monthlyVal > 0 && (
+                            <span className="text-[10px] font-bold text-[var(--text-secondary)]">{formatTL(monthlyVal)}/ay</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            aria-label={`${lead.business_name} detayını aç`}
+                            onClick={(e) => { e.stopPropagation(); setSelectedLead(lead) }}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg border border-[var(--border-subtle)] text-[11px] font-bold text-[var(--text-secondary)]"
+                          >
+                            <Eye className="w-3.5 h-3.5" /> Detay
+                          </button>
+                          {lead.phone && (
+                            <a
+                              href={`tel:${lead.phone}`}
+                              aria-label={`${lead.business_name} işletmesini ara`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-blue-500/10 border border-blue-500/30 text-[11px] font-bold text-blue-400"
+                            >
+                              <Phone className="w-3.5 h-3.5" /> Ara
+                            </a>
+                          )}
+                          {lead.phone && (
+                            <a
+                              href={`https://wa.me/${normalizeTrPhone(lead.phone)}${lead.first_message ? `?text=${encodeURIComponent(lead.first_message)}` : ''}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={`${lead.business_name} işletmesine WhatsApp mesajı gönder`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-green-500/10 border border-green-500/30 text-[11px] font-bold text-green-400"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                </>
               )}
             </div>
           </div>
         </div>
 
-        {/* Right JARVIS Panel */}
-        <div className="w-80 shrink-0 border-l border-[var(--border-subtle)] overflow-hidden">
-          <JarvisPanel leadsCount={allLeads.length} stats={{ new: stats.yeni, contacted: stats.iletisim, won: stats.kazanildi }} />
+        {/* Right JARVIS Panel — desktop */}
+        <div className="hidden lg:block w-80 shrink-0 border-l border-[var(--border-subtle)] overflow-hidden">
+          <JarvisPanel
+            leadsCount={allLeads.length}
+            stats={{ new: stats.yeni, contacted: stats.iletisim, won: stats.kazanildi }}
+            onLeadsChanged={fetchLeads}
+          />
         </div>
       </div>
+
+      {/* JARVIS — mobile floating button + fullscreen overlay */}
+      <button
+        type="button"
+        aria-label="JARVIS asistanını aç"
+        data-testid="jarvis-mobile-toggle"
+        onClick={() => setJarvisOpen(true)}
+        className="lg:hidden fixed bottom-5 right-5 z-40 w-12 h-12 rounded-full bg-[var(--accent)] text-black shadow-lg shadow-[var(--accent)]/30 flex items-center justify-center active:scale-95 transition-transform"
+      >
+        <Bot className="w-5 h-5" />
+      </button>
+      {jarvisOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 bg-[var(--bg-base)]" role="dialog" aria-modal="true" aria-label="JARVIS asistanı">
+          <button
+            type="button"
+            aria-label="JARVIS panelini kapat"
+            onClick={() => setJarvisOpen(false)}
+            className="absolute right-3 top-3 z-10 w-9 h-9 flex items-center justify-center rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[var(--text-muted)]"
+          >
+            <X className="w-4 h-4" />
+          </button>
+          <JarvisPanel
+            leadsCount={allLeads.length}
+            stats={{ new: stats.yeni, contacted: stats.iletisim, won: stats.kazanildi }}
+            onLeadsChanged={fetchLeads}
+          />
+        </div>
+      )}
 
       {/* Lead Drawer */}
       {selectedLead && (

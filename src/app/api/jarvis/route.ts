@@ -46,6 +46,7 @@ Kullanıcının niyetine göre MUTLAKA doğru aracı çağır. Tahmin etme, arac
 - "fırsat durumu", "ürün pipeline", "opportunity status" → get_opportunity_status
 - "yeni sinyal", "trend var mı", "sinyal raporu" → get_trend_signals
 - "türkiye fırsatı", "türkiye açığı", "yerel fırsat" → get_turkey_gaps
+- "dönüşüm durumu", "huni", "funnel", "kaç lead kazandık", "dönüşüm oranı" → get_funnel_metrics
 
 ÖNEMLİ KURAL — FIRSAT SORULARINDA:
 Her yeni fikir veya trend sunarken yanıtının sonunda mutlaka şu notu ekle:
@@ -343,6 +344,14 @@ const JARVIS_TOOLS: JarvisTool[] = [
       description: 'Türkiye fırsat açığı haritasını gösterir — global servislerin Türkiye\'de olmadığı alanlar',
       parameters: { type: 'object', properties: {}, required: [] }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_funnel_metrics',
+      description: 'Dönüşüm hunisi raporu — durum/tier dağılımı, sektör bazlı iletişim ve dönüşüm oranları, tarama verimi',
+      parameters: { type: 'object', properties: {}, required: [] }
+    }
   }
 ]
 
@@ -465,18 +474,19 @@ async function executeTool(toolName: string, args: Record<string, unknown>): Pro
       const district = args.district as string | undefined
       const limit = (args.limit as number) ?? 15
       try {
-        const base = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-        const res = await fetch(`${base}/api/leads/scan`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.CRON_SECRET ?? ''}` },
-          body: JSON.stringify({ sector: niche, city, district: district ?? '', limit })
-        })
-        const data = await res.json()
-        return data.success
-          ? `${data.count} yeni lead eklendi. (${niche}, ${city}${district ? ' / ' + district : ''})`
-          : `Tarama başarısız: ${data.error ?? 'bilinmeyen hata'}`
-      } catch {
-        return 'Tarama servisi yanıt vermiyor.'
+        // Direct in-process call — no server-to-self HTTP fetch, so no
+        // NEXT_PUBLIC_APP_URL/CRON_SECRET dependency to silently break.
+        const { scanLeads } = await import('@/lib/leads/scan')
+        const result = await scanLeads({ sector: niche, city, district: district ?? '', limit, source: 'jarvis' })
+        if (!result.success) {
+          return `Tarama başarısız: ${result.error ?? 'bilinmeyen hata'}${result.message ? ` (${result.message})` : ''}`
+        }
+        if (result.message) return result.message
+        return `${result.insertedCount} yeni lead eklendi, ${result.updatedCount} mevcut lead güncellendi. (${niche}, ${city}${district ? ' / ' + district : ''})`
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'bilinmeyen hata'
+        console.error('JARVIS scan_leads error:', msg)
+        return `Tarama servisi hata verdi: ${msg}`
       }
     }
 
@@ -651,9 +661,28 @@ Türkçe yaz.`,
     }
 
     case 'update_lead_stage': {
+      const stage = args.stage as string
       const { error } = await supabaseAdmin
-        .from('leads').update({ status: args.stage as string }).eq('id', args.lead_id as string)
-      return error ? `Güncelleme başarısız: ${error.message}` : `Lead durumu "${args.stage}" yapıldı.`
+        .from('leads').update({ status: stage }).eq('id', args.lead_id as string)
+      if (error) return `Güncelleme başarısız: ${error.message}`
+
+      // Outcome timestamp — kapalı döngü dönüşüm metriği (migration 012).
+      // Kolon henüz yoksa ana güncellemeyi bozma.
+      const STAGE_TIMESTAMPS: Record<string, string> = {
+        contacted: 'contacted_at',
+        responded: 'replied_at',
+        meeting: 'meeting_at',
+        proposal: 'proposal_at',
+        converted: 'converted_at',
+        lost: 'lost_at',
+      }
+      const tsColumn = STAGE_TIMESTAMPS[stage]
+      if (tsColumn) {
+        const { error: tsError } = await supabaseAdmin
+          .from('leads').update({ [tsColumn]: new Date().toISOString() }).eq('id', args.lead_id as string)
+        if (tsError) console.warn(`Outcome timestamp (${tsColumn}) yazılamadı:`, tsError.message)
+      }
+      return `Lead durumu "${stage}" yapıldı.`
     }
 
     case 'generate_pitch': {
@@ -814,6 +843,38 @@ Türkçe yaz.`,
       }
 
       reply += '\n🚫 Şimdilik park et / aktif sprint\'e alma — mevcut aktif ürüne odaklan.'
+      return reply
+    }
+
+    case 'get_funnel_metrics': {
+      const { data: leads } = await supabaseAdmin
+        .from('leads')
+        .select('status, lead_tier, normalized_sector, sector')
+        .limit(2000)
+      if (!leads || leads.length === 0) return 'Henüz lead verisi yok — önce tarama yap.'
+
+      const statusCounts: Record<string, number> = {}
+      const tierCounts: Record<string, number> = {}
+      const bySector: Record<string, { total: number; contacted: number; converted: number }> = {}
+      for (const l of leads as Array<{ status: string; lead_tier: string | null; normalized_sector: string | null; sector: string | null }>) {
+        statusCounts[l.status] = (statusCounts[l.status] ?? 0) + 1
+        tierCounts[l.lead_tier ?? '—'] = (tierCounts[l.lead_tier ?? '—'] ?? 0) + 1
+        const key = l.normalized_sector || l.sector || 'Diğer'
+        bySector[key] ??= { total: 0, contacted: 0, converted: 0 }
+        bySector[key].total++
+        if (['contacted', 'responded', 'meeting', 'proposal', 'converted'].includes(l.status)) bySector[key].contacted++
+        if (l.status === 'converted') bySector[key].converted++
+      }
+
+      let reply = `📊 DÖNÜŞÜM HUNİSİ (${leads.length} lead)\n\n`
+      reply += `Durumlar: ${Object.entries(statusCounts).map(([k, v]) => `${k}: ${v}`).join(' | ')}\n`
+      reply += `Tier: ${Object.entries(tierCounts).map(([k, v]) => `${k}: ${v}`).join(' | ')}\n\n`
+      reply += 'Sektör bazında (toplam → iletişim → kazanılan):\n'
+      reply += Object.entries(bySector)
+        .sort((a, b) => b[1].total - a[1].total)
+        .slice(0, 8)
+        .map(([s, v]) => `• ${s}: ${v.total} → ${v.contacted} → ${v.converted}`)
+        .join('\n')
       return reply
     }
 
@@ -1032,12 +1093,27 @@ export async function POST(req: Request) {
       const actions: { type: string; args: Record<string, unknown> }[] = []
       const executedTools: string[] = []
 
+      const rawResults: string[] = []
       for (const tc of toolCalls as ToolCall[]) {
         const args = JSON.parse(tc.function.arguments) as Record<string, unknown>
         const result = await executeTool(tc.function.name, args)
+        rawResults.push(result)
         toolResults.push(`[${tc.function.name}]: ${result}`)
         actions.push({ type: tc.function.name, args })
         executedTools.push(tc.function.name)
+      }
+
+      // Action-list tools: return the structured tool output directly.
+      // A second LLM pass compresses these lists and drops business names —
+      // the operator needs the full list, not a summary.
+      const directRenderTools = new Set(['daily_call_list', 'get_quality_leads', 'scan_leads', 'disqualify_low_quality', 'get_funnel_metrics'])
+      if (executedTools.some((name) => directRenderTools.has(name))) {
+        return Response.json({
+          reply: rawResults.join('\n\n'),
+          actions,
+          tool_calls: executedTools,
+          tool_count: executedTools.length,
+        })
       }
 
       const { content: finalReply } = await callWithOperation(
@@ -1047,6 +1123,10 @@ export async function POST(req: Request) {
         800
       )
 
+      if (!finalReply) {
+        console.error('JARVIS final reply empty after tool calls:', executedTools.join(','))
+      }
+
       return Response.json({
         reply: finalReply || toolResults.join('\n'),
         actions,
@@ -1055,10 +1135,15 @@ export async function POST(req: Request) {
       })
     }
 
+    if (!content) {
+      console.error('JARVIS empty completion (no tool calls) for message:', String(message).slice(0, 120))
+    }
+
     return Response.json({
-      reply: content || '// Yanıt üretilemedi.',
+      reply: content || 'Yanıt üretilemedi — lütfen komutu tekrar gönderin.',
       tool_calls: [],
       tool_count: 0,
+      retryable: !content,
     })
 
   } catch (error: unknown) {

@@ -144,7 +144,7 @@ export default function IcraatFirsatlariPage() {
               >
                 {directive.running && directive.label === 'Aktif sprint'
                   ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Devrediliyor…</>
-                  : <><Rocket className="w-3.5 h-3.5" /> Sprint'i ajanlara devret</>}
+                  : <><Rocket className="w-3.5 h-3.5" /> Sprint&apos;i ajanlara devret</>}
               </button>
             </div>
           </div>

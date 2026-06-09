@@ -52,9 +52,11 @@ const NAV_GROUPS = [
 interface SidebarProps {
   isCollapsed: boolean
   onToggle: () => void
+  /** Called when a nav link is clicked — used to close the mobile drawer. */
+  onNavigate?: () => void
 }
 
-export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
+export function Sidebar({ isCollapsed, onToggle, onNavigate }: SidebarProps) {
   const pathname = usePathname()
 
   return (
@@ -103,6 +105,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                   <Link
                     key={item.href}
                     href={item.href}
+                    onClick={onNavigate}
                     title={isCollapsed ? item.label : undefined}
                     className={`flex items-center gap-3 px-2.5 py-2.5 rounded-lg transition-all duration-200 ${
                       isCollapsed ? 'justify-center' : ''
@@ -133,6 +136,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
         )}
         <Link
           href="/settings"
+          onClick={onNavigate}
           title={isCollapsed ? 'Ayarlar' : undefined}
           className={`flex items-center gap-3 px-2.5 py-2.5 rounded-lg transition-all duration-200 ${
             isCollapsed ? 'justify-center' : ''

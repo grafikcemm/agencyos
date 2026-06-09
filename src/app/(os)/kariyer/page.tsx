@@ -219,7 +219,7 @@ export default function KariyerPage() {
       ) : visible.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-3 text-[var(--text-muted)]">
           <Search className="w-8 h-8" />
-          <p className="text-xs font-bold tracking-wide">Henüz ilan yok. "İlan Tara" ile başlat.</p>
+          <p className="text-xs font-bold tracking-wide">Henüz ilan yok. &quot;İlan Tara&quot; ile başlat.</p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-6 space-y-3 scrollbar-thin">

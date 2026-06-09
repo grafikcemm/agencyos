@@ -5,6 +5,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 // Next.js proxy entrypoint still resolves.
 
 export async function proxy(_request: NextRequest) {
+  void _request
   return NextResponse.next()
 }
 

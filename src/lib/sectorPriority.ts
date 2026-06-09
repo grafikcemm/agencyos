@@ -23,7 +23,7 @@ export const SECTOR_PROFILES: SectorProfile[] = [
     priority: 95,
     wave: 1,
     primaryNeed: 'Hızlı lead dönüşü, randevu, WhatsApp, yorum yönetimi, eski hasta canlandırma',
-    recommendedOfferIds: ['ai_lead_response', 'appointment_recovery', 'review_engine', 'old_patient_reactivation'],
+    recommendedOfferIds: ['ai_lead_response', 'ai_sales_assistant', 'appointment_recovery', 'review_engine', 'old_patient_reactivation'],
     ticketBand: 'premium',
   },
   {
@@ -113,7 +113,7 @@ export const SECTOR_PROFILES: SectorProfile[] = [
     priority: 68,
     wave: 2,
     primaryNeed: 'Randevu, no-show, Google yorum, Instagram içerik',
-    recommendedOfferIds: ['appointment_recovery', 'review_engine', 'social_media_pack'],
+    recommendedOfferIds: ['ai_sales_assistant', 'appointment_recovery', 'review_engine', 'social_media_pack'],
     ticketBand: 'low',
   },
 ]
