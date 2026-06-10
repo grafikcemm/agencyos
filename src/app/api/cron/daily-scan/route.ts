@@ -4,6 +4,7 @@ import { normalizeLocation, normalizeSector } from '@/lib/geo'
 import { runQualityEngine } from '@/lib/highQualityLeadEngine'
 import { runEvidenceEngine } from '@/lib/evidenceEngine'
 import { guardCronEnv, notifyOps } from '@/lib/env'
+import { buildDailySectorPlan, loadSectorEngagement } from '@/lib/sectorRotation'
 
 export async function GET(req: Request) {
   return handleScan(req)
@@ -98,21 +99,21 @@ async function handleScan(req: Request) {
 
     // District & Sector Rotation Parameters
     const districts = ['Kadıköy', 'Beşiktaş', 'Üsküdar', 'Şişli', 'Bakırköy', 'Ataşehir', 'Maltepe', 'Sarıyer']
-    const sectors = [
-      { name: 'Diş Kliniği / Ağız Sağlığı', queries: ['diş hekimi', 'diş kliniği'], dbSector: 'Diş Kliniği / Ağız Sağlığı' },
-      { name: 'Medikal Estetik', queries: ['medikal estetik', 'estetik merkezi'], dbSector: 'Medikal Estetik' },
-      { name: 'Güzellik Salonu', queries: ['güzellik salonu'], dbSector: 'Güzellik Salonu' },
-      { name: 'Psikolog / Diyetisyen', queries: ['psikolog', 'diyetisyen'], dbSector: 'Psikolog / Diyetisyen' },
-      { name: 'Oto Servis / Ekspertiz', queries: ['oto servis', 'oto ekspertiz'], dbSector: 'Oto Servis / Ekspertiz' }
-    ]
 
     // Calculate daily sequence index since 2026-06-01
     const msDiff = now.getTime() - startDate.getTime()
     const daySequence = Math.floor(msDiff / (24 * 60 * 60 * 1000))
-    const baseIndex = daySequence >= 0 ? daySequence : 0
+    // dayOffset: dryRun ile rotasyon simülasyonu için (örn. ?dryRun=true&dayOffset=3)
+    const dayOffset = parseInt(searchParams.get('dayOffset') || '0', 10) || 0
+    const baseIndex = (daySequence >= 0 ? daySequence : 0) + (isDryRun ? dayOffset : 0)
+
+    // Öğrenen ağırlıklı sektör planı: ödeme gücü (ticket band) + dönüşüm geçmişi.
+    // Plan günlük deterministik sıralıdır; sektör 0'dan başlanır.
+    const engagementStats = await loadSectorEngagement()
+    const sectors = buildDailySectorPlan(baseIndex, engagementStats)
 
     let startDistrictIdx = baseIndex % districts.length
-    let startSectorIdx = baseIndex % sectors.length
+    let startSectorIdx = 0
 
     const acceptedLeads: Array<{
       id: string
@@ -233,7 +234,7 @@ async function handleScan(req: Request) {
             continue
           }
 
-          const cleanSector = normalizeSector(sector.dbSector)
+          const cleanSector = normalizeSector(sector.displayName)
           const loc = normalizeLocation('İstanbul', district)
 
           // Call runEvidenceEngine to fetch/verify website signals dynamically
@@ -390,9 +391,10 @@ async function handleScan(req: Request) {
         }
       }
 
-      // Rotate district or sector if targets not hit
+      // Rotate district; advance sector every 3 district attempts so a single day
+      // covers multiple sectors instead of exhausting all districts on one sector.
       districtIdx++
-      if (districtIdx % districts.length === 0) {
+      if (attempts % 3 === 0) {
         sectorIdx++
       }
     }
@@ -406,6 +408,7 @@ async function handleScan(req: Request) {
           status: 'success',
           scanned: scannedQueries,
           added: acceptedLeads.length,
+          sectorPlan: sectors.map(s => s.id),
           timestamp: new Date().toISOString()
         })
       }, { onConflict: 'key' })
@@ -413,6 +416,7 @@ async function handleScan(req: Request) {
 
     const responsePayload: Record<string, any> = {
       date: todayStr,
+      sectorPlan: sectors.map(s => s.id),
       scannedQueries,
       skippedDuplicates,
       acceptedLeads,

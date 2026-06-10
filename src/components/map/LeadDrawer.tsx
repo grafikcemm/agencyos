@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useEffect } from 'react'
-import { X, Phone, Globe, MapPin, Star, Zap, FileText, Briefcase, Copy, MessageCircle } from 'lucide-react'
+import { X, Phone, Globe, MapPin, Star, Zap, FileText, Briefcase, Copy, MessageCircle, Mail, RefreshCw } from 'lucide-react'
 import { enrichLead, EnrichedLead } from '@/lib/enrichLead'
 import { buildProposal } from '@/lib/proposalBuilder'
 import type { Lead, Proposal } from '@/lib/types'
@@ -68,6 +68,9 @@ export function LeadDrawer({ lead: rawLead, onClose }: LeadDrawerProps) {
   const [apolloConfigured, setApolloConfigured] = useState<boolean | null>(null)
   const [enrichingApollo, setEnrichingApollo] = useState(false)
   const [apolloResult, setApolloResult] = useState<string | null>(null)
+  const [emailDraft, setEmailDraft] = useState<{ id: string; subject: string | null; body: string } | null>(null)
+  const [draftingEmail, setDraftingEmail] = useState(false)
+  const [emailError, setEmailError] = useState<string | null>(null)
 
   useEffect(() => {
     fetch('/api/enrichment/apollo')
@@ -75,6 +78,20 @@ export function LeadDrawer({ lead: rawLead, onClose }: LeadDrawerProps) {
       .then(data => setApolloConfigured(!!data.configured))
       .catch(() => setApolloConfigured(false))
   }, [])
+
+  // Drawer açıldığında lead'in son soğuk e-posta taslağını yükle.
+  useEffect(() => {
+    let cancelled = false
+    setEmailDraft(null)
+    setEmailError(null)
+    fetch(`/api/leads/${rawLead.id}/cold-email`)
+      .then(res => res.json())
+      .then(data => {
+        if (!cancelled && data?.draft) setEmailDraft(data.draft)
+      })
+      .catch(() => { /* taslak yoksa sessiz geç */ })
+    return () => { cancelled = true }
+  }, [rawLead.id])
 
   // Close the drawer on Escape — expected behavior for an overlay panel.
   useEffect(() => {
@@ -128,6 +145,39 @@ export function LeadDrawer({ lead: rawLead, onClose }: LeadDrawerProps) {
       }
     } finally {
       setEnrichingApollo(false)
+    }
+  }
+
+  const handleDraftEmail = async () => {
+    if (draftingEmail) return
+    setDraftingEmail(true)
+    setEmailError(null)
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000)
+
+    try {
+      const res = await fetch(`/api/leads/${lead.id}/cold-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal
+      })
+      const data = await res.json()
+      if (data.success && data.draft) {
+        setEmailDraft(data.draft)
+      } else {
+        setEmailError(data.error || 'Taslak üretilemedi, tekrar deneyin.')
+      }
+    } catch (err: unknown) {
+      const errName = err instanceof Error ? err.name : ''
+      if (errName === 'AbortError') {
+        setEmailError('Zaman aşımı: taslak 30 saniye içinde üretilemedi.')
+      } else {
+        setEmailError('Bağlantı hatası oluştu.')
+      }
+    } finally {
+      clearTimeout(timeoutId)
+      setDraftingEmail(false)
     }
   }
 
@@ -433,6 +483,60 @@ export function LeadDrawer({ lead: rawLead, onClose }: LeadDrawerProps) {
               </div>
             </div>
           )}
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase">📧 Soğuk E-posta</h3>
+              {emailDraft && (
+                <button
+                  onClick={handleDraftEmail}
+                  disabled={draftingEmail}
+                  className="text-[9px] text-[var(--accent)] hover:text-[var(--accent-hover)] flex items-center gap-1 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${draftingEmail ? 'animate-spin' : ''}`} /> Yeniden Üret
+                </button>
+              )}
+            </div>
+
+            {!emailDraft && (
+              <button
+                onClick={handleDraftEmail}
+                disabled={draftingEmail}
+                className="w-full flex items-center justify-center gap-1.5 py-2 bg-[var(--bg-base)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[10px] font-bold text-[var(--text-primary)] rounded-md disabled:opacity-50"
+              >
+                <Mail className={`w-3 h-3 ${draftingEmail ? 'animate-pulse' : ''}`} />
+                {draftingEmail ? 'Taslak üretiliyor...' : 'Soğuk E-posta Oluştur'}
+              </button>
+            )}
+
+            {emailError && (
+              <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-2.5 text-[10px] text-red-400 leading-relaxed">
+                {emailError}
+              </div>
+            )}
+
+            {emailDraft && (
+              <>
+                {emailDraft.subject && (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[11px] font-bold text-[var(--text-primary)] truncate">{emailDraft.subject}</div>
+                    <button onClick={() => copyText(emailDraft.subject || '')} className="text-[9px] text-[var(--accent)] hover:text-[var(--accent-hover)] flex items-center gap-1 shrink-0">
+                      <Copy className="w-3 h-3" /> Konu
+                    </button>
+                  </div>
+                )}
+                <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg p-3 text-[11px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto scrollbar-thin">
+                  {emailDraft.body}
+                </div>
+                <button
+                  onClick={() => copyText(emailDraft.body)}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-[var(--bg-base)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[10px] font-bold text-[var(--text-primary)] rounded-md"
+                >
+                  <Copy className="w-3 h-3" /> {copied ? 'Kopyalandı ✓' : 'Gövdeyi kopyala'}
+                </button>
+              </>
+            )}
+          </div>
 
           {proposal && (
             <div className="space-y-2 border-t border-[var(--border-subtle)] pt-4">

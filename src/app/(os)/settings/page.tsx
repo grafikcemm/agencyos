@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Shield, Server, Activity, Save, AlertTriangle, Package, Trash2, RefreshCw } from 'lucide-react'
+import { Shield, Server, Activity, Save, AlertTriangle, Package, Trash2, RefreshCw, Link2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { fetchSettings, saveSetting } from '@/lib/repositories/settings'
+import { SIGNATURE_SETTING_KEYS, SIGNATURE_DEFAULTS } from '@/lib/coldEmail'
 
 interface ConfigHealth {
   success: boolean
@@ -18,6 +19,15 @@ const AGENCY_EMAIL_KEY = 'agency_email'
 const DEFAULT_AGENCY_NAME = 'GrafikCem Studio'
 const DEFAULT_AGENCY_EMAIL = 'info@grafikcem.com'
 
+const SIGNATURE_LABELS: Record<string, string> = {
+  signature_website: 'Website',
+  signature_instagram: 'Instagram',
+  signature_behance: 'Behance',
+  signature_linkedin: 'LinkedIn',
+  signature_google_business: 'Google Business',
+  signature_email: 'E-posta',
+}
+
 export default function SettingsPage() {
   const queryClient = useQueryClient()
   const [seedLoading, setSeedLoading] = useState(false)
@@ -27,6 +37,8 @@ export default function SettingsPage() {
   const [agencyNameInput, setAgencyNameInput] = useState<string | null>(null)
   const [agencyEmailInput, setAgencyEmailInput] = useState<string | null>(null)
   const [savingAgency, setSavingAgency] = useState(false)
+  const [signatureInputs, setSignatureInputs] = useState<Record<string, string>>({})
+  const [savingSignature, setSavingSignature] = useState(false)
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -68,6 +80,26 @@ export default function SettingsPage() {
       showMsg(`Kaydetme başarısız: ${message}`, false)
     } finally {
       setSavingAgency(false)
+    }
+  }
+
+  const signatureValue = (key: string): string =>
+    signatureInputs[key] ?? settings?.find((s) => s.key === key)?.value ?? SIGNATURE_DEFAULTS[key]
+
+  const handleSaveSignature = async () => {
+    setSavingSignature(true)
+    try {
+      for (const key of SIGNATURE_SETTING_KEYS) {
+        await saveSetting(key, signatureValue(key).trim())
+      }
+      await queryClient.invalidateQueries({ queryKey: ['settings'] })
+      setSignatureInputs({})
+      showMsg('✓ İmza linkleri kaydedildi.', true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bilinmeyen hata'
+      showMsg(`Kaydetme başarısız: ${message}`, false)
+    } finally {
+      setSavingSignature(false)
     }
   }
 
@@ -213,6 +245,37 @@ export default function SettingsPage() {
               Sıfırla & Yeniden Yükle
             </button>
           </div>
+        </div>
+
+        {/* E-posta İmza Linkleri */}
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-5 space-y-4">
+          <div className="flex items-center gap-2 pb-3 border-b border-[var(--border-subtle)]">
+            <Link2 className="w-3.5 h-3.5 text-[var(--accent)]" />
+            <span className="text-xs font-semibold text-[var(--text-primary)] uppercase tracking-wider">E-posta İmza Linkleri</span>
+          </div>
+          <p className="text-xs text-[var(--text-muted)]">
+            Soğuk e-posta taslaklarının sonuna otomatik eklenen imza bloğundaki linkler.
+          </p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {SIGNATURE_SETTING_KEYS.map((key) => (
+              <div key={key} className="space-y-1.5">
+                <label className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">{SIGNATURE_LABELS[key]}</label>
+                <input
+                  type="text"
+                  value={signatureValue(key)}
+                  onChange={(e) => setSignatureInputs((prev) => ({ ...prev, [key]: e.target.value }))}
+                  className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg text-sm p-2.5 text-[var(--text-primary)] outline-none focus:border-[var(--border-highlight)] transition-all"
+                />
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={handleSaveSignature}
+            disabled={savingSignature}
+            className="w-full flex items-center justify-center gap-2 py-2.5 bg-[var(--accent)] text-black text-sm font-semibold rounded-lg hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Save className="w-3.5 h-3.5" /> {savingSignature ? 'Kaydediliyor...' : 'İmza Linklerini Kaydet'}
+          </button>
         </div>
 
         {/* System logs */}
