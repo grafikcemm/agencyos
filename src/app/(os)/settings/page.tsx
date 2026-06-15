@@ -137,7 +137,7 @@ export default function SettingsPage() {
           <div className={`px-4 py-3 rounded-lg border text-xs font-medium transition-all ${
             msg.ok
               ? 'bg-[var(--accent-muted)] border-[var(--accent)]/30 text-[var(--accent)]'
-              : 'bg-red-500/10 border-red-500/30 text-red-400'
+              : 'bg-[var(--danger)]/10 border-[var(--danger)]/30 text-[var(--danger)]'
           }`}>
             {msg.text}
           </div>
@@ -207,7 +207,7 @@ export default function SettingsPage() {
                 </div>
               ))}
               {configHealth && !configHealth.healthy && (
-                <p className="text-[10px] text-red-400 pt-1">
+                <p className="text-[10px] text-[var(--danger)] pt-1">
                   ⚠ Eksik zorunlu anahtar: {configHealth.missingRequired.join(', ')}
                 </p>
               )}
@@ -307,10 +307,10 @@ export default function SettingsPage() {
         </div>
 
         {/* Danger Zone */}
-        <div className="bg-[var(--bg-surface)] border border-red-500/20 rounded-xl p-5 space-y-4">
-          <div className="flex items-center gap-2 pb-3 border-b border-red-500/20">
-            <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
-            <span className="text-xs font-semibold text-red-400 uppercase tracking-wider">Tehlikeli Alan</span>
+        <div className="bg-[var(--bg-surface)] border border-[var(--danger)]/20 rounded-xl p-5 space-y-4">
+          <div className="flex items-center gap-2 pb-3 border-b border-[var(--danger)]/20">
+            <AlertTriangle className="w-3.5 h-3.5 text-[var(--danger)]" />
+            <span className="text-xs font-semibold text-[var(--danger)] uppercase tracking-wider">Tehlikeli Alan</span>
           </div>
           <div className="flex items-center justify-between">
             <div>
@@ -319,7 +319,7 @@ export default function SettingsPage() {
             </div>
             <button
               onClick={handleClearLeads}
-              className="flex items-center gap-2 px-4 py-2 border border-red-500/40 text-red-400/50 text-xs font-semibold rounded-lg opacity-50 cursor-not-allowed shrink-0 ml-4"
+              className="flex items-center gap-2 px-4 py-2 border border-[var(--danger)]/40 text-[var(--danger)]/50 text-xs font-semibold rounded-lg opacity-50 cursor-not-allowed shrink-0 ml-4"
               title="Devre dışı — Supabase SQL Editor kullanın"
             >
               <Trash2 className="w-3.5 h-3.5" />

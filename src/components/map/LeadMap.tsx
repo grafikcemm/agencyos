@@ -21,9 +21,10 @@ const fixLeafletIcons = () => {
 
 // Custom marker icon based on status/priority
 const createCustomIcon = (status: string, priority?: string) => {
-  const accentColor = '#E8440A'
-  const successColor = '#1D9E75'
-  const mutedColor = '#737373'
+  // Calm Operator Console tokens (hex literals required inside Leaflet divIcon HTML strings)
+  const accentColor = '#5ee6b0'  // --accent (mint)
+  const successColor = '#5ee6b0' // --success
+  const mutedColor = '#5e646e'   // --text-muted
 
   if (priority === 'high') {
     return L.divIcon({
@@ -34,10 +35,10 @@ const createCustomIcon = (status: string, priority?: string) => {
     })
   }
 
-  const color = status === 'new' ? '#378ADD' :
-                status === 'contacted' ? '#BA7517' :
+  const color = status === 'new' ? '#5ac8fa' :
+                status === 'contacted' ? '#e5b567' :
                 status === 'converted' ? successColor :
-                status === 'lost' ? '#EF4444' : mutedColor
+                status === 'lost' ? '#f2555a' : mutedColor
 
   return L.divIcon({
     className: 'custom-div-icon',
@@ -89,9 +90,9 @@ function ClusterLayer({ leads, onLeadClick }: { leads: EnrichedLead[]; onLeadCli
           <div style="font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">
             ${lead.sector || ''} • ${lead.city || ''}${lead.district ? ' / ' + lead.district : ''}
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-top: 1px solid #333; border-bottom: 1px solid #333; margin-bottom: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-top: 1px solid #2a2d33; border-bottom: 1px solid #2a2d33; margin-bottom: 8px;">
             <span style="font-size: 10px; color: #999; font-weight: 700;">SKOR</span>
-            <span style="font-size: 12px; font-weight: 700; color: #E8440A;">${lead.potential_score || 0}</span>
+            <span style="font-size: 12px; font-weight: 700; color: #5ee6b0;">${lead.potential_score || 0}</span>
           </div>
         </div>
       `, { className: 'dark-popup' })
@@ -166,33 +167,33 @@ export default function LeadMap({ leads, onLeadClick }: LeadMapProps) {
           letter-spacing: 0.02em;
         }
         .cluster-small {
-          background: rgba(55, 138, 221, 0.85);
-          border: 2px solid rgba(55, 138, 221, 0.4);
-          box-shadow: 0 0 16px rgba(55, 138, 221, 0.4);
+          background: rgba(90, 200, 250, 0.85);
+          border: 2px solid rgba(90, 200, 250, 0.4);
+          box-shadow: 0 0 16px rgba(90, 200, 250, 0.4);
           width: 36px; height: 36px;
         }
         .cluster-medium {
-          background: rgba(232, 68, 10, 0.85);
-          border: 2px solid rgba(232, 68, 10, 0.4);
-          box-shadow: 0 0 20px rgba(232, 68, 10, 0.4);
+          background: rgba(94, 230, 176, 0.85);
+          border: 2px solid rgba(94, 230, 176, 0.4);
+          box-shadow: 0 0 20px rgba(94, 230, 176, 0.4);
           width: 44px; height: 44px;
           font-size: 13px;
         }
         .cluster-large {
-          background: rgba(29, 158, 117, 0.85);
-          border: 2px solid rgba(29, 158, 117, 0.4);
-          box-shadow: 0 0 24px rgba(29, 158, 117, 0.4);
+          background: rgba(94, 230, 176, 0.85);
+          border: 2px solid rgba(94, 230, 176, 0.4);
+          box-shadow: 0 0 24px rgba(94, 230, 176, 0.4);
           width: 52px; height: 52px;
           font-size: 14px;
         }
         .dark-popup .leaflet-popup-content-wrapper {
-          background: #1a1a2e;
-          color: #e0e0e0;
+          background: #1a1c20;
+          color: #e8eaed;
           border-radius: 10px;
-          border: 1px solid #333;
+          border: 1px solid #2a2d33;
         }
         .dark-popup .leaflet-popup-tip {
-          background: #1a1a2e;
+          background: #1a1c20;
         }
       `}</style>
     </div>

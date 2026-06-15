@@ -39,9 +39,9 @@ const CATEGORY_LABEL: Record<OfferCategory, string> = {
 }
 
 const CATEGORY_COLOR: Record<OfferCategory, string> = {
-  revenue: '#1D9E75',
-  operations: '#378ADD',
-  creative: '#8B5CF6',
+  revenue: '#5ee6b0',
+  operations: '#5ac8fa',
+  creative: '#8b5cf6',
 }
 
 const DIFFICULTY_LABEL: Record<string, string> = {
@@ -120,10 +120,10 @@ export default function ServicesPage() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <SummaryStat icon={Package} label="Toplam hizmet" value={String(summary.total)} color="#378ADD" />
-          <SummaryStat icon={TrendingUp} label="Para kazandıran" value={String(summary.revenueOffers)} color="#1D9E75" />
-          <SummaryStat icon={Wallet} label="Toplam aylık potansiyel" value={formatTL(summary.totalMonthly)} color="#BA7517" accent />
-          <SummaryStat icon={Target} label="Ortalama yıllık" value={formatTL(summary.avgAnnual)} color="#8B5CF6" />
+          <SummaryStat icon={Package} label="Toplam hizmet" value={String(summary.total)} color="#5ac8fa" />
+          <SummaryStat icon={TrendingUp} label="Para kazandıran" value={String(summary.revenueOffers)} color="#5ee6b0" />
+          <SummaryStat icon={Wallet} label="Toplam aylık potansiyel" value={formatTL(summary.totalMonthly)} color="#e5b567" accent />
+          <SummaryStat icon={Target} label="Ortalama yıllık" value={formatTL(summary.avgAnnual)} color="#8b5cf6" />
         </div>
 
         <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-3 flex items-center gap-3 flex-wrap">
@@ -271,7 +271,7 @@ export default function ServicesPage() {
 
                     {offer.antiPatterns.length > 0 && (
                       <div className="space-y-1">
-                        <div className="text-[9px] font-bold uppercase tracking-widest text-[#EF4444] flex items-center gap-1">
+                        <div className="text-[9px] font-bold uppercase tracking-widest text-[var(--danger)] flex items-center gap-1">
                           <AlertTriangle className="w-2.5 h-2.5" />
                           Anti-pattern
                         </div>
@@ -340,7 +340,7 @@ function SummaryStat({ icon: Icon, label, value, color, accent }: { icon: any; l
       </div>
       <div className="min-w-0">
         <div className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)] truncate">{label}</div>
-        <div className={`text-sm font-black truncate ${accent ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{value}</div>
+        <div className={`num text-sm font-black truncate ${accent ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{value}</div>
       </div>
     </div>
   )
@@ -350,7 +350,7 @@ function PriceCell({ label, value, accent }: { label: string; value: string; acc
   return (
     <div className="text-center">
       <div className="text-[8px] font-bold uppercase tracking-widest text-[var(--text-muted)]">{label}</div>
-      <div className={`text-[11px] font-black mt-0.5 ${accent ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{value}</div>
+      <div className={`num text-[11px] font-black mt-0.5 ${accent ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{value}</div>
     </div>
   )
 }

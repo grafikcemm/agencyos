@@ -7,12 +7,12 @@ import { LeadDrawer } from '@/components/map/LeadDrawer'
 import { enrichLead, EnrichedLead } from '@/lib/enrichLead'
 
 const COLUMNS = [
-  { id: 'new', title: 'YENİ', color: '#378ADD', icon: Star },
-  { id: 'contacted', title: 'İLETİŞİM', color: '#BA7517', icon: Phone },
+  { id: 'new', title: 'YENİ', color: '#5ac8fa', icon: Star },
+  { id: 'contacted', title: 'İLETİŞİM', color: '#e5b567', icon: Phone },
   { id: 'responded', title: 'YANIT', color: '#8B5CF6', icon: Mail },
-  { id: 'meeting', title: 'TOPLANTI', color: '#3B82F6', icon: Calendar },
-  { id: 'proposal', title: 'TEKLİF', color: '#E8440A', icon: ChevronRight },
-  { id: 'converted', title: 'KAZANILDI', color: '#1D9E75', icon: TrendingUp },
+  { id: 'meeting', title: 'TOPLANTI', color: '#5ac8fa', icon: Calendar },
+  { id: 'proposal', title: 'TEKLİF', color: '#5ee6b0', icon: ChevronRight },
+  { id: 'converted', title: 'KAZANILDI', color: '#5ee6b0', icon: TrendingUp },
 ]
 
 function formatTL(n: number): string {
@@ -93,12 +93,12 @@ export default function PipelinePage() {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="px-4 py-3 border-b border-[var(--border-subtle)] shrink-0 bg-[var(--bg-base)]">
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
-          <SummaryCard icon={Flame} label="Bugün takip" value={summary.today} color="#E8440A" />
-          <SummaryCard icon={Star} label="A-Tier Müşteri" value={summary.hot} color="#1D9E75" />
+          <SummaryCard icon={Flame} label="Bugün takip" value={summary.today} color="#5ee6b0" />
+          <SummaryCard icon={Star} label="A-Tier Müşteri" value={summary.hot} color="#5ee6b0" />
           <SummaryCard icon={FileText} label="Teklifte" value={summary.proposals} color="#8B5CF6" />
-          <SummaryCard icon={AlertTriangle} label="Geciken" value={summary.overdue} color="#EF4444" />
-          <SummaryCard icon={Wallet} label="Potansiyel MRR" value={formatTL(summary.potentialMRR)} color="#BA7517" />
-          <SummaryCard icon={TrendingUp} label="Kazanılan MRR" value={formatTL(summary.wonMRR)} color="#1D9E75" />
+          <SummaryCard icon={AlertTriangle} label="Geciken" value={summary.overdue} color="#f2555a" />
+          <SummaryCard icon={Wallet} label="Potansiyel MRR" value={formatTL(summary.potentialMRR)} color="#e5b567" />
+          <SummaryCard icon={TrendingUp} label="Kazanılan MRR" value={formatTL(summary.wonMRR)} color="#5ee6b0" />
         </div>
       </div>
 
@@ -138,11 +138,11 @@ export default function PipelinePage() {
                                   snapshot.isDragging
                                     ? 'shadow-xl border-[var(--accent)] rotate-1'
                                     : lead.nextAction.isOverdue
-                                      ? 'border-[#EF4444]/40 hover:border-[#EF4444]'
+                                      ? 'border-[var(--danger)]/40 hover:border-[var(--danger)]'
                                       : lead.next_action_priority === 'call_now'
-                                        ? 'border-[#E8440A]/50 bg-[#E8440A]/5 hover:border-[#E8440A]'
+                                        ? 'border-[var(--accent)]/50 bg-[var(--accent)]/5 hover:border-[var(--accent)]'
                                         : lead.lead_tier === 'A'
-                                          ? 'border-[#1D9E75]/30 hover:border-[#1D9E75]'
+                                          ? 'border-[var(--success)]/30 hover:border-[var(--success)]'
                                           : 'border-[var(--border-subtle)] hover:border-[var(--accent)]/40'
                                 }`}
                               >
@@ -150,10 +150,10 @@ export default function PipelinePage() {
                                   <h4 className="text-xs font-semibold text-[var(--text-primary)] leading-tight line-clamp-2 flex-1">{lead.business_name}</h4>
                                   <div className="flex items-center gap-1 shrink-0">
                                     {lead.nextAction.isOverdue && (
-                                      <AlertTriangle className="w-3 h-3 text-[#EF4444]" />
+                                      <AlertTriangle className="w-3 h-3 text-[var(--danger)]" />
                                     )}
                                     {lead.lead_tier === 'A' && (
-                                      <Star className="w-3 h-3 text-[#1D9E75] fill-current" />
+                                      <Star className="w-3 h-3 text-[var(--success)] fill-current" />
                                     )}
                                   </div>
                                 </div>
@@ -172,16 +172,16 @@ export default function PipelinePage() {
                                         : lead.lead_tier === 'B'
                                           ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                                           : lead.lead_tier === 'C'
-                                            ? 'bg-orange-500/10 text-orange-400 border-orange-500/20'
+                                            ? 'bg-[var(--warning)]/10 text-[var(--warning)] border-[var(--warning)]/20'
                                             : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
                                     }`}>
                                       {lead.lead_tier}-TIER
                                     </span>
-                                    <span className="text-[9px] font-bold text-[var(--text-primary)]">Skor: {lead.quality_score || 0}</span>
+                                    <span className="text-[9px] font-bold text-[var(--text-primary)]">Skor: <span className="num">{lead.quality_score || 0}</span></span>
                                   </div>
                                   {lead.conversion_probability !== undefined && (
                                     <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-                                      % {lead.conversion_probability} İkna
+                                      <span className="num">% {lead.conversion_probability}</span> İkna
                                     </span>
                                   )}
                                 </div>
@@ -193,7 +193,7 @@ export default function PipelinePage() {
                                 )}
 
                                 <div className={`text-[9px] font-bold uppercase tracking-wide flex items-center gap-1 ${
-                                  lead.nextAction.isOverdue ? 'text-[#EF4444]' : lead.next_action_priority === 'call_now' ? 'text-[#E8440A]' : 'text-[var(--text-muted)]'
+                                  lead.nextAction.isOverdue ? 'text-[var(--danger)]' : lead.next_action_priority === 'call_now' ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
                                 }`}>
                                   <Clock className="w-2.5 h-2.5" />
                                   <span className="truncate">{lead.next_action}</span>
@@ -240,7 +240,7 @@ function SummaryCard({ icon: Icon, label, value, color }: { icon: React.Componen
       </div>
       <div className="min-w-0">
         <div className="text-[8px] font-bold text-[var(--text-muted)] uppercase tracking-widest truncate">{label}</div>
-        <div className="text-sm font-black text-[var(--text-primary)] leading-tight truncate">{value}</div>
+        <div className="num text-sm font-black text-[var(--text-primary)] leading-tight truncate">{value}</div>
       </div>
     </div>
   )

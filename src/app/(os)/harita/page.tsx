@@ -58,10 +58,10 @@ const DISTRICT_MAP: Record<string, string[]> = {
 }
 
 const STATUS_FILTERS = [
-  { key: 'new', label: 'YENİ', color: '#378ADD' },
-  { key: 'contacted', label: 'İLETİŞİM', color: '#BA7517' },
-  { key: 'converted', label: 'KAZANILDI', color: '#1D9E75' },
-  { key: 'lost', label: 'KAYIP', color: '#EF4444' },
+  { key: 'new', label: 'YENİ', color: 'var(--info)' },
+  { key: 'contacted', label: 'İLETİŞİM', color: 'var(--warning)' },
+  { key: 'converted', label: 'KAZANILDI', color: 'var(--success)' },
+  { key: 'lost', label: 'KAYIP', color: 'var(--danger)' },
 ]
 
 function formatTL(n: number): string {
@@ -435,7 +435,7 @@ export default function HaritaPage() {
           onClick={() => setOnlyAds(!onlyAds)}
           className={`px-2.5 py-1 text-[10px] font-bold tracking-wider rounded-lg border transition-all shrink-0 ${
             onlyAds
-              ? 'border-orange-500/40 bg-orange-500/10 text-orange-400 font-extrabold'
+              ? 'border-[var(--accent)]/40 bg-[var(--accent-muted)] text-[var(--accent)] font-extrabold'
               : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] bg-[var(--bg-elevated)]'
           }`}
         >

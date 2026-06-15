@@ -52,7 +52,13 @@ const SUB_SCORE_LABELS: Record<string, string> = {
   trustSignals: 'Güven Sinyalleri',
 }
 
-export function LeadDrawer({ lead: rawLead, onClose }: LeadDrawerProps) {
+export function LeadDrawer(props: LeadDrawerProps) {
+  // Remount the drawer when the selected lead changes so per-lead state
+  // (email draft, apollo result) resets cleanly — no setState-in-effect needed.
+  return <LeadDrawerInner key={props.lead.id} {...props} />
+}
+
+function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
   const lead: EnrichedLead = useMemo(() => {
     if (rawLead && 'nextAction' in rawLead && 'scores' in rawLead) {
       return rawLead as EnrichedLead
@@ -82,8 +88,6 @@ export function LeadDrawer({ lead: rawLead, onClose }: LeadDrawerProps) {
   // Drawer açıldığında lead'in son soğuk e-posta taslağını yükle.
   useEffect(() => {
     let cancelled = false
-    setEmailDraft(null)
-    setEmailError(null)
     fetch(`/api/leads/${rawLead.id}/cold-email`)
       .then(res => res.json())
       .then(data => {

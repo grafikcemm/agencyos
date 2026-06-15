@@ -12,6 +12,15 @@ import { dbGet } from '@/lib/repositories/base'
 const MONTH_LABELS_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
 const USD_TO_TL = 38
 
+// Kategori adından 3 harfli kısa kod (cüzdan rozeti).
+function walletCode(name: string): string {
+  return (name || '—').slice(0, 3).toLocaleUpperCase('tr-TR')
+}
+
+// TL kısa formatı (kuruşsuz).
+const walletTL = (amount: number): string =>
+  new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(amount || 0)
+
 interface CashFlowPoint {
   name: string
   inflow: number
@@ -111,17 +120,22 @@ interface DashboardClientProps {
   followUps: DashboardFollowUp[]
   actionLeads?: EnrichedLead[]
   sectorSuggestions?: { sector: string; query: string; reason: string }[]
+  sectorWallets?: { name: string; amount: number; share: number }[]
 }
 
+// Status colors mirror the Calm Operator Console semantic tokens (globals.css).
+// Hex (not var()) is required here because these values are interpolated into
+// hex-alpha suffixes (`${color}1f`) and inline styles where var()-inside-color-mix
+// is unreliable cross-browser (Safari/Firefox). Keep in sync with globals.css.
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  active: { label: 'Aktif', color: '#22c55e' },
-  completed: { label: 'Tamamlandı', color: '#3b82f6' },
-  pending: { label: 'Bekliyor', color: '#f59e0b' },
-  cancelled: { label: 'İptal', color: '#ef4444' },
-  new: { label: 'Yeni', color: '#3b82f6' },
-  contacted: { label: 'İletişim', color: '#f59e0b' },
-  converted: { label: 'Kazanıldı', color: '#22c55e' },
-  proposal: { label: 'Teklif', color: '#E8440A' },
+  active: { label: 'Aktif', color: '#5ee6b0' },        // --success
+  completed: { label: 'Tamamlandı', color: '#5ac8fa' }, // --info
+  pending: { label: 'Bekliyor', color: '#e5b567' },     // --warning
+  cancelled: { label: 'İptal', color: '#f2555a' },      // --danger
+  new: { label: 'Yeni', color: '#5ac8fa' },             // --info
+  contacted: { label: 'İletişim', color: '#e5b567' },   // --warning
+  converted: { label: 'Kazanıldı', color: '#5ee6b0' },  // --success
+  proposal: { label: 'Teklif', color: '#5ee6b0' },      // --accent
 }
 
 export function DashboardClient(props: DashboardClientProps) {
@@ -219,16 +233,16 @@ export function DashboardClient(props: DashboardClientProps) {
           {/* Page Sub-Header */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="font-display text-2xl font-medium tracking-tight text-[#f5f5f7]">Komuta <span className="italic font-normal">Merkezi</span></h1>
-              <p className="text-xs text-[#5f5f69] mt-0.5">Sisteminizin genel durum özeti ve performans verileri.</p>
+              <h1 className="font-display text-2xl font-medium tracking-tight text-[var(--text-primary)]">Komuta <span className="italic font-normal">Merkezi</span></h1>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">Sisteminizin genel durum özeti ve performans verileri.</p>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-[10px] bg-[#16161b] border border-[#1c1c22] text-[#9f9fa9] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+              <span className="text-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5">
                 <Clock className="w-3.5 h-3.5 text-[var(--accent)]" /> 2026 Mayıs
               </span>
-              <button 
+              <button
                 onClick={() => window.location.reload()}
-                className="text-[10px] bg-[#16161b] border border-[#1c1c22] text-[#f5f5f7] hover:border-[var(--accent)] hover:text-[var(--accent)] font-bold px-3 py-1.5 rounded-lg transition-all"
+                className="text-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)] hover:border-[var(--accent)] hover:text-[var(--accent)] font-bold px-3 py-1.5 rounded-lg transition-all"
               >
                 Veriyi Sıfırla
               </button>
@@ -237,18 +251,18 @@ export function DashboardClient(props: DashboardClientProps) {
 
           {/* Temiz Başlangıç Hazır (Clean Production Start standby UX) */}
           {(actionLeads.length === 0 && new Date().getTime() < new Date('2026-06-01T00:00:00+03:00').getTime()) && (
-            <div className="bg-[#0b100d] border border-green-500/25 rounded-2xl p-5 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-1 shadow-[0_4px_24px_rgba(34,197,94,0.03)]">
+            <div className="bg-[color-mix(in_srgb,var(--success)_6%,var(--bg-base))] border border-[var(--success)]/25 rounded-2xl p-5 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-1 shadow-[0_4px_24px_var(--accent-glow)]">
               <div className="flex items-start gap-4">
-                <div className="p-2.5 bg-green-500/10 rounded-xl border border-green-500/20 shrink-0 text-green-400">
+                <div className="p-2.5 bg-[var(--success)]/10 rounded-xl border border-[var(--success)]/20 shrink-0 text-[var(--success)]">
                   <CheckCircle className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-black text-green-400 uppercase tracking-widest">Temiz Başlangıç Hazır</h4>
-                  <p className="text-[10px] text-[#9f9fa9] mt-1 font-medium leading-relaxed">
-                    Sistem 1 Haziran 2026 Pazartesi günü otomatik ve temiz bir başlangıç yapacak şekilde hazırlandı. 
-                    Otomatik tarama <span className="text-green-400 font-bold">1 Haziran Pazartesi 08:00 (TR)</span> saatinde başlayacaktır.
+                  <h4 className="text-xs font-black text-[var(--success)] uppercase tracking-widest">Temiz Başlangıç Hazır</h4>
+                  <p className="text-[10px] text-[var(--text-secondary)] mt-1 font-medium leading-relaxed">
+                    Sistem 1 Haziran 2026 Pazartesi günü otomatik ve temiz bir başlangıç yapacak şekilde hazırlandı.
+                    Otomatik tarama <span className="text-[var(--success)] font-bold">1 Haziran Pazartesi 08:00 (TR)</span> saatinde başlayacaktır.
                   </p>
-                  <p className="text-[9px] text-[#5f5f69] mt-1 font-bold">
+                  <p className="text-[9px] text-[var(--text-muted)] mt-1 font-bold">
                     💡 İpucu: dry-run testi şu an arka planda tam 5 adet kaliteli müşteri adayı bulabiliyor.
                   </p>
                 </div>
@@ -263,7 +277,7 @@ export function DashboardClient(props: DashboardClientProps) {
                     alert('Dry-run isteği başarısız oldu.');
                   }
                 }}
-                className="text-[10px] bg-green-500 hover:bg-green-600 text-black font-black px-4 py-2.5 rounded-xl shrink-0 transition-all shadow-[0_4px_12px_rgba(34,197,94,0.15)] flex items-center gap-1"
+                className="text-[10px] bg-[var(--success)] hover:bg-[var(--accent-hover)] text-black font-black px-4 py-2.5 rounded-xl shrink-0 transition-all shadow-[0_4px_12px_var(--accent-glow)] flex items-center gap-1"
               >
                 Dry-run Testi Yap <ChevronRight className="w-3.5 h-3.5" />
               </button>
@@ -272,12 +286,12 @@ export function DashboardClient(props: DashboardClientProps) {
 
           {/* Veri Bakımı Gerekli (Admin Maintenance Warning) */}
           {qualityMissingCount > 0 && (
-            <div className="bg-[#1c120c] border border-amber-500/30 rounded-2xl p-4 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-1">
+            <div className="bg-[color-mix(in_srgb,var(--warning)_7%,var(--bg-base))] border border-[var(--warning)]/30 rounded-2xl p-4 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-1">
               <div className="flex items-center gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                <AlertTriangle className="w-5 h-5 text-[var(--warning)] shrink-0" />
                 <div>
-                  <h4 className="text-xs font-black text-amber-400 uppercase tracking-wider">Veri Bakımı Gerekli: Eksik Kalite Skorları</h4>
-                  <p className="text-[10px] text-[#9f9fa9] mt-0.5">Sistemde {qualityMissingCount} lead için kalite skoru ve yapay zeka analizleri eksik. Doğru satış kararları için lütfen backfill çalıştırın.</p>
+                  <h4 className="text-xs font-black text-[var(--warning)] uppercase tracking-wider">Veri Bakımı Gerekli: Eksik Kalite Skorları</h4>
+                  <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">Sistemde {qualityMissingCount} lead için kalite skoru ve yapay zeka analizleri eksik. Doğru satış kararları için lütfen backfill çalıştırın.</p>
                 </div>
               </div>
               <button 
@@ -295,7 +309,7 @@ export function DashboardClient(props: DashboardClientProps) {
                     alert('Ağ hatası oluştu.');
                   }
                 }}
-                className="text-[10px] bg-amber-500 hover:bg-amber-600 text-black font-black px-4 py-2 rounded-xl shrink-0 transition-all shadow-[0_4px_12px_rgba(245,158,11,0.15)]"
+                className="text-[10px] bg-[var(--warning)] hover:brightness-110 text-black font-black px-4 py-2 rounded-xl shrink-0 transition-all shadow-[0_4px_12px_color-mix(in_srgb,var(--warning)_25%,transparent)]"
               >
                 Şimdi Backfill Çalıştır
               </button>
@@ -305,19 +319,19 @@ export function DashboardClient(props: DashboardClientProps) {
           {/* Bugün Hangi Sektörü Taramalıyım? */}
           {props.sectorSuggestions && props.sectorSuggestions.length > 0 && (
             <div className="glass-card rounded-2xl p-4">
-              <h3 className="text-xs font-black text-[#f5f5f7] uppercase tracking-wider flex items-center gap-2 mb-3">
+              <h3 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-2 mb-3">
                 <Search className="w-3.5 h-3.5 text-[var(--accent)]" />
                 Bugün Taranacak Sektörler
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                 {props.sectorSuggestions.slice(0, 3).map((s, i) => (
-                  <a key={i} href="/harita" className="bg-[#16161b] border border-[#1c1c22] hover:border-[var(--accent)] rounded-xl p-3 transition-all group">
+                  <a key={i} href="/harita" className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--accent)] rounded-xl p-3 transition-all group">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[9px] font-black text-[var(--accent)] bg-[var(--accent-muted)] px-1.5 py-0.5 rounded">#{i + 1}</span>
-                      <span className="text-[11px] font-bold text-[#f5f5f7] group-hover:text-[var(--accent)] truncate">{s.sector}</span>
+                      <span className="num text-[9px] font-black text-[var(--accent)] bg-[var(--accent-muted)] px-1.5 py-0.5 rounded">#{i + 1}</span>
+                      <span className="text-[11px] font-bold text-[var(--text-primary)] group-hover:text-[var(--accent)] truncate">{s.sector}</span>
                     </div>
-                    <p className="text-[9px] text-[#9f9fa9] leading-relaxed line-clamp-2">{s.reason}</p>
-                    <p className="text-[9px] text-[#5f5f69] mt-1">Sorgu: &quot;{s.query}&quot;</p>
+                    <p className="text-[9px] text-[var(--text-secondary)] leading-relaxed line-clamp-2">{s.reason}</p>
+                    <p className="text-[9px] text-[var(--text-muted)] mt-1">Sorgu: &quot;{s.query}&quot;</p>
                   </a>
                 ))}
               </div>
@@ -326,14 +340,14 @@ export function DashboardClient(props: DashboardClientProps) {
 
           {/* Bugünün 5 Yeni Lead'i */}
           {todaysLeads.length > 0 && (
-            <div className="bg-[#0f0f12] border border-emerald-500/20 rounded-2xl p-5 space-y-4 shadow-[0_0_24px_rgba(16,185,129,0.03)]">
+            <div className="bg-[var(--bg-surface)] border border-emerald-500/20 rounded-2xl p-5 space-y-4 shadow-[0_0_24px_rgba(16,185,129,0.03)]">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
                     <CheckCircle className="w-3.5 h-3.5" />
                     Bugünün 5 Yeni Müşteri Adayı
                   </h3>
-                  <p className="text-[10px] text-[#9f9fa9] mt-0.5">1 Haziran 2026 Pazartesi&apos;den itibaren her gün otomatik olarak taranan en taze fırsatlar.</p>
+                  <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">1 Haziran 2026 Pazartesi&apos;den itibaren her gün otomatik olarak taranan en taze fırsatlar.</p>
                 </div>
                 <span className="text-[10px] bg-emerald-500/10 text-emerald-400 font-bold px-2.5 py-1 rounded-md border border-emerald-500/20">
                   {todaysLeads.length} Yeni Lead
@@ -347,15 +361,15 @@ export function DashboardClient(props: DashboardClientProps) {
                   const pitchText = l.first_30_seconds_pitch || l.first_message || ''
                   
                   return (
-                    <div 
-                      key={l.id} 
-                      className="bg-[#16161b] border border-[#1c1c22] hover:border-emerald-500/30 rounded-xl p-4 flex flex-col justify-between transition-all duration-300 relative group cursor-pointer"
+                    <div
+                      key={l.id}
+                      className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-emerald-500/30 rounded-xl p-4 flex flex-col justify-between transition-all duration-300 relative group cursor-pointer"
                       onClick={() => setSelectedLead(l)}
                     >
                       <div className="space-y-2">
                         {/* Header: Name & Tier */}
                         <div className="flex items-start justify-between gap-2">
-                          <h4 className="text-xs font-extrabold text-[#f5f5f7] line-clamp-1 group-hover:text-emerald-400 transition-colors">{l.business_name}</h4>
+                          <h4 className="text-xs font-extrabold text-[var(--text-primary)] line-clamp-1 group-hover:text-emerald-400 transition-colors">{l.business_name}</h4>
                           <span className={`text-[8px] font-black px-1.5 py-0.5 rounded shrink-0 ${
                             isA ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
                           }`}>
@@ -364,14 +378,14 @@ export function DashboardClient(props: DashboardClientProps) {
                         </div>
 
                         {/* Sector / District */}
-                        <p className="text-[9px] text-[#9f9fa9] font-medium truncate">
-                          {l.sector} · <span className="text-[#5f5f69]">{l.district}</span>
+                        <p className="text-[9px] text-[var(--text-secondary)] font-medium truncate">
+                          {l.sector} · <span className="text-[var(--text-muted)]">{l.district}</span>
                         </p>
 
                         {/* Why Now */}
-                        <div className="bg-[#1c1c22] rounded-lg p-2.5 space-y-1">
+                        <div className="bg-[var(--bg-elevated)] rounded-lg p-2.5 space-y-1">
                           <span className="text-[8px] font-black text-emerald-500 uppercase tracking-wider block">Neden Şimdi?</span>
-                          <p className="text-[9px] text-[#f5f5f7] leading-relaxed line-clamp-3 italic">
+                          <p className="text-[9px] text-[var(--text-primary)] leading-relaxed line-clamp-3 italic">
                             &quot;{l.why_this_will_convert || l.why_now || 'Güçlü dönüşüm sinyalleri.'}&quot;
                           </p>
                         </div>
@@ -380,7 +394,7 @@ export function DashboardClient(props: DashboardClientProps) {
                         {pitchText && (
                           <div className="bg-emerald-500/5 rounded-lg p-2.5 space-y-1 border border-emerald-500/10 relative group/pitch">
                             <span className="text-[8px] font-black text-emerald-400 uppercase tracking-wider block">Açılış Pitch / İlk Mesaj</span>
-                            <p className="text-[9px] text-[#9f9fa9] leading-relaxed line-clamp-4 select-all">
+                            <p className="text-[9px] text-[var(--text-secondary)] leading-relaxed line-clamp-4 select-all">
                               {pitchText}
                             </p>
                             <button
@@ -389,7 +403,7 @@ export function DashboardClient(props: DashboardClientProps) {
                                 navigator.clipboard.writeText(pitchText);
                                 alert('Pitch kopyalandı!');
                               }}
-                              className="absolute top-1 right-1 opacity-0 group-hover/pitch:opacity-100 bg-[#16161b] border border-[#1c1c22] hover:border-emerald-400 p-1 rounded transition-all text-[8px] text-emerald-400 font-bold"
+                              className="absolute top-1 right-1 opacity-0 group-hover/pitch:opacity-100 bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-emerald-400 p-1 rounded transition-all text-[8px] text-emerald-400 font-bold"
                             >
                               Kopyala
                             </button>
@@ -398,8 +412,8 @@ export function DashboardClient(props: DashboardClientProps) {
                       </div>
 
                       {/* Footer: Action Button */}
-                      <div className="pt-3 border-t border-[#1c1c22]/50 mt-3 flex items-center justify-between">
-                        <span className="text-[9px] text-[#5f5f69] font-bold uppercase">Aksiyon</span>
+                      <div className="pt-3 border-t border-[var(--border-subtle)]/50 mt-3 flex items-center justify-between">
+                        <span className="text-[9px] text-[var(--text-muted)] font-bold uppercase">Aksiyon</span>
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 ${
                           l.next_action_priority === 'call_now' ? 'bg-amber-500/15 text-amber-400' : 'bg-purple-500/15 text-purple-400'
                         }`}>
@@ -417,13 +431,13 @@ export function DashboardClient(props: DashboardClientProps) {
           {/* Bugünün Satış Planı */}
           {(plan.overdue.length > 0 || plan.hottest.length > 0 || plan.fastMoney.length > 0) && (
             <div className="glass-card rounded-2xl overflow-hidden">
-              <div className="px-5 py-4 border-b border-[#1c1c22] flex items-center justify-between flex-wrap gap-3">
+              <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between flex-wrap gap-3">
                 <div>
-                  <h3 className="text-xs font-black text-[#f5f5f7] uppercase tracking-wider flex items-center gap-2">
+                  <h3 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-wider flex items-center gap-2">
                     <Flame className="w-3.5 h-3.5 text-[var(--accent)]" />
                     Bugünün Satış Planı
                   </h3>
-                  <p className="text-[9px] text-[#5f5f69] mt-0.5">
+                  <p className="text-[9px] text-[var(--text-muted)] mt-0.5">
                     {actionLeads.length} lead taranıyor · Potansiyel aylık değer ₺{Math.round(plan.potentialMRR / 1000)}k
                   </p>
                 </div>
@@ -431,11 +445,11 @@ export function DashboardClient(props: DashboardClientProps) {
                   Pipeline&apos;a git <ArrowRight className="w-3 h-3" />
                 </a>
               </div>
-              <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-[#1c1c22]">
+              <div className="grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-[var(--border-subtle)]">
                 <PlanColumn
                   title="Geciken Takipler"
                   icon={AlertTriangle}
-                  color="#EF4444"
+                  color="var(--danger)"
                   leads={plan.overdue}
                   emptyMessage="Geciken takip yok — temiz."
                   onSelect={setSelectedLead}
@@ -443,7 +457,7 @@ export function DashboardClient(props: DashboardClientProps) {
                 <PlanColumn
                   title="Bugün Aranacak A-Tier Müşteriler"
                   icon={Star}
-                  color="#1D9E75"
+                  color="var(--success)"
                   leads={plan.hottest}
                   emptyMessage="Yüksek kaliteli A-tier müşteri bulunamadı."
                   onSelect={setSelectedLead}
@@ -463,36 +477,36 @@ export function DashboardClient(props: DashboardClientProps) {
           {/* ROW 1: 3 Premium Cards (Glowing Net Gelir + 2 Charcoal Glass) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             
-            {/* Card 1: My Balance (Active Fintrixity Orange Gradient) */}
-            <div className="bg-gradient-to-br from-[#ff4e17] via-[#ff6a1a] to-[#ff8c05] text-white rounded-2xl p-5 shadow-[0_8px_30px_rgba(255,78,23,0.15)] flex flex-col justify-between min-h-[160px] relative overflow-hidden group hover:scale-[1.01] transition-all duration-300">
+            {/* Card 1: My Balance (Mint accent gradient — Calm Operator Console) */}
+            <div className="bg-gradient-to-br from-[var(--accent)] via-[var(--accent-2)] to-[var(--accent-hover)] text-black rounded-2xl p-5 shadow-[0_8px_30px_var(--accent-glow)] flex flex-col justify-between min-h-[160px] relative overflow-hidden group hover:scale-[1.01] transition-all duration-300">
               {/* Background Glow Ring */}
               <div className="absolute -right-10 -top-10 w-32 h-32 rounded-full bg-white/10 blur-xl pointer-events-none group-hover:scale-125 transition-all duration-500" />
-              
+
               <div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-white/15 flex items-center justify-center">
-                      <Wallet className="w-4 h-4 text-white" />
+                    <div className="w-7 h-7 rounded-full bg-black/15 flex items-center justify-center">
+                      <Wallet className="w-4 h-4 text-black" />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-white/80">Kasa & Net Gelir</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-black/70">Kasa & Net Gelir</span>
                   </div>
-                  <div className="flex items-center gap-1 text-[10px] font-black bg-white/20 px-2 py-0.5 rounded-full">
-                    {props.revenueUp ? <TrendingUp className="w-3 h-3 text-white" /> : <TrendingDown className="w-3 h-3 text-white" />}
+                  <div className="flex items-center gap-1 text-[10px] font-black bg-black/15 px-2 py-0.5 rounded-full num">
+                    {props.revenueUp ? <TrendingUp className="w-3 h-3 text-black" /> : <TrendingDown className="w-3 h-3 text-black" />}
                     %{props.revenueTrend}
                   </div>
                 </div>
 
                 <div className="mt-4">
-                  <div className="text-3xl font-black tracking-tight leading-none lira">
+                  <div className="text-3xl font-black tracking-tight leading-none num lira">
                     ₺{props.monthlyRevenue.toLocaleString('tr-TR')}
                   </div>
-                  <p className="text-[10px] text-white/70 mt-1.5 font-medium">Bu ay toplanan net ciro</p>
+                  <p className="text-[10px] text-black/60 mt-1.5 font-medium">Bu ay toplanan net ciro</p>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t border-white/10 mt-2">
-                <span className="text-[9px] font-black uppercase tracking-widest text-white/80">Detayları İncele</span>
-                <ArrowRight className="w-3.5 h-3.5 text-white group-hover:translate-x-1 transition-all" />
+              <div className="flex items-center justify-between pt-4 border-t border-black/10 mt-2">
+                <span className="text-[9px] font-black uppercase tracking-widest text-black/70">Detayları İncele</span>
+                <ArrowRight className="w-3.5 h-3.5 text-black group-hover:translate-x-1 transition-all" />
               </div>
             </div>
 
@@ -501,27 +515,27 @@ export function DashboardClient(props: DashboardClientProps) {
               <div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-[#16161b] flex items-center justify-center">
+                    <div className="w-7 h-7 rounded-full bg-[var(--bg-elevated)] flex items-center justify-center">
                       <CheckCircle className="w-4 h-4 text-[var(--accent)]" />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-[#9f9fa9]">Hedef Projeksiyon</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-secondary)]">Hedef Projeksiyon</span>
                   </div>
-                  <span className="text-[9px] font-bold bg-[var(--accent-muted)] border border-[var(--accent)]/15 text-[var(--accent)] px-2 py-0.5 rounded-full">
+                  <span className="num text-[9px] font-bold bg-[var(--accent-muted)] border border-[var(--accent)]/15 text-[var(--accent)] px-2 py-0.5 rounded-full">
                     %{props.revenuePercent.toFixed(0)} Tamamlandı
                   </span>
                 </div>
 
                 <div className="mt-4">
-                  <div className="text-2xl font-black tracking-tight text-[#f5f5f7] lira">
+                  <div className="text-2xl font-black tracking-tight text-[var(--text-primary)] num lira">
                     ₺{remainingTarget.toLocaleString('tr-TR')}
                   </div>
-                  <p className="text-[10px] text-[#5f5f69] mt-1.5 font-medium">Hedefe kalan ciro miktarı</p>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1.5 font-medium">Hedefe kalan ciro miktarı</p>
                 </div>
               </div>
 
-              <div className="w-full bg-[#16161b] h-1.5 rounded-full overflow-hidden mt-3">
-                <div 
-                  className="bg-gradient-to-r from-[#ff4e17] to-[#ff8c05] h-full rounded-full transition-all duration-1000" 
+              <div className="w-full bg-[var(--bg-elevated)] h-1.5 rounded-full overflow-hidden mt-3">
+                <div
+                  className="bg-gradient-to-r from-[var(--accent)] to-[var(--accent-hover)] h-full rounded-full transition-all duration-1000"
                   style={{ width: `${props.revenuePercent}%` }}
                 />
               </div>
@@ -532,25 +546,25 @@ export function DashboardClient(props: DashboardClientProps) {
               <div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-[#16161b] flex items-center justify-center">
-                      <Cpu className="w-4 h-4 text-[#3b82f6]" />
+                    <div className="w-7 h-7 rounded-full bg-[var(--bg-elevated)] flex items-center justify-center">
+                      <Cpu className="w-4 h-4 text-[var(--info)]" />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-[#9f9fa9]">Yapay Zekâ Altyapısı</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-secondary)]">Yapay Zekâ Altyapısı</span>
                   </div>
-                  <div className="w-2 h-2 rounded-full bg-[#22c55e] animate-pulse" />
+                  <div className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse" />
                 </div>
 
                 <div className="mt-4">
-                  <div className="text-2xl font-black tracking-tight text-[#f5f5f7]">
+                  <div className="text-2xl font-black tracking-tight text-[var(--text-primary)] num">
                     ${props.aiStats.spentUsd.toFixed(2)}
                   </div>
-                  <p className="text-[10px] text-[#5f5f69] mt-1.5 font-medium">Kullanılan limit: %{props.aiStats.percentUsed} (Aylık ${props.aiStats.capUsd})</p>
+                  <p className="text-[10px] text-[var(--text-muted)] mt-1.5 font-medium">Kullanılan limit: %{props.aiStats.percentUsed} (Aylık ${props.aiStats.capUsd})</p>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t border-[#1c1c22] mt-2">
-                <span className="text-[9px] font-black uppercase tracking-widest text-[#5f5f69]">Altyapı Verimliliği</span>
-                <span className="text-[10px] font-black text-[#22c55e]">%99.8 Aktif</span>
+              <div className="flex items-center justify-between pt-4 border-t border-[var(--border-subtle)] mt-2">
+                <span className="text-[9px] font-black uppercase tracking-widest text-[var(--text-muted)]">Altyapı Verimliliği</span>
+                <span className="num text-[10px] font-black text-[var(--success)]">%99.8 Aktif</span>
               </div>
             </div>
 
@@ -562,82 +576,72 @@ export function DashboardClient(props: DashboardClientProps) {
             {/* Left Col (5/12 width): My Wallet style Active Sectors */}
             <div className="lg:col-span-5 glass-card rounded-2xl p-5 flex flex-col justify-between">
               <div>
-                <div className="flex items-center justify-between mb-4 border-b border-[#1c1c22] pb-3">
+                <div className="flex items-center justify-between mb-4 border-b border-[var(--border-subtle)] pb-3">
                   <div>
-                    <h3 className="text-xs font-black text-[#f5f5f7] uppercase tracking-wider">Aktif Sektörler</h3>
-                    <p className="text-[9px] text-[#5f5f69] mt-0.5">Sektör bazlı ciro dağılımları ve cüzdan limitleri</p>
+                    <h3 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-wider">Aktif Sektörler</h3>
+                    <p className="text-[9px] text-[var(--text-muted)] mt-0.5">Sektör bazlı ciro dağılımları ve cüzdan limitleri</p>
                   </div>
-                  <button className="text-[9px] bg-[#16161b] border border-[#1c1c22] hover:border-[var(--accent)] hover:text-[var(--accent)] text-[#9f9fa9] font-bold px-2 py-1 rounded transition-all">
+                  <button className="text-[9px] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)] hover:text-[var(--accent)] text-[var(--text-secondary)] font-bold px-2 py-1 rounded transition-all">
                     Sektör Ekle
                   </button>
                 </div>
 
-                {/* Sektörel Cüzdanlar Grid (2x2) */}
-                <div className="grid grid-cols-2 gap-3">
-                  {[
-                    { name: 'Özel Sağlık', code: 'SAG', amount: '₺54.678', limit: 'Limit: ₺100k', active: true, color: '#22c55e' },
-                    { name: 'E-Ticaret', code: 'ETC', amount: '₺28.345', limit: 'Limit: ₺50k', active: true, color: '#22c55e' },
-                    { name: 'Lojistik', code: 'LOJ', amount: '₺20.517', limit: 'Limit: ₺40k', active: true, color: '#3b82f6' },
-                    { name: 'Sigorta / Diğer', code: 'SGR', amount: '₺12.000', limit: 'Limit: ₺35k', active: false, color: '#5f5f69' },
-                  ].map((wallet, idx) => (
-                    <div 
-                      key={idx} 
-                      className={`p-3.5 rounded-xl border transition-all duration-300 hover:scale-[1.02] flex flex-col justify-between min-h-[100px] ${
-                        wallet.active 
-                          ? 'bg-[#16161b] border-[#1c1c22] hover:border-[#2c2c35]' 
-                          : 'bg-[#0f0f12] border-[#1c1c22]/40 opacity-60'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="text-[9px] font-black tracking-widest text-[#5f5f69] uppercase">{wallet.code}</span>
-                        <div className="flex items-center gap-1">
-                          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: wallet.color }} />
-                          <span className="text-[8px] font-black text-[#5f5f69] uppercase">
-                            {wallet.active ? 'Aktif' : 'Pasif'}
-                          </span>
+                {/* Sektörel Cüzdanlar Grid (2x2) — gerçek kategori ciroları (bu ay tahsil edilen) */}
+                {props.sectorWallets && props.sectorWallets.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {props.sectorWallets.map((wallet, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3.5 rounded-xl border bg-[var(--bg-elevated)] border-[var(--border-subtle)] hover:border-[var(--border-highlight)] transition-all duration-300 hover:scale-[1.02] flex flex-col justify-between min-h-[100px]"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] font-black tracking-widest text-[var(--text-muted)] uppercase">{walletCode(wallet.name)}</span>
+                          <span className="num text-[8px] font-black text-[var(--accent)] uppercase">%{wallet.share}</span>
+                        </div>
+                        <div className="mt-2.5">
+                          <div className="num lira text-sm font-black text-[var(--text-primary)] truncate">{walletTL(wallet.amount)}</div>
+                          <div className="text-[8px] text-[var(--text-muted)] font-bold mt-1 uppercase tracking-wider truncate">{wallet.name}</div>
+                        </div>
+                        <div className="text-[8px] text-[var(--text-secondary)]/70 font-semibold mt-1 border-t border-[var(--border-subtle)] pt-1">
+                          Bu ay tahsil edilen ciro
                         </div>
                       </div>
-                      <div className="mt-2.5">
-                        <div className="text-sm font-black text-[#f5f5f7] truncate">{wallet.amount}</div>
-                        <div className="text-[8px] text-[#5f5f69] font-bold mt-1 uppercase tracking-wider">{wallet.name}</div>
-                      </div>
-                      <div className="text-[8px] text-[#9f9fa9]/70 font-semibold mt-1 border-t border-[#1c1c22] pt-1">
-                        {wallet.limit}
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-center py-10 px-3">
+                    <Wallet className="w-6 h-6 text-[var(--border-highlight)] mb-2" />
+                    <p className="text-[11px] text-[var(--text-secondary)] font-semibold">Henüz sektör cirosu yok</p>
+                    <p className="text-[9px] text-[var(--text-muted)] mt-1 leading-relaxed">Proje geliri tahsil edildikçe sektör dağılımı burada görünecek.</p>
+                  </div>
+                )}
               </div>
-
-              <p className="text-[9px] text-[#5f5f69] italic mt-4 text-center">
-                * Cüzdan limitleri Türkiye KOBİ müfredatı doğrultusunda dinamik hesaplanır.
-              </p>
             </div>
 
             {/* Right Col (7/12 width): Cash Flow Glowing Bar Chart */}
             <div className="lg:col-span-7 glass-card rounded-2xl p-5">
-              <div className="flex items-center justify-between mb-4 border-b border-[#1c1c22] pb-3 flex-wrap gap-2">
+              <div className="flex items-center justify-between mb-4 border-b border-[var(--border-subtle)] pb-3 flex-wrap gap-2">
                 <div>
-                  <h3 className="text-xs font-black text-[#f5f5f7] uppercase tracking-wider">Ciro Akışı</h3>
-                  <p className="text-[9px] text-[#5f5f69] mt-0.5">Gelirlerin aylık dağılımı ve nakit sirkülasyonu</p>
+                  <h3 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-wider">Ciro Akışı</h3>
+                  <p className="text-[9px] text-[var(--text-muted)] mt-0.5">Gelirlerin aylık dağılımı ve nakit sirkülasyonu</p>
                 </div>
-                <div className="flex bg-[#16161b] p-0.5 rounded-lg border border-[#1c1c22]">
-                  <button 
+                <div className="flex bg-[var(--bg-elevated)] p-0.5 rounded-lg border border-[var(--border-subtle)]">
+                  <button
                     onClick={() => setCashFlowTab('monthly')}
                     className={`px-3 py-1 text-[9px] font-black rounded-md transition-all ${
-                      cashFlowTab === 'monthly' 
-                        ? 'bg-[var(--accent)] text-black font-black' 
-                        : 'text-[#9f9fa9] hover:text-[#f5f5f7]'
+                      cashFlowTab === 'monthly'
+                        ? 'bg-[var(--accent)] text-black font-black'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                     }`}
                   >
                     Aylık
                   </button>
-                  <button 
+                  <button
                     onClick={() => setCashFlowTab('yearly')}
                     className={`px-3 py-1 text-[9px] font-black rounded-md transition-all ${
-                      cashFlowTab === 'yearly' 
-                        ? 'bg-[var(--accent)] text-black font-black' 
-                        : 'text-[#9f9fa9] hover:text-[#f5f5f7]'
+                      cashFlowTab === 'yearly'
+                        ? 'bg-[var(--accent)] text-black font-black'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                     }`}
                   >
                     Yıllık
@@ -647,30 +651,33 @@ export function DashboardClient(props: DashboardClientProps) {
 
               <div className="h-48">
                 {!mounted || cashFlowLoading ? (
-                  <div className="w-full h-[192px] bg-[#0f0f12] rounded-lg animate-pulse border border-[#1c1c22] flex items-center justify-center text-[10px] text-[#5f5f69] font-black uppercase">Grafik Yükleniyor...</div>
+                  <div className="w-full h-[192px] bg-[var(--bg-base)] rounded-lg animate-pulse border border-[var(--border-subtle)] flex items-center justify-center text-[10px] text-[var(--text-muted)] font-black uppercase">Grafik Yükleniyor...</div>
                 ) : cashFlowError ? (
-                  <div className="w-full h-[192px] bg-[#0f0f12] rounded-lg border border-red-500/20 flex items-center justify-center text-[10px] text-red-400 font-bold uppercase tracking-wider">Ciro akışı yüklenemedi</div>
+                  <div className="w-full h-[192px] bg-[var(--bg-base)] rounded-lg border border-[var(--danger)]/20 flex items-center justify-center text-[10px] text-[var(--danger)] font-bold uppercase tracking-wider">Ciro akışı yüklenemedi</div>
                 ) : !hasCashFlow ? (
-                  <div className="w-full h-[192px] bg-[#0f0f12] rounded-lg border border-[#1c1c22] flex flex-col items-center justify-center gap-1 text-[#5f5f69]">
+                  <div className="w-full h-[192px] bg-[var(--bg-base)] rounded-lg border border-[var(--border-subtle)] flex flex-col items-center justify-center gap-1 text-[var(--text-muted)]">
                     <span className="text-[10px] font-black uppercase tracking-wider">Henüz ciro verisi yok</span>
-                    <span className="text-[9px] text-[#5f5f69]/70">Aktif proje eklendiğinde MRR burada görünecek.</span>
+                    <span className="text-[9px] text-[var(--text-muted)]/70">Aktif proje eklendiğinde MRR burada görünecek.</span>
                   </div>
                 ) : (
                   <ResponsiveContainer width="100%" height={192}>
                     <BarChart data={cashFlowData}>
+                      {/* SVG <stop>/tick render as presentation attributes where CSS var()
+                          does NOT resolve, so these mirror the globals.css token hexes:
+                          accent #5ee6b0, accent-2 #3dd68c, info #5ac8fa, text-muted #5e646e. */}
                       <defs>
                         <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#ff4e17" stopOpacity={0.9} />
-                          <stop offset="100%" stopColor="#ff8c05" stopOpacity={0.15} />
+                          <stop offset="0%" stopColor="#5ee6b0" stopOpacity={0.9} />
+                          <stop offset="100%" stopColor="#3dd68c" stopOpacity={0.15} />
                         </linearGradient>
                         <linearGradient id="barGradSecondary" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.2} />
-                          <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.02} />
+                          <stop offset="0%" stopColor="#5ac8fa" stopOpacity={0.2} />
+                          <stop offset="100%" stopColor="#5ac8fa" stopOpacity={0.02} />
                         </linearGradient>
                       </defs>
-                      <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#5f5f69', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#5e646e', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
                       <Tooltip
-                        contentStyle={{ background: '#0f0f12', border: '1px solid #1c1c22', borderRadius: '12px', fontSize: '10px', color: '#f5f5f7' }}
+                        contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: '12px', fontSize: '10px', color: 'var(--text-primary)' }}
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         formatter={(value: any, name: any) => [
                           `₺${Number(value).toLocaleString('tr-TR')}`,
@@ -683,10 +690,10 @@ export function DashboardClient(props: DashboardClientProps) {
                 )}
               </div>
 
-              <div className="flex justify-between items-center text-[10px] text-[#5f5f69] font-black uppercase mt-3 pt-2 border-t border-[#1c1c22]">
+              <div className="flex justify-between items-center text-[10px] text-[var(--text-muted)] font-black uppercase mt-3 pt-2 border-t border-[var(--border-subtle)]">
                 <span>{new Date().getFullYear()} Nakit Akışı (Son 6 Ay)</span>
                 {hasCashFlow && (
-                  <span className="text-[var(--accent)]">
+                  <span className="num text-[var(--accent)]">
                     En yüksek giriş: {peakInflow.name} (₺{peakInflow.inflow.toLocaleString('tr-TR')})
                   </span>
                 )}
@@ -697,24 +704,24 @@ export function DashboardClient(props: DashboardClientProps) {
 
           {/* ROW 3: Recent Activities Table */}
           <div className="glass-card rounded-2xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-[#1c1c22] flex items-center justify-between flex-wrap gap-3">
+            <div className="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between flex-wrap gap-3">
               <div>
-                <h3 className="text-xs font-black text-[#f5f5f7] uppercase tracking-wider">Son Projeler & Aktiviteler</h3>
-                <p className="text-[9px] text-[#5f5f69] mt-0.5">Sistemdeki son kazanılan ve işleme alınan projeler</p>
+                <h3 className="text-xs font-black text-[var(--text-primary)] uppercase tracking-wider">Son Projeler & Aktiviteler</h3>
+                <p className="text-[9px] text-[var(--text-muted)] mt-0.5">Sistemdeki son kazanılan ve işleme alınan projeler</p>
               </div>
               <div className="flex items-center gap-3">
                 {/* Search Bar */}
                 <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#5f5f69]" />
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                   <input
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Müşteri ara..."
-                    className="bg-[#16161b] border border-[#1c1c22] focus:border-[var(--accent)] rounded-lg text-[10px] py-1.5 pl-8 pr-3 outline-none w-48 text-[#f5f5f7] placeholder:text-[#5f5f69] transition-all"
+                    className="bg-[var(--bg-elevated)] border border-[var(--border-subtle)] focus:border-[var(--accent)] rounded-lg text-[10px] py-1.5 pl-8 pr-3 outline-none w-48 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] transition-all"
                   />
                 </div>
                 {/* Filter Icon */}
-                <button className="p-1.5 bg-[#16161b] border border-[#1c1c22] rounded-lg text-[#9f9fa9] hover:text-[var(--accent)] transition-all">
+                <button className="p-1.5 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg text-[var(--text-secondary)] hover:text-[var(--accent)] transition-all">
                   <Filter className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -723,32 +730,32 @@ export function DashboardClient(props: DashboardClientProps) {
             <div className="overflow-x-auto">
               <table className="w-full text-left">
                 <thead>
-                  <tr className="border-b border-[#1c1c22]">
-                    <th className="px-5 py-3 text-[9px] font-black text-[#5f5f69] uppercase tracking-wider">MÜŞTERİ HİZMET ADI</th>
-                    <th className="px-5 py-3 text-[9px] font-black text-[#5f5f69] uppercase tracking-wider">LİSANS TÜRÜ</th>
-                    <th className="px-5 py-3 text-[9px] font-black text-[#5f5f69] uppercase tracking-wider text-right">KURULUM BEDELİ</th>
-                    <th className="px-5 py-3 text-[9px] font-black text-[#5f5f69] uppercase tracking-wider text-center">DURUM</th>
+                  <tr className="border-b border-[var(--border-subtle)]">
+                    <th className="px-5 py-3 text-[9px] font-black text-[var(--text-muted)] uppercase tracking-wider">MÜŞTERİ HİZMET ADI</th>
+                    <th className="px-5 py-3 text-[9px] font-black text-[var(--text-muted)] uppercase tracking-wider">LİSANS TÜRÜ</th>
+                    <th className="px-5 py-3 text-[9px] font-black text-[var(--text-muted)] uppercase tracking-wider text-right">KURULUM BEDELİ</th>
+                    <th className="px-5 py-3 text-[9px] font-black text-[var(--text-muted)] uppercase tracking-wider text-center">DURUM</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredProjects.length > 0 ? (
                     filteredProjects.map((p: DashboardProject) => {
-                      const st = STATUS_MAP[p.status] || { label: p.status, color: '#6b7280' }
+                      const st = STATUS_MAP[p.status] || { label: p.status, color: 'var(--text-muted)' }
                       return (
-                        <tr key={p.id} className="border-b border-[#1c1c22]/50 last:border-0 hover:bg-[#16161b]/40 transition-all">
-                          <td className="px-5 py-3.5 text-xs font-semibold text-[#f5f5f7]">
+                        <tr key={p.id} className="border-b border-[var(--border-subtle)]/50 last:border-0 hover:bg-[var(--bg-surface)]/40 transition-all">
+                          <td className="px-5 py-3.5 text-xs font-semibold text-[var(--text-primary)]">
                             {p.business_name || p.title || '—'}
                           </td>
-                          <td className="px-5 py-3.5 text-xs text-[#9f9fa9]">
+                          <td className="px-5 py-3.5 text-xs text-[var(--text-secondary)]">
                             {p.notes?.split(':')[0] || 'Standart Hizmet'}
                           </td>
-                          <td className="px-5 py-3.5 text-xs font-bold text-[#f5f5f7] text-right font-mono lira">
+                          <td className="px-5 py-3.5 text-xs font-bold text-[var(--text-primary)] text-right num lira">
                             ₺{(p.monthly_fee || p.setup_fee || 0).toLocaleString('tr-TR')}
                           </td>
                           <td className="px-5 py-3.5 text-center">
-                            <span 
-                              className="text-[9px] font-black tracking-widest uppercase px-2.5 py-1 rounded-lg" 
-                              style={{ color: st.color, background: `${st.color}12`, border: `1px solid ${st.color}25` }}
+                            <span
+                              className="text-[9px] font-black tracking-widest uppercase px-2.5 py-1 rounded-lg"
+                              style={{ color: st.color, background: `${st.color}1f`, border: `1px solid ${st.color}40` }}
                             >
                               {st.label}
                             </span>
@@ -758,7 +765,7 @@ export function DashboardClient(props: DashboardClientProps) {
                     })
                   ) : (
                     <tr>
-                      <td colSpan={4} className="px-5 py-10 text-center text-xs text-[#5f5f69] italic">
+                      <td colSpan={4} className="px-5 py-10 text-center text-xs text-[var(--text-muted)] italic">
                         Sonuç bulunamadı
                       </td>
                     </tr>
@@ -772,84 +779,84 @@ export function DashboardClient(props: DashboardClientProps) {
       </div>
 
       {/* Right Column: Follow-ups & Activity Sidebar */}
-      <aside className="w-[280px] shrink-0 border-l border-[#1c1c22] overflow-y-auto bg-[#08080a] scrollbar-thin">
+      <aside className="w-[280px] shrink-0 border-l border-[var(--border-subtle)] overflow-y-auto bg-[var(--bg-base)] scrollbar-thin">
         <div className="p-5 space-y-6">
 
           {/* Follow-ups */}
           <div className="glass-card rounded-xl p-4 space-y-3">
-            <div className="flex items-center gap-2 border-b border-[#1c1c22] pb-2">
+            <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] pb-2">
               <Clock className="w-4 h-4 text-[var(--warning)]" />
-              <h3 className="text-[10px] font-black text-[#f5f5f7] tracking-widest uppercase">Takip Listesi</h3>
+              <h3 className="text-[10px] font-black text-[var(--text-primary)] tracking-widest uppercase">Takip Listesi</h3>
             </div>
             {props.followUps.length > 0 ? (
               props.followUps.map((f: DashboardFollowUp) => (
-                <div key={f.id} className="py-2 border-b border-[#1c1c22]/30 last:border-0 hover:translate-x-1 transition-all">
-                  <div className="text-xs font-semibold text-[#f5f5f7] truncate">{f.title || f.note || '—'}</div>
-                  <div className="text-[9px] text-[#5f5f69] mt-1 font-bold flex items-center justify-between">
+                <div key={f.id} className="py-2 border-b border-[var(--border-subtle)]/30 last:border-0 hover:translate-x-1 transition-all">
+                  <div className="text-xs font-semibold text-[var(--text-primary)] truncate">{f.title || f.note || '—'}</div>
+                  <div className="text-[9px] text-[var(--text-muted)] mt-1 font-bold flex items-center justify-between">
                     <span>{f.due_date ? new Date(f.due_date).toLocaleDateString('tr-TR') : '—'}</span>
                     <span className="text-[var(--warning)] lowercase font-medium">beklemede</span>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="text-[10px] text-[#5f5f69] italic py-2">Takip bekleyen yok.</div>
+              <div className="text-[10px] text-[var(--text-muted)] italic py-2">Takip bekleyen yok.</div>
             )}
           </div>
 
           {/* Activity Feed */}
           <div className="glass-card rounded-xl p-4 space-y-3">
-            <div className="flex items-center gap-2 border-b border-[#1c1c22] pb-2">
-              <Activity className="w-4 h-4 text-[#3b82f6]" />
-              <h3 className="text-[10px] font-black text-[#f5f5f7] tracking-widest uppercase">Son Aktivite</h3>
+            <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] pb-2">
+              <Activity className="w-4 h-4 text-[var(--info)]" />
+              <h3 className="text-[10px] font-black text-[var(--text-primary)] tracking-widest uppercase">Son Aktivite</h3>
             </div>
             <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1 scrollbar-thin">
               {props.recentLeadActivity.length > 0 ? (
                 props.recentLeadActivity.map((l: DashboardActivity) => {
-                  const st = STATUS_MAP[l.status] || { label: l.status, color: '#6b7280' }
+                  const st = STATUS_MAP[l.status] || { label: l.status, color: 'var(--text-muted)' }
                   return (
-                    <div key={l.id} className="flex items-center gap-2 py-1 border-b border-[#1c1c22]/20 last:border-0">
+                    <div key={l.id} className="flex items-center gap-2 py-1 border-b border-[var(--border-subtle)]/20 last:border-0">
                       <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: st.color }} />
-                      <span className="text-[11px] text-[#9f9fa9] truncate flex-1 font-semibold">{l.business_name}</span>
-                      <span className="text-[8px] text-[#5f5f69] shrink-0 font-bold">
+                      <span className="text-[11px] text-[var(--text-secondary)] truncate flex-1 font-semibold">{l.business_name}</span>
+                      <span className="num text-[8px] text-[var(--text-muted)] shrink-0 font-bold">
                         {new Date(l.created_at).toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' })}
                       </span>
                     </div>
                   )
                 })
               ) : (
-                <div className="text-[10px] text-[#5f5f69] italic py-2">Henüz aktivite yok.</div>
+                <div className="text-[10px] text-[var(--text-muted)] italic py-2">Henüz aktivite yok.</div>
               )}
             </div>
           </div>
 
           {/* AI Cost Breakdown */}
           <div className="glass-card rounded-xl p-4 space-y-3">
-            <div className="flex items-center gap-2 border-b border-[#1c1c22] pb-2">
+            <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] pb-2">
               <Cpu className="w-4 h-4 text-[var(--accent)]" />
-              <h3 className="text-[10px] font-black text-[#f5f5f7] tracking-widest uppercase">AI Dağılımı</h3>
+              <h3 className="text-[10px] font-black text-[var(--text-primary)] tracking-widest uppercase">AI Dağılımı</h3>
             </div>
             <div className="space-y-3">
               {[
                 { label: 'Light (Gemini Flash)', pct: 60, color: 'var(--accent)' },
-                { label: 'Medium (Claude Haiku)', pct: 25, color: '#3b82f6' },
-                { label: 'Heavy (DeepSeek Pro)', pct: 15, color: '[var(--warning)]' },
+                { label: 'Medium (Claude Haiku)', pct: 25, color: 'var(--info)' },
+                { label: 'Heavy (DeepSeek Pro)', pct: 15, color: 'var(--warning)' },
               ].map(tier => (
                 <div key={tier.label} className="space-y-1">
                   <div className="flex items-center justify-between text-[10px]">
-                    <span className="text-[#9f9fa9] font-medium">{tier.label}</span>
-                    <span className="font-bold text-[#f5f5f7]">{tier.pct}%</span>
+                    <span className="text-[var(--text-secondary)] font-medium">{tier.label}</span>
+                    <span className="num font-bold text-[var(--text-primary)]">{tier.pct}%</span>
                   </div>
-                  <div className="w-full h-1 bg-[#16161b] rounded-full overflow-hidden">
-                    <div 
-                      className="h-full rounded-full transition-all duration-500" 
-                      style={{ width: `${tier.pct}%`, backgroundColor: tier.color }} 
+                  <div className="w-full h-1 bg-[var(--bg-elevated)] rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${tier.pct}%`, backgroundColor: tier.color }}
                     />
                   </div>
                 </div>
               ))}
-              <div className="flex items-center justify-between pt-3 border-t border-[#1c1c22] text-[10px]">
-                <span className="text-[#5f5f69] font-bold">TOPLAM AY</span>
-                <span className="font-black text-[#f5f5f7]">${props.aiStats.spentUsd.toFixed(2)} / ${props.aiStats.capUsd}</span>
+              <div className="flex items-center justify-between pt-3 border-t border-[var(--border-subtle)] text-[10px]">
+                <span className="text-[var(--text-muted)] font-bold">TOPLAM AY</span>
+                <span className="num font-black text-[var(--text-primary)]">${props.aiStats.spentUsd.toFixed(2)} / ${props.aiStats.capUsd}</span>
               </div>
             </div>
           </div>
@@ -876,28 +883,28 @@ function PlanColumn({
 }) {
   return (
     <div className="p-4 space-y-2">
-      <div className="flex items-center gap-2 pb-2 border-b border-[#1c1c22]">
+      <div className="flex items-center gap-2 pb-2 border-b border-[var(--border-subtle)]">
         <Icon className="w-3.5 h-3.5" style={{ color }} />
         <span className="text-[10px] font-black tracking-widest uppercase" style={{ color }}>{title}</span>
-        <span className="text-[9px] font-bold text-[#5f5f69] ml-auto">{leads.length}</span>
+        <span className="num text-[9px] font-bold text-[var(--text-muted)] ml-auto">{leads.length}</span>
       </div>
       {leads.length === 0 ? (
-        <div className="text-[10px] text-[#5f5f69] italic py-4 text-center">{emptyMessage}</div>
+        <div className="text-[10px] text-[var(--text-muted)] italic py-4 text-center">{emptyMessage}</div>
       ) : (
         leads.map(l => (
           <button
             key={l.id}
             onClick={() => onSelect(l)}
-            className="w-full text-left p-2.5 bg-[#16161b] border border-[#1c1c22] hover:border-[var(--accent)]/40 rounded-lg transition-all group"
+            className="w-full text-left p-2.5 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] hover:border-[var(--accent)]/40 rounded-lg transition-all group"
           >
             <div className="flex items-start justify-between gap-2 mb-1">
-              <div className="text-xs font-bold text-[#f5f5f7] truncate flex-1">{l.business_name}</div>
-              <div className="text-[10px] font-black shrink-0" style={{ color }}>{l.potential_score || 0}</div>
+              <div className="text-xs font-bold text-[var(--text-primary)] truncate flex-1">{l.business_name}</div>
+              <div className="num text-[10px] font-black shrink-0" style={{ color }}>{l.potential_score || 0}</div>
             </div>
-            <div className="text-[9px] text-[#9f9fa9] truncate mb-1">{l.sector} · {l.city}</div>
-            <div className="text-[9px] text-[#5f5f69] truncate flex items-center justify-between">
+            <div className="text-[9px] text-[var(--text-secondary)] truncate mb-1">{l.sector} · {l.city}</div>
+            <div className="text-[9px] text-[var(--text-muted)] truncate flex items-center justify-between">
               <span className="truncate flex-1">{l.next_action}</span>
-              <ChevronRight className="w-3 h-3 text-[#5f5f69] group-hover:text-[var(--accent)] shrink-0 ml-1 transition-colors" />
+              <ChevronRight className="w-3 h-3 text-[var(--text-muted)] group-hover:text-[var(--accent)] shrink-0 ml-1 transition-colors" />
             </div>
           </button>
         ))

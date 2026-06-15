@@ -12,7 +12,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/schedule': 'Zamanlama',
   '/dashboard': 'Komuta Merkezi',
   '/harita': 'Lead Radar',
-  '/radar': 'Lead Radar',
   '/pipeline': 'Müşteri Akışı',
   '/projects': 'Proje Takibi',
   '/services': 'Hizmetlerim',

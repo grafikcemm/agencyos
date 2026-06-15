@@ -49,6 +49,7 @@ export default async function DashboardPage() {
   let followUps: DashboardFollowUp[] = []
   let allLeadsRaw: unknown[] = []
   let revenueTarget = 120000
+  let sectorWallets: { name: string; amount: number; share: number }[] = []
 
   try {
     const now = new Date()
@@ -115,6 +116,18 @@ export default async function DashboardPage() {
       categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + (p.revenue_tl || 0)
     })
 
+    // Gerçek sektör cüzdanları: bu ay tahsil edilen ciroların kategoriye göre dağılımı.
+    // Veri yoksa boş kalır ve UI boş-durum gösterir (sahte rakam yok).
+    const totalCategoryRevenue = Object.values(categoryBreakdown).reduce((a, b) => a + b, 0)
+    sectorWallets = Object.entries(categoryBreakdown)
+      .map(([name, amount]) => ({
+        name,
+        amount,
+        share: totalCategoryRevenue > 0 ? Math.round((amount / totalCategoryRevenue) * 100) : 0,
+      }))
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 4)
+
     // Weekly revenue
     const allRevenueData = allRevenueRes?.data
     weeklyRevenue = weekStarts.map((weekStart, i) => {
@@ -176,6 +189,7 @@ export default async function DashboardPage() {
       followUps={followUps}
       actionLeads={enrichedLeads as EnrichedLead[]}
       sectorSuggestions={getTopScanSuggestions(3)}
+      sectorWallets={sectorWallets}
     />
   )
 }

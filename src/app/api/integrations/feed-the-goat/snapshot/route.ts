@@ -14,7 +14,8 @@ function getSupabaseAdmin() {
 
 function requireSnapshotAuth(req: NextRequest): boolean {
   const token = process.env.AGENCYOS_SNAPSHOT_TOKEN;
-  if (!token) return process.env.NODE_ENV !== "production";
+  // Token zorunlu: ayarlı değilse her ortamda reddet (dev'de de açık bırakma).
+  if (!token) return false;
   const auth = req.headers.get("authorization");
   return auth === `Bearer ${token}`;
 }

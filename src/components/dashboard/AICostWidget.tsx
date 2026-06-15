@@ -44,7 +44,7 @@ export function AICostWidget() {
     <div className="space-y-4">
       <div className="flex justify-between items-end">
         <h3 className="label-eyebrow">AI Maliyeti</h3>
-        <span className="text-[11px] font-bold text-[var(--text-primary)]">₺{costs.total.toFixed(2)} / ₺{budget}</span>
+        <span className="num lira text-[11px] font-bold text-[var(--text-primary)]">₺{costs.total.toFixed(2)} / ₺{budget}</span>
       </div>
       <ProgressBar progress={progress} />
       

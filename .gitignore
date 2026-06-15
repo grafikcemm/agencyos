@@ -48,6 +48,8 @@ harita.jpeg
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but keep the documented template tracked for setup reproducibility.
+!.env.example
 
 # vercel
 .vercel

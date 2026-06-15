@@ -6,20 +6,20 @@ import { AlertCircle } from 'lucide-react'
 function ScoreBadge({ score }: { score: number }) {
   if (score >= 70) {
     return (
-      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#A32D2D]/20 text-[#FF6B6B] border border-[#A32D2D]/30">
+      <span className="num text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--danger)]/20 text-[var(--danger)] border border-[var(--danger)]/30">
         {score}
       </span>
     )
   }
   if (score >= 50) {
     return (
-      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#BA7517]/20 text-[#F5A623] border border-[#BA7517]/30">
+      <span className="num text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--warning)]/20 text-[var(--warning)] border border-[var(--warning)]/30">
         {score}
       </span>
     )
   }
   return (
-    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#1D9E75]/20 text-[#1D9E75] border border-[#1D9E75]/30">
+    <span className="num text-[10px] font-bold px-1.5 py-0.5 rounded bg-[var(--success)]/20 text-[var(--success)] border border-[var(--success)]/30">
       {score}
     </span>
   )

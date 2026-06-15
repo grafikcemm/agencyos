@@ -28,15 +28,14 @@ export async function GET(request: NextRequest) {
     // 2. Enforce CRON_SECRET validation
     const authHeader = request.headers.get('Authorization')
     const cronSecretHeader = request.headers.get('x-cron-secret')
-    const querySecret = request.nextUrl.searchParams.get('secret') // fallback for CLI trigger
+    // CRON_SECRET only via Authorization: Bearer or x-cron-secret header — never a
+    // ?secret= query param (it would leak into Vercel/CDN access logs).
     
     let providedSecret = ''
     if (authHeader && authHeader.startsWith('Bearer ')) {
       providedSecret = authHeader.substring(7)
     } else if (cronSecretHeader) {
       providedSecret = cronSecretHeader
-    } else if (querySecret) {
-      providedSecret = querySecret
     }
 
     const cronSecret = process.env.CRON_SECRET

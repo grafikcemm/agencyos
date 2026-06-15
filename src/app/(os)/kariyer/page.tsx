@@ -46,16 +46,16 @@ interface Listing {
 }
 
 const LEGIT_BADGE: Record<string, { label: string; cls: string; Icon: typeof ShieldCheck }> = {
-  high: { label: 'Güvenilir', cls: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', Icon: ShieldCheck },
-  caution: { label: 'Dikkat', cls: 'text-amber-400 bg-amber-500/10 border-amber-500/20', Icon: ShieldQuestion },
-  suspicious: { label: 'Şüpheli', cls: 'text-red-400 bg-red-500/10 border-red-500/20', Icon: ShieldAlert },
+  high: { label: 'Güvenilir', cls: 'text-[var(--success)] bg-[var(--success)]/10 border-[var(--success)]/20', Icon: ShieldCheck },
+  caution: { label: 'Dikkat', cls: 'text-[var(--warning)] bg-[var(--warning)]/10 border-[var(--warning)]/20', Icon: ShieldQuestion },
+  suspicious: { label: 'Şüpheli', cls: 'text-[var(--danger)] bg-[var(--danger)]/10 border-[var(--danger)]/20', Icon: ShieldAlert },
 }
 
 function fitColor(score: number | null): string {
   if (score == null) return 'text-[var(--text-muted)]'
-  if (score >= 75) return 'text-emerald-400'
+  if (score >= 75) return 'text-[var(--success)]'
   if (score >= 60) return 'text-[var(--accent)]'
-  if (score >= 40) return 'text-amber-400'
+  if (score >= 40) return 'text-[var(--warning)]'
   return 'text-[var(--text-muted)]'
 }
 
@@ -193,7 +193,7 @@ export default function KariyerPage() {
             onClick={() => setTab(t.key)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all ${
               tab === t.key
-                ? 'bg-[var(--accent-muted)] text-[var(--text-primary)] shadow-[inset_0_0_0_1px_rgba(249,115,22,0.18)]'
+                ? 'bg-[var(--accent-muted)] text-[var(--text-primary)] shadow-[inset_0_0_0_1px_rgba(94,230,176,0.18)]'
                 : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5'
             }`}
           >
@@ -212,7 +212,7 @@ export default function KariyerPage() {
         </div>
       ) : error ? (
         <div className="flex-1 flex items-center justify-center">
-          <div className="flex items-center gap-2 text-red-400 text-xs font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2 text-[var(--danger)] text-xs font-bold bg-[var(--danger)]/10 border border-[var(--danger)]/20 rounded-xl px-4 py-3">
             <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
           </div>
         </div>
@@ -264,7 +264,7 @@ export default function KariyerPage() {
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <div className="text-right">
-                      <div className={`text-lg font-black leading-none ${fitColor(l.fit_score)}`}>
+                      <div className={`num text-lg font-black leading-none ${fitColor(l.fit_score)}`}>
                         {l.fit_score ?? '—'}
                       </div>
                       <div className="text-[8px] text-[var(--text-muted)] font-bold uppercase tracking-wider">fit</div>
@@ -272,7 +272,7 @@ export default function KariyerPage() {
                     <button
                       onClick={() => dismiss(l.id)}
                       title="İlgilenmiyorum"
-                      className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-all"
+                      className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-all"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -293,7 +293,7 @@ export default function KariyerPage() {
                 )}
 
                 {l.legitimacy === 'suspicious' && l.scam_flags?.length > 0 && (
-                  <div className="text-[10px] text-red-400 bg-red-500/5 border border-red-500/15 rounded-lg px-2.5 py-1.5 space-y-0.5">
+                  <div className="text-[10px] text-[var(--danger)] bg-[var(--danger)]/5 border border-[var(--danger)]/15 rounded-lg px-2.5 py-1.5 space-y-0.5">
                     {l.scam_flags.map((f, i) => (
                       <div key={i} className="flex items-center gap-1">
                         <AlertTriangle className="w-2.5 h-2.5 shrink-0" /> {f}
@@ -340,7 +340,7 @@ export default function KariyerPage() {
                       {draftingId === l.id ? 'Üretiliyor…' : 'Taslak üret'}
                     </button>
                     {draftError?.id === l.id && (
-                      <p className="flex items-center gap-1 text-[9px] font-bold text-red-400">
+                      <p className="flex items-center gap-1 text-[9px] font-bold text-[var(--danger)]">
                         <AlertTriangle className="w-2.5 h-2.5 shrink-0" /> {draftError.msg}
                       </p>
                     )}

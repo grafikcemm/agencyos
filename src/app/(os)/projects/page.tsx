@@ -20,7 +20,7 @@ function getRiskLevel(p: any): 'low' | 'medium' | 'high' {
   return 'low'
 }
 
-const RISK_COLORS = { low: '#1D9E75', medium: '#BA7517', high: '#EF4444' }
+const RISK_COLORS = { low: 'var(--success)', medium: 'var(--warning)', high: 'var(--danger)' }
 
 function nextActionFor(p: any): string {
   if (p.status === 'completed') return 'Upsell fırsatı kontrol et'
@@ -83,12 +83,12 @@ export default async function ProjectsPage() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-          <StatCard icon={Briefcase} label="Aktif proje" value={String(activeProjects)} color="#378ADD" />
-          <StatCard icon={Wallet} label="Toplam MRR" value={formatTL(totalMRR)} color="#1D9E75" accent />
-          <StatCard icon={Clock} label="Bekleyen tahsilat" value={formatTL(pendingPayment)} color="#BA7517" />
-          <StatCard icon={AlertTriangle} label="Geciken ödeme" value={formatTL(overduePayment)} color="#EF4444" />
-          <StatCard icon={TrendingUp} label="Bu ay teslim" value={String(dueThisMonth)} color="#8B5CF6" />
-          <StatCard icon={ChevronUp} label="Upsell fırsatı" value={String(upsellCandidates)} color="#E8440A" />
+          <StatCard icon={Briefcase} label="Aktif proje" value={String(activeProjects)} color="#5ac8fa" />
+          <StatCard icon={Wallet} label="Toplam MRR" value={formatTL(totalMRR)} color="#5ee6b0" accent />
+          <StatCard icon={Clock} label="Bekleyen tahsilat" value={formatTL(pendingPayment)} color="#e5b567" />
+          <StatCard icon={AlertTriangle} label="Geciken ödeme" value={formatTL(overduePayment)} color="#f2555a" />
+          <StatCard icon={TrendingUp} label="Bu ay teslim" value={String(dueThisMonth)} color="#8b5cf6" />
+          <StatCard icon={ChevronUp} label="Upsell fırsatı" value={String(upsellCandidates)} color="#5ee6b0" />
         </div>
 
         <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl overflow-hidden">
@@ -184,7 +184,7 @@ function StatCard({ icon: Icon, label, value, color, accent }: { icon: any; labe
       </div>
       <div className="min-w-0">
         <div className="text-[9px] font-bold uppercase tracking-wider text-[var(--text-muted)] truncate">{label}</div>
-        <div className={`text-sm font-black truncate ${accent ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{value}</div>
+        <div className={`num text-sm font-black truncate ${accent ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>{value}</div>
       </div>
     </div>
   )

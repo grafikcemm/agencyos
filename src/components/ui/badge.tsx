@@ -9,10 +9,10 @@ interface BadgeProps {
 export function Badge({ children, variant = 'default', className = "" }: BadgeProps) {
   const variants = {
     default: 'bg-[var(--accent-muted)] text-[var(--accent)] border-[var(--accent)]',
-    success: 'bg-[#1D9E75]/10 text-[#1D9E75] border-[#1D9E75]/30',
-    warning: 'bg-[#BA7517]/10 text-[#BA7517] border-[#BA7517]/30',
-    danger: 'bg-[#A32D2D]/10 text-[#A32D2D] border-[#A32D2D]/30',
-    info: 'bg-[#378ADD]/10 text-[#378ADD] border-[#378ADD]/30',
+    success: 'bg-[var(--success)]/10 text-[var(--success)] border-[var(--success)]/30',
+    warning: 'bg-[var(--warning)]/10 text-[var(--warning)] border-[var(--warning)]/30',
+    danger: 'bg-[var(--danger)]/10 text-[var(--danger)] border-[var(--danger)]/30',
+    info: 'bg-[var(--info)]/10 text-[var(--info)] border-[var(--info)]/30',
     muted: 'bg-[var(--bg-base)] text-[var(--text-muted)] border-[var(--border-subtle)]',
   }
 

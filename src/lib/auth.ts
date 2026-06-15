@@ -1,11 +1,14 @@
 import 'server-only'
-import type { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import type { User } from '@supabase/supabase-js'
+import { SESSION_COOKIE_NAME, verifySessionToken } from '@/lib/session'
 
-// Auth has been removed from the system. This is a single-operator app, so every
-// request is treated as the local operator. These helpers keep their original
-// union signatures so all existing API routes (which branch on `'response' in x`)
-// keep compiling unchanged — they simply never return the rejection variant.
+// Single-operator auth. A valid HMAC-signed session cookie (set by
+// /api/auth/login) authorizes the request as the local operator. These helpers
+// keep their original union signatures so all existing API routes (which branch
+// on `'response' in x`) compile unchanged — they now return the rejection
+// variant whenever the session cookie is missing, expired, or tampered with.
 
 const LOCAL_USER = {
   id: '00000000-0000-0000-0000-000000000000',
@@ -17,17 +20,32 @@ const LOCAL_USER = {
   created_at: new Date(0).toISOString(),
 } as unknown as User
 
+async function hasValidSession(): Promise<boolean> {
+  try {
+    const store = await cookies()
+    return await verifySessionToken(store.get(SESSION_COOKIE_NAME)?.value)
+  } catch {
+    return false
+  }
+}
+
+function unauthorized(): NextResponse {
+  return NextResponse.json({ error: 'Yetkisiz. Giriş gerekli.' }, { status: 401 })
+}
+
 export async function getCurrentUser(): Promise<User | null> {
-  return LOCAL_USER
+  return (await hasValidSession()) ? LOCAL_USER : null
 }
 
 export async function requireApiUser(): Promise<{ user: User } | { response: NextResponse }> {
-  return { user: LOCAL_USER }
+  if (await hasValidSession()) return { user: LOCAL_USER }
+  return { response: unauthorized() }
 }
 
 // `req` is accepted for call-site compatibility (some routes pass the request);
-// it is no longer inspected since there is nothing to authenticate.
+// the session is read from the request cookies via next/headers.
 export async function requireApiAccess(_req?: Request): Promise<{ ok: true } | { response: NextResponse }> {
   void _req
-  return { ok: true }
+  if (await hasValidSession()) return { ok: true }
+  return { response: unauthorized() }
 }

@@ -44,7 +44,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ table: s
     if (status) query = query.eq('status', status)
 
     const limit = searchParams.get('limit')
-    if (limit) query = query.limit(parseInt(limit))
+    if (limit) {
+      const n = parseInt(limit, 10)
+      if (Number.isInteger(n) && n > 0) query = query.limit(Math.min(n, 1000))
+    }
 
     const order = searchParams.get('order')
     if (order) query = query.order(order, { ascending: searchParams.get('asc') === 'true' })

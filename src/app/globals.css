@@ -3,73 +3,82 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ─────────────────────────────────────────────────────────────────────
+   CALM OPERATOR CONSOLE — design tokens
+   Near-black canvas, a single cool accent (ice-mint), hairline borders,
+   generous whitespace, monospace numerics. Data-first and calm.
+   Class + variable NAMES are kept stable so existing components re-skin
+   automatically; only the VALUES change here.
+   ───────────────────────────────────────────────────────────────────── */
+
 @theme inline {
   --color-background: var(--bg-base);
   --color-foreground: var(--text-primary);
   --color-card: var(--bg-surface);
   --color-card-foreground: var(--text-primary);
-  --color-popover: var(--bg-surface);
+  --color-popover: var(--bg-elevated);
   --color-popover-foreground: var(--text-primary);
   --color-primary: var(--accent);
-  --color-primary-foreground: #000000;
-  --color-secondary: var(--bg-sidebar);
+  --color-primary-foreground: #04140d;
+  --color-secondary: var(--bg-elevated);
   --color-secondary-foreground: var(--text-secondary);
-  --color-muted: var(--bg-sidebar);
+  --color-muted: var(--bg-elevated);
   --color-muted-foreground: var(--text-muted);
   --color-accent: var(--accent);
-  --color-accent-foreground: #000000;
+  --color-accent-foreground: #04140d;
   --color-destructive: var(--danger);
-  --color-destructive-foreground: var(--text-primary);
+  --color-destructive-foreground: #ffffff;
   --color-border: var(--border-subtle);
   --color-input: var(--border-subtle);
   --color-ring: var(--accent);
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  /* Typography: sans for body/UI, serif for display headings */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  /* Sans for everything; mono for numerics/labels. No serif in the console look. */
   --font-sans: var(--font-dm-sans), system-ui, -apple-system, sans-serif;
-  --font-heading: var(--font-serif), Georgia, "Times New Roman", serif;
+  --font-heading: var(--font-dm-sans), system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 }
 
 :root {
-  /* Backgrounds — base warmed slightly so the glow reads */
-  --bg-base: #08070a;
-  --bg-surface: #100f13;
-  --bg-elevated: #17151b;
-  --bg-sidebar: #08070a;
+  /* Canvas — near-black, faintly cool */
+  --bg-base: #0a0b0d;
+  --bg-surface: #121316;
+  --bg-elevated: #1a1c20;
+  --bg-sidebar: #08090b;
 
-  /* Accent — orange base + red end for the red→orange glow/gradient */
-  --accent: #f97316;
-  --accent-2: #ff2d20;
-  --accent-hover: #ea580c;
-  --accent-muted: rgba(249, 115, 22, 0.12);
-  --accent-glow: rgba(249, 115, 22, 0.35);
+  /* Single cool accent — ice-mint reads as "active / healthy" without shouting */
+  --accent: #5ee6b0;
+  --accent-2: #3dd68c;
+  --accent-hover: #4ad79e;
+  --accent-muted: rgba(94, 230, 176, 0.10);
+  --accent-glow: rgba(94, 230, 176, 0.20);
 
-  /* Text */
-  --text-primary: #f5f5f7;
-  --text-secondary: #9f9fa9;
-  --text-muted: #5f5f69;
+  /* Text — high legibility, restrained greys */
+  --text-primary: #e8eaed;
+  --text-secondary: #9ba1ac;
+  --text-muted: #5e646e;
 
-  /* Borders */
-  --border-subtle: #1c1c22;
-  --border-highlight: #2c2c35;
-  --border-color: #1c1c22;
+  /* Borders — hairlines */
+  --border-subtle: #1e2024;
+  --border-highlight: #2a2d33;
+  --border-color: #1e2024;
 
-  /* Semantic */
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --info: #3b82f6;
+  /* Semantic — cool, muted */
+  --success: #5ee6b0;
+  --warning: #e5b567;
+  --danger: #f2555a;
+  --info: #5ac8fa;
 
-  /* Depth: glow + glass primitives */
+  /* Depth — almost no glow; a faint cool wash instead of a hot blob */
   --glow-radial: radial-gradient(
-    60% 55% at 50% 0%,
-    rgba(249, 115, 22, 0.20),
-    rgba(255, 45, 32, 0.07) 38%,
-    transparent 72%
+    55% 50% at 50% 0%,
+    rgba(94, 230, 176, 0.06),
+    rgba(90, 200, 250, 0.03) 40%,
+    transparent 70%
   );
-  --glass-bg: rgba(22, 18, 22, 0.55);
-  --glass-blur: 14px;
+  --glass-bg: rgba(18, 19, 22, 0.72);
+  --glass-blur: 10px;
 }
 
 @layer base {
@@ -91,10 +100,17 @@
     overflow-x: hidden;
   }
 
-  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  /* Tabular, mono numerics everywhere a figure is shown */
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: var(--bg-base); }
   ::-webkit-scrollbar-thumb {
-    background: var(--border-subtle);
+    background: var(--border-highlight);
     border-radius: 10px;
   }
   ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
@@ -106,61 +122,66 @@
 }
 
 @layer utilities {
-  /* ---- Typography ---- */
+  /* ---- Typography (sans-only, Swiss/console) ---- */
   .font-display {
-    font-family: var(--font-serif), Georgia, "Times New Roman", serif;
-  }
-
-  /* Big editorial heading — pair with .display-accent on the emphasized word */
-  .display-title {
-    font-family: var(--font-serif), Georgia, serif;
-    font-weight: 500;
-    font-size: clamp(26px, 3.4vw, 40px);
-    line-height: 1.05;
+    font-family: var(--font-dm-sans), system-ui, sans-serif;
     letter-spacing: -0.02em;
   }
 
-  /* Italic serif accent word, e.g. Komuta <span class="display-accent">Merkezi</span> */
+  /* Big heading — tight, confident, NOT serif */
+  .display-title {
+    font-family: var(--font-dm-sans), system-ui, sans-serif;
+    font-weight: 600;
+    font-size: clamp(24px, 3vw, 34px);
+    line-height: 1.08;
+    letter-spacing: -0.025em;
+  }
+
+  /* Accent word — kept as a class for compatibility; now just a weight/color shift. */
   .display-accent {
-    font-family: var(--font-serif), Georgia, serif;
-    font-style: italic;
-    font-weight: 400;
+    font-weight: 600;
+    color: var(--accent);
+    font-style: normal;
   }
 
   .hero-title {
-    font-family: var(--font-serif), Georgia, serif;
-    font-size: clamp(24px, 3vw, 30px);
-    font-weight: 500;
-    line-height: 1.1;
+    font-family: var(--font-dm-sans), system-ui, sans-serif;
+    font-size: clamp(22px, 2.6vw, 28px);
+    font-weight: 600;
+    line-height: 1.12;
     letter-spacing: -0.02em;
   }
 
   .card-title {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 600;
     line-height: 1.2;
+    letter-spacing: -0.01em;
   }
 
   .label-eyebrow {
+    font-family: var(--font-mono);
     font-size: 10px;
     font-weight: 500;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.08em;
     color: var(--text-muted);
   }
 
   .nav-item {
     font-size: 13px;
     font-weight: 500;
+    letter-spacing: -0.01em;
   }
 
   .lira {
-    font-family: 'Segoe UI', system-ui, -apple-system, Arial, sans-serif;
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
   }
 
-  /* ---- Depth: glow + glass ---- */
+  /* ---- Depth: flat surfaces, hairline borders, a whisper of glow ---- */
 
-  /* Static red→orange radial glow blob. Place absolutely, behind content. */
+  /* Faint cool wash. Place absolutely, behind content. */
   .glow-bg {
     position: absolute;
     background: var(--glow-radial);
@@ -168,60 +189,44 @@
     z-index: 0;
   }
 
-  /* Glass surface with gradient hairline border + faint inner top-light.
-     Set border-radius on the element (e.g. rounded-2xl). */
+  /* Console surface: solid card with a crisp hairline. Set radius on the
+     element (e.g. rounded-xl). No heavy glass — clarity over spectacle. */
   .glass-card {
     position: relative;
-    background: var(--glass-bg);
+    background: var(--bg-surface);
     -webkit-backdrop-filter: blur(var(--glass-blur));
     backdrop-filter: blur(var(--glass-blur));
-    border: 1px solid var(--border-highlight);
-    box-shadow:
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.04),
-      0 8px 30px -12px rgba(0, 0, 0, 0.6);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.02) inset;
   }
   .glass-card::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.12),
-      rgba(255, 255, 255, 0.02) 35%,
-      transparent 70%
-    );
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    pointer-events: none;
+    content: none;
   }
 
-  /* Accent-glow variant: red→orange ambient halo for the primary/hero card */
+  /* Active/primary surface gets a faint accent ring instead of a hot halo. */
   .glass-glow {
+    border-color: rgba(94, 230, 176, 0.18);
     box-shadow:
-      inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
-      0 0 0 1px rgba(249, 115, 22, 0.10),
-      0 18px 60px -22px var(--accent-glow);
+      0 0 0 1px rgba(94, 230, 176, 0.08),
+      0 10px 40px -24px var(--accent-glow);
   }
 
-  /* Rounded-full glass for floating nav / toolbars */
+  /* Pill for floating nav / toolbars */
   .glass-pill {
-    background: rgba(255, 255, 255, 0.04);
-    -webkit-backdrop-filter: blur(10px);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--border-highlight);
+    background: var(--bg-elevated);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border-subtle);
     border-radius: 9999px;
   }
 
-  /* Optional very subtle grain overlay for atmosphere */
+  /* Subtle grain stays available but near-invisible */
   .grain::after {
     content: "";
     position: absolute;
     inset: 0;
     pointer-events: none;
-    opacity: 0.02;
+    opacity: 0.015;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
 }
