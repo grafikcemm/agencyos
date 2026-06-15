@@ -4,10 +4,15 @@ import dynamic from 'next/dynamic'
 import { useState, useEffect, useCallback } from 'react'
 import { JarvisPanel } from '@/components/map/JarvisPanel'
 import { LeadDrawer } from '@/components/map/LeadDrawer'
-import { Search, Loader2, MapPin, Globe, Phone, Filter, ChevronDown, MessageCircle, Eye, Bot, X } from 'lucide-react'
+import { Search, Loader2, MapPin, Globe, Phone, Filter, ChevronDown, MessageCircle, Eye, Bot, X, Crosshair, Download, Plus, Trash2, SlidersHorizontal } from 'lucide-react'
 import { Lead } from '@/lib/types'
 import { enrichLeads, EnrichedLead } from '@/lib/enrichLead'
 import { matchesCity, citySlugify } from '@/lib/geo'
+import { TR_PROVINCES, districtsOf } from '@/lib/trGeo'
+import { LEAD_COLUMNS, DEFAULT_VISIBLE, COLUMN_STORAGE_KEY } from '@/lib/leadColumns'
+import type { LeadColumnKey } from '@/lib/leadColumns'
+import { fetchSettings, saveSetting } from '@/lib/repositories/settings'
+import type { CircleArea } from '@/components/map/LeadMap'
 
 const LeadMap = dynamic(() => import('@/components/map/LeadMap'), {
   ssr: false,
@@ -47,15 +52,14 @@ const SECTOR_QUERY_MAP: Record<string, string> = {
   'Nail Art': 'nail art studio',
 }
 
-const CITIES = ['İstanbul', 'Ankara', 'İzmir', 'Bursa', 'Antalya']
-
-const DISTRICT_MAP: Record<string, string[]> = {
-  'İstanbul': ['Tümü', 'Beşiktaş', 'Kadıköy', 'Şişli', 'Beyoğlu', 'Üsküdar', 'Bakırköy', 'Ataşehir', 'Maltepe', 'Kartal', 'Pendik', 'Sarıyer', 'Fatih', 'Zeytinburnu', 'Esenyurt', 'Beylikdüzü', 'Başakşehir'],
-  'Ankara': ['Tümü', 'Çankaya', 'Keçiören', 'Yenimahalle', 'Mamak', 'Etimesgut', 'Sincan'],
-  'İzmir': ['Tümü', 'Konak', 'Bornova', 'Karşıyaka', 'Buca', 'Bayraklı', 'Çiğli'],
-  'Bursa': ['Tümü', 'Osmangazi', 'Nilüfer', 'Yıldırım', 'Mudanya'],
-  'Antalya': ['Tümü', 'Muratpaşa', 'Konyaaltı', 'Kepez', 'Lara', 'Alanya'],
-}
+const SAVED_TYPES_KEY = 'saved_business_types'
+const RADIUS_MIN = 250
+const RADIUS_MAX = 10000
+const DEFAULT_RADIUS = 1500
+const LIMIT_MIN = 5
+const LIMIT_MAX = 60
+const DEFAULT_LIMIT = 15
+const MAX_SAVED_TYPES = 40
 
 const STATUS_FILTERS = [
   { key: 'new', label: 'YENİ', color: 'var(--info)' },
@@ -89,7 +93,7 @@ function getQualityBadge(lead: Lead) {
     return { label: 'TAKİP / MİNİ AUDİT GÖNDER', color: 'bg-green-500/10 text-green-400 border-green-500/20' }
   }
   if (tier === 'C') {
-    return { label: 'ISIT', color: 'bg-amber-500/10 text-amber-400 border-amber-500/20' }
+    return { label: 'ISIT', color: 'bg-[var(--warning)]/10 text-[var(--warning)] border-[var(--warning)]/20' }
   }
   if (tier === 'D') {
     return { label: 'ELE', color: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20' }
@@ -99,8 +103,27 @@ function getQualityBadge(lead: Lead) {
   if (label === 'Nokta Atışı' || score >= 85) return { label: 'ÇOK GÜÇLÜ / BUGÜN ARA', color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' }
   if (label === 'Çok Güçlü' || score >= 70) return { label: 'ÇOK GÜÇLÜ / BUGÜN ARA', color: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' }
   if (label === 'Takip Edilebilir' || score >= 55) return { label: 'TAKİP / MİNİ AUDİT GÖNDER', color: 'bg-green-500/10 text-green-400 border-green-500/20' }
-  if (label === 'Zayıf' || score >= 40) return { label: 'ISIT', color: 'bg-amber-500/10 text-amber-400 border-amber-500/20' }
+  if (label === 'Zayıf' || score >= 40) return { label: 'ISIT', color: 'bg-[var(--warning)]/10 text-[var(--warning)] border-[var(--warning)]/20' }
   return { label: 'ELE', color: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20' }
+}
+
+// CSV hücre değeri — kolon anahtarına göre düz metin (export için).
+function csvCellValue(key: LeadColumnKey, lead: EnrichedLead, monthlyVal: number): string {
+  switch (key) {
+    case 'priority': return getQualityBadge(lead).label
+    case 'business_name': return lead.business_name ?? ''
+    case 'sector': return lead.sector ?? ''
+    case 'location': return `${lead.city ?? ''}${lead.district ? ' / ' + lead.district : ''}`
+    case 'phone': return lead.phone ?? ''
+    case 'website': return lead.website ?? ''
+    case 'email': return lead.email ?? ''
+    case 'rating': return lead.rating != null ? String(lead.rating) : ''
+    case 'score': return String(lead.quality_score || lead.potential_score || 0)
+    case 'service': return lead.recommended_offers?.[0]?.offerName ?? ''
+    case 'tier': return lead.lead_tier ?? ''
+    case 'value': return monthlyVal > 0 ? String(monthlyVal) : ''
+    default: return ''
+  }
 }
 
 export default function HaritaPage() {
@@ -109,7 +132,8 @@ export default function HaritaPage() {
   const [stats, setStats] = useState({ total: 0, yeni: 0, iletisim: 0, kazanildi: 0, yuksek: 0 })
 
   // Filters
-  const [sector, setSector] = useState('Tümü')
+  const [sector, setSector] = useState('')
+  const [savedTypes, setSavedTypes] = useState<string[]>([])
   const [city, setCity] = useState('İstanbul')
   const [districts, setDistricts] = useState<string[]>([])
   const [statusFilter, setStatusFilter] = useState<string[]>(['new', 'contacted', 'converted', 'lost'])
@@ -127,6 +151,16 @@ export default function HaritaPage() {
   const [scanning, setScanning] = useState(false)
   const [scanMessage, setScanMessage] = useState('')
   const [scanProgress, setScanProgress] = useState<{ current: number; total: number; district: string } | null>(null)
+  const [scanLimit, setScanLimit] = useState(DEFAULT_LIMIT)
+
+  // Daire alan aracı
+  const [drawMode, setDrawMode] = useState(false)
+  const [circle, setCircle] = useState<CircleArea | null>(null)
+  const [radius, setRadius] = useState(DEFAULT_RADIUS)
+
+  // Kolon görünürlüğü
+  const [visibleCols, setVisibleCols] = useState<LeadColumnKey[]>(DEFAULT_VISIBLE)
+  const [showColMenu, setShowColMenu] = useState(false)
 
   // Drawer
   const [selectedLead, setSelectedLead] = useState<EnrichedLead | null>(null)
@@ -150,16 +184,48 @@ export default function HaritaPage() {
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { fetchLeads() }, [fetchLeads])
 
+  // Kayıtlı işletme tipleri (settings JSON) — mount'ta yükle.
+  useEffect(() => {
+    let active = true
+    fetchSettings()
+      .then(settings => {
+        if (!active) return
+        const row = settings.find(s => s.key === SAVED_TYPES_KEY)
+        if (!row?.value) return
+        try {
+          const arr: unknown = JSON.parse(row.value)
+          if (Array.isArray(arr)) setSavedTypes(arr.filter((x: unknown): x is string => typeof x === 'string'))
+        } catch { /* yok say */ }
+      })
+      .catch(() => { /* yok say */ })
+    return () => { active = false }
+  }, [])
+
+  // Kolon görünürlük tercihi (localStorage) — mount'ta yükle.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(COLUMN_STORAGE_KEY)
+      if (!stored) return
+      const arr: unknown = JSON.parse(stored)
+      if (Array.isArray(arr) && arr.length > 0) {
+        const valid = LEAD_COLUMNS.map(c => c.key)
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setVisibleCols(arr.filter((x: unknown): x is LeadColumnKey => typeof x === 'string' && valid.includes(x as LeadColumnKey)))
+      }
+    } catch { /* yok say */ }
+  }, [])
+
   // Apply filters
   useEffect(() => {
     let result = allLeads
 
     // Sector filter
-    if (sector !== 'Tümü') {
-      const sectorQuery = SECTOR_QUERY_MAP[sector] ?? sector
+    const activeSector = sector.trim()
+    if (activeSector && activeSector !== 'Tümü') {
+      const sectorQuery = SECTOR_QUERY_MAP[activeSector] ?? activeSector
       result = result.filter(l => {
         const sLower = l.sector?.toLowerCase() || '';
-        return sLower.includes(sectorQuery.toLowerCase()) || sLower.includes(sector.toLowerCase());
+        return sLower.includes(sectorQuery.toLowerCase()) || sLower.includes(activeSector.toLowerCase());
       })
     }
 
@@ -221,41 +287,54 @@ export default function HaritaPage() {
     setScanning(true)
     setScanMessage('')
     setScanProgress(null)
-    // "Tümü" seçiliyken varsayılan tarama yüksek bilet sektörden başlar.
-    const sectorQuery = sector === 'Tümü' ? 'diş kliniği' : (SECTOR_QUERY_MAP[sector] ?? sector)
-
-    // Determine districts to scan
-    const targetDistricts = (districts.length > 0 && !districts.includes('Tümü'))
-      ? districts
-      : [city]
+    // Serbest metin doğrudan Places sorgusu olur; preset etiketi SECTOR_QUERY_MAP ile çevrilir.
+    const raw = sector.trim()
+    const sectorQuery = raw && raw !== 'Tümü' ? (SECTOR_QUERY_MAP[raw] ?? raw) : 'diş kliniği'
 
     let totalInserted = 0
     let totalUpdated = 0
 
-    for (let i = 0; i < targetDistricts.length; i++) {
-      const dist = targetDistricts[i]
-      setScanProgress({ current: i + 1, total: targetDistricts.length, district: dist })
-
-      try {
+    try {
+      if (circle) {
+        // Daire alan: tek tarama (ilçe döngüsü yok), lat/lng/radius gönderilir.
+        setScanProgress({ current: 1, total: 1, district: 'Seçili alan' })
         const res = await fetch('/api/leads/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sector: sectorQuery, city, district: dist === city ? '' : dist, limit: 15 })
+          body: JSON.stringify({ sector: sectorQuery, city, district: '', lat: circle.lat, lng: circle.lng, radius: circle.radius, limit: scanLimit })
         })
         const data = await res.json()
         if (data.success) {
           totalInserted += (data.insertedCount ?? data.count ?? 0)
           totalUpdated += (data.updatedCount ?? 0)
         }
-      } catch {
-        // Continue with next district
+      } else {
+        const targetDistricts = (districts.length > 0 && !districts.includes('Tümü')) ? districts : [city]
+        for (let i = 0; i < targetDistricts.length; i++) {
+          const dist = targetDistricts[i]
+          setScanProgress({ current: i + 1, total: targetDistricts.length, district: dist })
+          try {
+            const res = await fetch('/api/leads/scan', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sector: sectorQuery, city, district: dist === city ? '' : dist, limit: scanLimit })
+            })
+            const data = await res.json()
+            if (data.success) {
+              totalInserted += (data.insertedCount ?? data.count ?? 0)
+              totalUpdated += (data.updatedCount ?? 0)
+            }
+          } catch {
+            // Sonraki ilçe ile devam et
+          }
+        }
       }
+    } finally {
+      setScanMessage(`${totalInserted} yeni lead, ${totalUpdated} güncelleme.`)
+      setScanProgress(null)
+      setScanning(false)
+      if (totalInserted + totalUpdated > 0) await fetchLeads()
     }
-
-    setScanMessage(`${totalInserted} yeni lead, ${totalUpdated} güncelleme.`)
-    setScanProgress(null)
-    setScanning(false)
-    if (totalInserted + totalUpdated > 0) await fetchLeads()
   }
 
   const toggleStatus = (key: string) => {
@@ -278,35 +357,228 @@ export default function HaritaPage() {
     )
   }
 
-  const availableDistricts = DISTRICT_MAP[city] || []
+  const availableDistricts = ['Tümü', ...districtsOf(city)]
+  const visibleColumnDefs = LEAD_COLUMNS.filter(c => visibleCols.includes(c.key))
+
+  const toggleCol = (key: LeadColumnKey) => {
+    setVisibleCols(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+      try { localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(next)) } catch { /* yok say */ }
+      return next
+    })
+  }
+
+  const saveSectorType = async () => {
+    const raw = sector.trim()
+    if (!raw || raw === 'Tümü' || savedTypes.includes(raw)) return
+    const next = Array.from(new Set([...savedTypes, raw])).slice(0, MAX_SAVED_TYPES)
+    setSavedTypes(next)
+    try { await saveSetting(SAVED_TYPES_KEY, JSON.stringify(next)) } catch { /* yok say */ }
+  }
+
+  const removeSectorType = async (t: string) => {
+    const next = savedTypes.filter(x => x !== t)
+    setSavedTypes(next)
+    try { await saveSetting(SAVED_TYPES_KEY, JSON.stringify(next)) } catch { /* yok say */ }
+  }
+
+  const exportCsv = () => {
+    const cols = visibleColumnDefs.filter(c => c.key !== 'actions')
+    if (cols.length === 0 || filteredLeads.length === 0) return
+    // Formül enjeksiyonunu etkisizleştir: =,+,-,@,tab,CR ile başlayan hücreye ' ön eki.
+    const esc = (v: string) => {
+      const safe = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v
+      return `"${safe.replace(/"/g, '""')}"`
+    }
+    const rows = [cols.map(c => esc(c.label)).join(',')]
+    for (const lead of filteredLeads) {
+      const monthlyVal = lead.estimated_monthly_value || 0
+      rows.push(cols.map(c => esc(csvCellValue(c.key, lead, monthlyVal))).join(','))
+    }
+    const blob = new Blob(['﻿' + rows.join('\r\n')], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `leadler-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  }
+
+  const renderCell = (key: LeadColumnKey, lead: EnrichedLead, badge: { label: string; color: string }, monthlyVal: number) => {
+    switch (key) {
+      case 'priority':
+        return (
+          <td key={key} className="px-4 py-3 whitespace-nowrap">
+            <span className={`text-[9px] font-bold tracking-widest px-2 py-0.5 rounded-full border ${badge.color}`}>{badge.label}</span>
+          </td>
+        )
+      case 'business_name':
+        return (
+          <td key={key} className="px-4 py-3 font-bold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors whitespace-nowrap truncate max-w-[160px]">{lead.business_name}</td>
+        )
+      case 'sector':
+        return <td key={key} className="px-4 py-3 text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[100px]">{lead.sector}</td>
+      case 'location':
+        return <td key={key} className="px-4 py-3 text-[var(--text-muted)] whitespace-nowrap truncate max-w-[120px]">{lead.city}{lead.district ? ` / ${lead.district}` : ''}</td>
+      case 'phone':
+        return <td key={key} className="px-4 py-3 num text-[var(--text-secondary)] whitespace-nowrap">{lead.phone || '-'}</td>
+      case 'website':
+        return <td key={key} className="px-4 py-3 text-[var(--text-muted)] whitespace-nowrap truncate max-w-[140px]" title={lead.website || ''}>{lead.website ? lead.website.replace(/^https?:\/\/(www\.)?/, '') : '-'}</td>
+      case 'email':
+        return <td key={key} className="px-4 py-3 text-[var(--text-muted)] whitespace-nowrap truncate max-w-[160px]" title={lead.email || ''}>{lead.email || '-'}</td>
+      case 'rating':
+        return <td key={key} className="px-4 py-3 text-right num text-[var(--text-secondary)] whitespace-nowrap">{lead.rating != null ? lead.rating : '-'}</td>
+      case 'score':
+        return <td key={key} className="px-4 py-3 text-right num font-bold text-[var(--accent)] whitespace-nowrap">{lead.quality_score || lead.potential_score || 0}</td>
+      case 'service': {
+        const offer = lead.recommended_offers?.[0]
+        return <td key={key} className="px-4 py-3 text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[180px]" title={offer?.offerName}>{offer ? offer.offerName : '-'}</td>
+      }
+      case 'tier':
+        return (
+          <td key={key} className="px-4 py-3 text-center whitespace-nowrap">
+            {lead.lead_tier ? <span className="text-[10px] font-black text-[var(--text-secondary)]">{lead.lead_tier}</span> : <span className="text-[var(--text-muted)]">-</span>}
+          </td>
+        )
+      case 'value':
+        return <td key={key} className="px-4 py-3 text-right num font-bold text-[var(--text-primary)] whitespace-nowrap">{monthlyVal > 0 ? `${formatTL(monthlyVal)}/ay` : '-'}</td>
+      case 'actions':
+        return (
+          <td key={key} className="px-4 py-3 whitespace-nowrap" title={lead.next_action}>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                data-testid={`lead-detail-${lead.id}`}
+                aria-label={`${lead.business_name} detayını aç`}
+                onClick={(e) => { e.stopPropagation(); setSelectedLead(lead) }}
+                className="w-7 h-7 flex items-center justify-center rounded-md border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all"
+              >
+                <Eye className="w-3.5 h-3.5" />
+              </button>
+              {lead.phone && (
+                <a
+                  href={`tel:${lead.phone}`}
+                  data-testid={`lead-call-${lead.id}`}
+                  aria-label={`${lead.business_name} işletmesini ara`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-7 h-7 flex items-center justify-center rounded-md border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-blue-400 hover:border-blue-400/50 transition-all"
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                </a>
+              )}
+              {lead.phone && (
+                <a
+                  href={`https://wa.me/${normalizeTrPhone(lead.phone)}${lead.first_message ? `?text=${encodeURIComponent(lead.first_message)}` : ''}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  data-testid={`lead-whatsapp-${lead.id}`}
+                  aria-label={`${lead.business_name} işletmesine WhatsApp mesajı gönder`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-7 h-7 flex items-center justify-center rounded-md border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-green-400 hover:border-green-400/50 transition-all"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                </a>
+              )}
+            </div>
+          </td>
+        )
+      default:
+        return null
+    }
+  }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       {/* Top scan bar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-base)]/70 backdrop-blur-md shrink-0 flex-wrap">
-        <select
-          value={sector}
-          onChange={e => setSector(e.target.value)}
-          className="bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-lg text-xs px-2.5 py-1.5 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
-        >
-          {SECTORS.map(s => <option key={s}>{s}</option>)}
-        </select>
+        <div className="flex items-center gap-1">
+          <input
+            type="text"
+            value={sector}
+            onChange={e => setSector(e.target.value)}
+            placeholder="İşletme tipi (örn. diş kliniği)"
+            className="bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-lg text-xs px-2.5 py-1.5 w-48 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none focus:border-[var(--accent)]"
+          />
+          <button
+            type="button"
+            onClick={saveSectorType}
+            disabled={!sector.trim() || sector.trim() === 'Tümü' || savedTypes.includes(sector.trim())}
+            aria-label="İşletme tipini kaydet"
+            title="Tipi kaydet"
+            className="w-8 h-8 flex items-center justify-center rounded-lg border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all disabled:opacity-40"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        </div>
         <select
           value={city}
-          onChange={e => { setCity(e.target.value); setDistricts([]) }}
+          onChange={e => { setCity(e.target.value); setDistricts([]); setCircle(null); setDrawMode(false) }}
           className="bg-[var(--bg-elevated)] border border-[var(--border-color)] rounded-lg text-xs px-2.5 py-1.5 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
         >
-          {CITIES.map(c => <option key={c}>{c}</option>)}
+          {TR_PROVINCES.map(p => <option key={p.slug} value={p.name}>{p.name}</option>)}
         </select>
 
         <button
           onClick={handleScan}
           disabled={scanning}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-black text-xs font-semibold rounded-lg transition-all disabled:opacity-50"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-50"
         >
           {scanning ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />}
           {scanning ? 'Tarıyor...' : 'Tara'}
         </button>
+
+        {/* Sonuç sayısı */}
+        <div className="flex items-center gap-1.5">
+          <label className="text-[10px] text-[var(--text-muted)] font-bold tracking-wider uppercase whitespace-nowrap">Sonuç</label>
+          <input
+            type="range" min={LIMIT_MIN} max={LIMIT_MAX} step={5} value={scanLimit}
+            onChange={e => setScanLimit(parseInt(e.target.value, 10))}
+            className="w-20 accent-[var(--accent)]"
+            aria-label="Tarama sonuç sayısı"
+          />
+          <span className="num text-xs text-[var(--text-secondary)] w-5">{scanLimit}</span>
+        </div>
+
+        {/* Alan Çiz */}
+        <button
+          type="button"
+          onClick={() => setDrawMode(d => !d)}
+          aria-pressed={drawMode}
+          className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg text-xs font-medium transition-all ${
+            drawMode
+              ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
+              : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)]'
+          }`}
+        >
+          <Crosshair className="w-3 h-3" />
+          Alan Çiz
+        </button>
+
+        {/* Yarıçap — çizim modu veya seçili daire varken */}
+        {(drawMode || circle) && (
+          <div className="flex items-center gap-1.5">
+            <input
+              type="range" min={RADIUS_MIN} max={RADIUS_MAX} step={250} value={radius}
+              onChange={e => { const r = parseInt(e.target.value, 10); setRadius(r); setCircle(c => c ? { ...c, radius: r } : c) }}
+              className="w-24 accent-[var(--accent)]"
+              aria-label="Daire yarıçapı"
+            />
+            <span className="num text-xs text-[var(--text-secondary)] whitespace-nowrap">{(radius / 1000).toFixed(1)} km</span>
+            {circle && (
+              <button
+                type="button"
+                onClick={() => { setCircle(null); setDrawMode(false) }}
+                aria-label="Alanı temizle"
+                title="Alanı temizle"
+                className="w-7 h-7 flex items-center justify-center rounded-md border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--danger)] hover:border-[var(--danger)] transition-all"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+        )}
 
         <button
           onClick={() => setShowFilters(!showFilters)}
@@ -335,8 +607,8 @@ export default function HaritaPage() {
           <button onClick={() => setStatusFilter(['new'])} className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all hover:bg-blue-500/10 ${statusFilter.length === 1 && statusFilter[0] === 'new' ? 'bg-blue-500/10 text-blue-400' : 'text-[var(--text-muted)]'}`}>
             <MapPin className="w-3 h-3 text-blue-400" />{stats.yeni} yeni
           </button>
-          <button onClick={() => setStatusFilter(['contacted'])} className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all hover:bg-yellow-500/10 ${statusFilter.length === 1 && statusFilter[0] === 'contacted' ? 'bg-yellow-500/10 text-yellow-400' : 'text-[var(--text-muted)]'}`}>
-            <Phone className="w-3 h-3 text-yellow-400" />{stats.iletisim} iletişim
+          <button onClick={() => setStatusFilter(['contacted'])} className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all hover:bg-[var(--accent-muted)] ${statusFilter.length === 1 && statusFilter[0] === 'contacted' ? 'bg-[var(--accent-muted)] text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+            <Phone className="w-3 h-3 text-[var(--accent)]" />{stats.iletisim} iletişim
           </button>
           <button onClick={() => setStatusFilter(['converted'])} className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all hover:bg-green-500/10 ${statusFilter.length === 1 && statusFilter[0] === 'converted' ? 'bg-green-500/10 text-green-400' : 'text-[var(--text-muted)]'}`}>
             <Globe className="w-3 h-3 text-green-400" />{stats.kazanildi} kazanıldı
@@ -345,6 +617,45 @@ export default function HaritaPage() {
             {allLeads.filter(l => l.city === city).length} toplam
           </button>
         </div>
+      </div>
+
+      {/* İşletme tipi chip'leri (preset + kayıtlı) */}
+      <div className="flex items-center gap-1.5 px-4 py-2 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] shrink-0 overflow-x-auto">
+        <span className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase shrink-0">Tipler:</span>
+        {SECTORS.filter(s => s !== 'Tümü').map(s => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setSector(s)}
+            className={`px-2.5 py-1 text-[10px] font-medium rounded-lg border transition-all shrink-0 ${
+              sector === s
+                ? 'border-[var(--accent)] bg-[var(--accent-muted)] text-[var(--accent)]'
+                : 'border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--text-secondary)] bg-[var(--bg-elevated)]'
+            }`}
+          >
+            {s}
+          </button>
+        ))}
+        {savedTypes.map(t => (
+          <span
+            key={t}
+            className={`flex items-center gap-1 pl-2.5 pr-1 py-1 text-[10px] font-medium rounded-lg border shrink-0 ${
+              sector === t
+                ? 'border-[var(--accent)] bg-[var(--accent-muted)] text-[var(--accent)]'
+                : 'border-[var(--border-highlight)] text-[var(--text-secondary)] bg-[var(--bg-elevated)]'
+            }`}
+          >
+            <button type="button" onClick={() => setSector(t)} className="hover:text-[var(--accent)]">{t}</button>
+            <button type="button" onClick={() => removeSectorType(t)} aria-label={`${t} tipini sil`} className="w-4 h-4 flex items-center justify-center rounded text-[var(--text-muted)] hover:text-[var(--danger)]">
+              <X className="w-2.5 h-2.5" />
+            </button>
+          </span>
+        ))}
+        {sector.trim() && (
+          <button type="button" onClick={() => setSector('')} className="text-[9px] text-[var(--accent)] hover:text-[var(--accent-hover)] font-bold uppercase tracking-widest ml-auto whitespace-nowrap shrink-0">
+            Tipi Temizle
+          </button>
+        )}
       </div>
 
       {/* Filter Panel */}
@@ -494,7 +805,13 @@ export default function HaritaPage() {
         {/* Left block split: Map on top (60%), Lead Radar Listesi on bottom (40%) */}
         <div className="flex-1 flex flex-col overflow-hidden relative">
           <div className="flex-1 relative min-h-[300px]">
-            <LeadMap leads={filteredLeads} onLeadClick={setSelectedLead} />
+            <LeadMap
+              leads={filteredLeads}
+              onLeadClick={setSelectedLead}
+              drawMode={drawMode}
+              circle={circle}
+              onCircleChange={(c) => { setCircle(c); setRadius(c.radius) }}
+            />
           </div>
 
           {/* Lead Radar Listesi */}
@@ -513,9 +830,27 @@ export default function HaritaPage() {
                   </span>
                 )}
               </div>
-              <span className="text-[10px] text-[var(--text-muted)]">
-                Seçerek detay panelini açın.
-              </span>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <button type="button" onClick={() => setShowColMenu(v => !v)} className="flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--border-subtle)] text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all">
+                    <SlidersHorizontal className="w-3 h-3" /> Sütunlar
+                  </button>
+                  {showColMenu && (
+                    <div className="absolute right-0 top-full mt-1 z-20 w-44 max-h-64 overflow-y-auto rounded-lg border border-[var(--border-highlight)] bg-[var(--bg-elevated)] shadow-xl p-1.5 scrollbar-thin">
+                      {LEAD_COLUMNS.map(col => (
+                        <label key={col.key} className={`flex items-center gap-2 px-2 py-1.5 rounded text-[11px] hover:bg-[var(--bg-surface)] ${col.alwaysOn ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                          <input type="checkbox" checked={visibleCols.includes(col.key)} disabled={col.alwaysOn} onChange={() => { if (!col.alwaysOn) toggleCol(col.key) }} className="accent-[var(--accent)]" />
+                          <span className="text-[var(--text-secondary)]">{col.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button type="button" onClick={exportCsv} disabled={filteredLeads.length === 0} className="flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--border-subtle)] text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all disabled:opacity-40">
+                  <Download className="w-3 h-3" /> CSV
+                </button>
+                <span className="hidden md:inline text-[10px] text-[var(--text-muted)]">Seçerek detay açın.</span>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto scrollbar-thin">
               {filteredLeads.length === 0 ? (
@@ -530,20 +865,14 @@ export default function HaritaPage() {
                 <table className="hidden md:table w-full border-collapse text-left text-xs">
                   <thead className="sticky top-0 bg-[var(--bg-base)] text-[9px] text-[var(--text-muted)] font-bold tracking-widest uppercase border-b border-[var(--border-subtle)] z-10">
                     <tr>
-                      <th className="px-4 py-2">Öncelik</th>
-                      <th className="px-4 py-2">İşletme</th>
-                      <th className="px-4 py-2">Sektör</th>
-                      <th className="px-4 py-2">Şehir / İlçe</th>
-                      <th className="px-4 py-2 text-center">Skor</th>
-                      <th className="px-4 py-2">Önerilen Hizmet</th>
-                      <th className="px-4 py-2 text-right">Tahmini Değer</th>
-                      <th className="px-4 py-2">Aksiyonlar</th>
+                      {visibleColumnDefs.map(col => (
+                        <th key={col.key} className={`px-4 py-2 ${col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'}`}>{col.label}</th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[var(--border-subtle)]">
                     {filteredLeads.map((lead) => {
                       const badge = getQualityBadge(lead)
-                      const primaryOffer = lead.recommended_offers?.[0]
                       const monthlyVal = lead.estimated_monthly_value || 0
                       return (
                         <tr
@@ -552,66 +881,7 @@ export default function HaritaPage() {
                           onClick={() => setSelectedLead(lead)}
                           className="hover:bg-[var(--bg-elevated)] cursor-pointer transition-colors group"
                         >
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className={`text-[9px] font-bold tracking-widest px-2 py-0.5 rounded-full border ${badge.color}`}>
-                              {badge.label}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-bold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors whitespace-nowrap truncate max-w-[160px]">
-                            {lead.business_name}
-                          </td>
-                          <td className="px-4 py-3 text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[100px]">
-                            {lead.sector}
-                          </td>
-                          <td className="px-4 py-3 text-[var(--text-muted)] whitespace-nowrap truncate max-w-[100px]">
-                            {lead.city}{lead.district ? ` / ${lead.district}` : ''}
-                          </td>
-                          <td className="px-4 py-3 text-center font-bold text-[var(--accent)] whitespace-nowrap">
-                            {lead.quality_score || lead.potential_score || 0}
-                          </td>
-                          <td className="px-4 py-3 text-[var(--text-secondary)] whitespace-nowrap truncate max-w-[180px]" title={primaryOffer?.offerName}>
-                            {primaryOffer ? primaryOffer.offerName : '-'}
-                          </td>
-                          <td className="px-4 py-3 text-right font-bold text-[var(--text-primary)] whitespace-nowrap">
-                            {monthlyVal > 0 ? `${formatTL(monthlyVal)}/ay` : '-'}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap" title={lead.next_action}>
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                type="button"
-                                data-testid={`lead-detail-${lead.id}`}
-                                aria-label={`${lead.business_name} detayını aç`}
-                                onClick={(e) => { e.stopPropagation(); setSelectedLead(lead) }}
-                                className="w-7 h-7 flex items-center justify-center rounded-md border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all"
-                              >
-                                <Eye className="w-3.5 h-3.5" />
-                              </button>
-                              {lead.phone && (
-                                <a
-                                  href={`tel:${lead.phone}`}
-                                  data-testid={`lead-call-${lead.id}`}
-                                  aria-label={`${lead.business_name} işletmesini ara`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="w-7 h-7 flex items-center justify-center rounded-md border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-blue-400 hover:border-blue-400/50 transition-all"
-                                >
-                                  <Phone className="w-3.5 h-3.5" />
-                                </a>
-                              )}
-                              {lead.phone && (
-                                <a
-                                  href={`https://wa.me/${normalizeTrPhone(lead.phone)}${lead.first_message ? `?text=${encodeURIComponent(lead.first_message)}` : ''}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  data-testid={`lead-whatsapp-${lead.id}`}
-                                  aria-label={`${lead.business_name} işletmesine WhatsApp mesajı gönder`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="w-7 h-7 flex items-center justify-center rounded-md border border-[var(--border-subtle)] text-[var(--text-muted)] hover:text-green-400 hover:border-green-400/50 transition-all"
-                                >
-                                  <MessageCircle className="w-3.5 h-3.5" />
-                                </a>
-                              )}
-                            </div>
-                          </td>
+                          {visibleColumnDefs.map(col => renderCell(col.key, lead, badge, monthlyVal))}
                         </tr>
                       )
                     })}
@@ -705,7 +975,7 @@ export default function HaritaPage() {
         aria-label="JARVIS asistanını aç"
         data-testid="jarvis-mobile-toggle"
         onClick={() => setJarvisOpen(true)}
-        className="lg:hidden fixed bottom-5 right-5 z-40 w-12 h-12 rounded-full bg-[var(--accent)] text-black shadow-lg shadow-[var(--accent)]/30 flex items-center justify-center active:scale-95 transition-transform"
+        className="lg:hidden fixed bottom-5 right-5 z-40 w-12 h-12 rounded-full bg-[var(--accent)] text-white shadow-lg shadow-[var(--accent)]/30 flex items-center justify-center active:scale-95 transition-transform"
       >
         <Bot className="w-5 h-5" />
       </button>

@@ -5,13 +5,13 @@ import { TURKEY_GAP_ANALYSIS, type TurkeyGapItem } from '@/lib/opportunityIntell
 
 const POTENTIAL_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   high: { bg: 'bg-[#22c55e]/10', text: 'text-[#22c55e]', label: 'Yüksek' },
-  medium: { bg: 'bg-[#f59e0b]/10', text: 'text-[#f59e0b]', label: 'Orta' },
+  medium: { bg: 'bg-[var(--warning)]/10', text: 'text-[var(--warning)]', label: 'Orta' },
   low: { bg: 'bg-[#71717a]/10', text: 'text-[#a1a1aa]', label: 'Düşük' }
 }
 
 const DIFFICULTY_STYLES: Record<string, { label: string; color: string }> = {
   high: { label: 'Zor', color: '#ef4444' },
-  medium: { label: 'Orta', color: '#f59e0b' },
+  medium: { label: 'Orta', color: 'var(--warning)' },
   low: { label: 'Kolay', color: '#22c55e' }
 }
 

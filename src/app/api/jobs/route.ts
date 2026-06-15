@@ -22,7 +22,14 @@ export async function GET(req: Request) {
       .order('scanned_at', { ascending: false })
       .limit(limit)
 
-    if (status) query = query.eq('status', status)
+    // ?status=X verilmişse o statüyü getir (ör. arşiv için ?status=rejected).
+    // Verilmezse varsayılan görünüm: elenenleri (dismissed = kullanıcı, rejected = oto) gizle.
+    if (status) {
+      query = query.eq('status', status)
+    } else {
+      // PostgREST in-list: parantezli, tırnaksız (text enum). Tırnak eklersek filtre tutmaz.
+      query = query.not('status', 'in', '(dismissed,rejected)')
+    }
 
     const { data: listings, error } = await query
     if (error) throw error

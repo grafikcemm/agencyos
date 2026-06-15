@@ -69,10 +69,10 @@ export default function TasksPage() {
   }, [loadTasks])
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-[var(--bg-base)]">
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-[var(--bg-base)]">
       <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)] shrink-0">
         <div className="flex items-center gap-2">
-          <h2 className="text-[11px] font-black tracking-widest text-[var(--text-secondary)] uppercase">Görev Kuyruğu</h2>
+          <h2 className="label-eyebrow">Görev Kuyruğu</h2>
           <span className="text-[9px] text-[var(--text-muted)] font-bold tracking-wider uppercase border-l border-[var(--border-subtle)] pl-2">
             {tasks.length} GÖREV
           </span>

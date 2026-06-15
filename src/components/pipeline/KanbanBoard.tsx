@@ -59,16 +59,32 @@ export function KanbanBoard() {
     e.preventDefault()
     if (!draggedId) return
 
-    setLeads(prev => prev.map(lead => 
-      lead.id === draggedId ? { ...lead, status: statusColumn } : lead
-    ))
     const currentDraggedId = draggedId
+    const prevStatus = leads.find(l => l.id === currentDraggedId)?.status ?? 'new'
     setDraggedId(null)
-    
-    await fetch('/api/db/leads', {
+
+    // Optimistik geçiş
+    setLeads(prev => prev.map(lead =>
+      lead.id === currentDraggedId ? { ...lead, status: statusColumn } : lead
+    ))
+
+    const res = await fetch('/api/db/leads', {
       method: 'PATCH',
       body: JSON.stringify({ id: currentDraggedId, status: statusColumn })
     })
+
+    // Gatekeeper (422) veya başka hata → optimistik geçişi geri al + uyar.
+    if (!res.ok) {
+      let message = 'Durum güncellenemedi.'
+      try {
+        const data = await res.json()
+        if (data?.error) message = data.error
+      } catch { /* ignore */ }
+      setLeads(prev => prev.map(lead =>
+        lead.id === currentDraggedId ? { ...lead, status: prevStatus } : lead
+      ))
+      alert(message)
+    }
   }
 
 

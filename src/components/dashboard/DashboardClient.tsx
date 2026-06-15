@@ -415,7 +415,7 @@ export function DashboardClient(props: DashboardClientProps) {
                       <div className="pt-3 border-t border-[var(--border-subtle)]/50 mt-3 flex items-center justify-between">
                         <span className="text-[9px] text-[var(--text-muted)] font-bold uppercase">Aksiyon</span>
                         <span className={`text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                          l.next_action_priority === 'call_now' ? 'bg-amber-500/15 text-amber-400' : 'bg-purple-500/15 text-purple-400'
+                          l.next_action_priority === 'call_now' ? 'bg-[var(--warning)]/15 text-[var(--warning)]' : 'bg-purple-500/15 text-purple-400'
                         }`}>
                           {l.next_action_priority === 'call_now' ? '📞 ' : '📋 '}
                           {actionLabel}
@@ -478,7 +478,7 @@ export function DashboardClient(props: DashboardClientProps) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             
             {/* Card 1: My Balance (Mint accent gradient — Calm Operator Console) */}
-            <div className="bg-gradient-to-br from-[var(--accent)] via-[var(--accent-2)] to-[var(--accent-hover)] text-black rounded-2xl p-5 shadow-[0_8px_30px_var(--accent-glow)] flex flex-col justify-between min-h-[160px] relative overflow-hidden group hover:scale-[1.01] transition-all duration-300">
+            <div className="bg-gradient-to-br from-[var(--accent)] via-[var(--accent-2)] to-[var(--accent-hover)] text-white rounded-2xl p-5 shadow-[0_8px_30px_var(--accent-glow)] flex flex-col justify-between min-h-[160px] relative overflow-hidden group hover:scale-[1.01] transition-all duration-300">
               {/* Background Glow Ring */}
               <div className="absolute -right-10 -top-10 w-32 h-32 rounded-full bg-white/10 blur-xl pointer-events-none group-hover:scale-125 transition-all duration-500" />
 
@@ -486,12 +486,12 @@ export function DashboardClient(props: DashboardClientProps) {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="w-7 h-7 rounded-full bg-black/15 flex items-center justify-center">
-                      <Wallet className="w-4 h-4 text-black" />
+                      <Wallet className="w-4 h-4 text-white" />
                     </div>
-                    <span className="text-[10px] font-black uppercase tracking-widest text-black/70">Kasa & Net Gelir</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-white/70">Kasa & Net Gelir</span>
                   </div>
                   <div className="flex items-center gap-1 text-[10px] font-black bg-black/15 px-2 py-0.5 rounded-full num">
-                    {props.revenueUp ? <TrendingUp className="w-3 h-3 text-black" /> : <TrendingDown className="w-3 h-3 text-black" />}
+                    {props.revenueUp ? <TrendingUp className="w-3 h-3 text-white" /> : <TrendingDown className="w-3 h-3 text-white" />}
                     %{props.revenueTrend}
                   </div>
                 </div>
@@ -500,13 +500,13 @@ export function DashboardClient(props: DashboardClientProps) {
                   <div className="text-3xl font-black tracking-tight leading-none num lira">
                     ₺{props.monthlyRevenue.toLocaleString('tr-TR')}
                   </div>
-                  <p className="text-[10px] text-black/60 mt-1.5 font-medium">Bu ay toplanan net ciro</p>
+                  <p className="text-[10px] text-white/60 mt-1.5 font-medium">Bu ay toplanan net ciro</p>
                 </div>
               </div>
 
               <div className="flex items-center justify-between pt-4 border-t border-black/10 mt-2">
-                <span className="text-[9px] font-black uppercase tracking-widest text-black/70">Detayları İncele</span>
-                <ArrowRight className="w-3.5 h-3.5 text-black group-hover:translate-x-1 transition-all" />
+                <span className="text-[9px] font-black uppercase tracking-widest text-white/70">Detayları İncele</span>
+                <ArrowRight className="w-3.5 h-3.5 text-white group-hover:translate-x-1 transition-all" />
               </div>
             </div>
 
@@ -630,7 +630,7 @@ export function DashboardClient(props: DashboardClientProps) {
                     onClick={() => setCashFlowTab('monthly')}
                     className={`px-3 py-1 text-[9px] font-black rounded-md transition-all ${
                       cashFlowTab === 'monthly'
-                        ? 'bg-[var(--accent)] text-black font-black'
+                        ? 'bg-[var(--accent)] text-white font-black'
                         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                     }`}
                   >
@@ -640,7 +640,7 @@ export function DashboardClient(props: DashboardClientProps) {
                     onClick={() => setCashFlowTab('yearly')}
                     className={`px-3 py-1 text-[9px] font-black rounded-md transition-all ${
                       cashFlowTab === 'yearly'
-                        ? 'bg-[var(--accent)] text-black font-black'
+                        ? 'bg-[var(--accent)] text-white font-black'
                         : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                     }`}
                   >

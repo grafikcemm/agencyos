@@ -2,7 +2,24 @@
 // Five sub-scores aligned to evidence engine signals.
 
 import { matchSectorProfile } from './sectorPriority'
+import { slugify } from './geo'
 import type { EvidenceSignals } from './evidenceEngine'
+
+// Davranışsal risk bayrakları — operatör outreach/yanıt sürecinde işaretler
+// (LeadModal). MERSİS/Findeks YOK; tamamen gözlemlenen davranıştan beslenir.
+export interface BehavioralFlags {
+  free_sample?: boolean // ücretsiz bitmiş iş/örnek istedi
+  no_company_record?: boolean // tüzel kişilik teyit edilemedi (operatör notu)
+  payment_term_long?: boolean // ilk işte uzun ödeme vadesi dayatıyor
+  scope_creep?: boolean // kapsam belirsiz / sürekli ekleme eğilimi
+  bargaining?: boolean // sürekli fiyat pazarlığı
+}
+
+export type LeadRoute =
+  | 'manual_hyper_personalization'
+  | 'personalized_sequence'
+  | 'nurture'
+  | 'skip'
 
 export interface V3ScoreInput {
   sector: string
@@ -12,6 +29,10 @@ export interface V3ScoreInput {
   phone: string | null
   evidence: EvidenceSignals
   branchCount?: number
+  /** Tespit edilen e-posta — sadece freemail bulunması hafif risk sinyalidir. */
+  email?: string | null
+  /** Operatör-işaretli davranışsal risk bayrakları (varsa). */
+  behavioralFlags?: BehavioralFlags
 }
 
 export interface V3ScoreResult {
@@ -20,26 +41,119 @@ export interface V3ScoreResult {
   urgency_score: number
   money_score: number
   contactability_score: number
-  potential_score: number  // weighted total 0-100
+  /** Risk düşülmeden önceki ham ağırlıklı skor (0-100). */
+  base_score: number
+  /** Davranışsal/iletişim risk skoru (0-100, tipik 0-30). */
+  risk_score: number
+  potential_score: number  // base_score - risk_score, clamp 0-100
   priority: 'low' | 'normal' | 'high'
+  /** Skora göre önerilen yönlendirme (hot-lead kapısı). */
+  route: LeadRoute
   score_reasons: { reason: string; points: number }[]
+  risk_reasons: { reason: string; points: number }[]
+}
+
+const FREEMAIL_DOMAINS = ['gmail.', 'hotmail.', 'yahoo.', 'outlook.', 'icloud.', 'yandex.', 'mynet.']
+
+function isFreemail(email: string | null | undefined): boolean {
+  if (!email) return false
+  const lower = email.toLowerCase()
+  return FREEMAIL_DOMAINS.some((d) => lower.includes(d))
+}
+
+export interface RiskInput {
+  email?: string | null
+  hasRealWebsite?: boolean | null
+  behavioralFlags?: BehavioralFlags
+}
+
+/** Davranışsal + iletişim sinyallerinden risk skoru. RISK=0 → potential_score değişmez. */
+function computeRisk(input: RiskInput): { risk: number; reasons: { reason: string; points: number }[] } {
+  const reasons: { reason: string; points: number }[] = []
+  let risk = 0
+  const f = input.behavioralFlags ?? {}
+
+  if (isFreemail(input.email)) {
+    risk += 6; reasons.push({ reason: 'Sadece ücretsiz e-posta (kurumsal alan adı yok)', points: 6 })
+  }
+  if (input.email == null && !input.hasRealWebsite) {
+    risk += 5; reasons.push({ reason: 'Kurumsal e-posta/site yok — doğrulama zor', points: 5 })
+  }
+  if (f.free_sample) {
+    risk += 10; reasons.push({ reason: 'Ücretsiz bitmiş iş/örnek istedi', points: 10 })
+  }
+  if (f.no_company_record) {
+    risk += 8; reasons.push({ reason: 'Tüzel kişilik teyit edilemedi (operatör notu)', points: 8 })
+  }
+  if (f.payment_term_long) {
+    risk += 8; reasons.push({ reason: 'İlk işte uzun ödeme vadesi dayatıyor', points: 8 })
+  }
+  if (f.scope_creep) {
+    risk += 6; reasons.push({ reason: 'Kapsam belirsiz / scope creep eğilimi', points: 6 })
+  }
+  if (f.bargaining) {
+    risk += 5; reasons.push({ reason: 'Sürekli fiyat pazarlığı sinyali', points: 5 })
+  }
+
+  return { risk: clamp(risk), reasons }
+}
+
+function routeForScore(potential: number): LeadRoute {
+  if (potential >= 75) return 'manual_hyper_personalization'
+  if (potential >= 60) return 'personalized_sequence'
+  if (potential >= 45) return 'nurture'
+  return 'skip'
+}
+
+export interface RescoreResult {
+  risk_score: number
+  risk_reasons: { reason: string; points: number }[]
+  potential_score: number
+  priority: 'low' | 'normal' | 'high'
+  route: LeadRoute
+}
+
+/**
+ * Mevcut base_score'u koruyarak yalnız riski yeniden hesaplar — operatör LeadModal'da
+ * davranışsal bayrak değiştirdiğinde tam yeniden tarama gerektirmez.
+ */
+export function rescoreWithRisk(baseScore: number, riskInput: RiskInput): RescoreResult {
+  const base = clamp(baseScore)
+  const { risk, reasons } = computeRisk(riskInput)
+  const potential_score = clamp(base - risk)
+  const priority: 'low' | 'normal' | 'high' =
+    potential_score >= 70 ? 'high' : potential_score < 45 ? 'low' : 'normal'
+  return {
+    risk_score: risk,
+    risk_reasons: reasons,
+    potential_score,
+    priority,
+    route: routeForScore(potential_score),
+  }
 }
 
 function clamp(n: number): number {
   return Math.max(0, Math.min(100, Math.round(n)))
 }
 
+// Şehir fit bonusu — deep-research (TÜİK GSYH + SGK işyeri + ödeme gücü) sentezi.
+// 20 şehir. NOT: cityTargeting.ts SCAN_CITIES.cityBonus ile birebir aynı tutulmalı
+// (cityBonusSync.test.ts bunu doğrular). Anahtarlar lowercase ASCII (getCityBonus normalize eder).
 const CITY_BONUS: Record<string, number> = {
-  'istanbul': 15, 'ankara': 10, 'izmir': 10,
-  'bursa': 5, 'antalya': 5, 'kocaeli': 5, 'gaziantep': 3,
+  'istanbul': 15, 'ankara': 12, 'izmir': 12, 'antalya': 11,
+  'bursa': 9, 'kocaeli': 8, 'mugla': 8, 'konya': 7, 'gaziantep': 7,
+  'mersin': 6, 'adana': 6, 'denizli': 5, 'kayseri': 5, 'sakarya': 5,
+  'tekirdag': 5, 'eskisehir': 4, 'manisa': 4, 'samsun': 4,
+  'trabzon': 3, 'sanliurfa': 2,
 }
 
-function getCityBonus(city: string): number {
-  const lower = city.toLowerCase()
-    .replace(/İ/g, 'i').replace(/I/g, 'ı').replace(/Ğ/g, 'ğ')
-    .replace(/Ş/g, 'ş').replace(/Ü/g, 'ü').replace(/Ö/g, 'ö').replace(/Ç/g, 'ç')
+export function getCityBonus(city: string): number {
+  // geo.slugify TR_MAP'i İ→i, ı→i, Ş→s vb. DOĞRU çevirir. (Eski .toLowerCase() yolu
+  // 'İstanbul'.toLowerCase() = 'i̇stanbul' combining-dot üretip includes('istanbul')'u
+  // bozuyordu → İstanbul/İzmir hiç bonus almıyordu.) CITY_BONUS anahtarları zaten slug.
+  const slug = slugify(city)
   for (const [key, bonus] of Object.entries(CITY_BONUS)) {
-    if (lower.includes(key)) return bonus
+    if (slug.includes(key)) return bonus
   }
   return 0
 }
@@ -92,8 +206,18 @@ export function calculateLeadScoreV3(input: V3ScoreInput): V3ScoreResult {
   if (ev.has_ads_signal) {
     urgency += 30; reasons.push({ reason: 'Aktif reklam — hızlı dönüş gerekli', points: 30 })
   }
-  if (['health_clinic', 'real_estate', 'automotive'].includes(profile.id)) {
+  if (ev.has_job_signal) {
+    urgency += 20; reasons.push({ reason: 'Kariyer/işe-alım sinyali — büyüme + kreatif ihtiyacı', points: 20 })
+  }
+  if (['health_clinic', 'real_estate', 'automotive', 'medical_tourism', 'luxury_real_estate'].includes(profile.id)) {
     urgency += 15; reasons.push({ reason: 'Hızlı lead dönüşü kritik sektör', points: 15 })
+  }
+  // Sektörel dijital olgunluk açığı (deep-research painLevel 0-100) — açık ne kadar
+  // büyükse satış o kadar acil/kolay. Küçük additive (max +15).
+  if (profile.painLevel && profile.painLevel > 0) {
+    const painBonus = Math.round(profile.painLevel * 0.15)
+    urgency += painBonus
+    reasons.push({ reason: `Sektör dijital açığı yüksek (+${painBonus})`, points: painBonus })
   }
   const urgency_score = clamp(urgency)
 
@@ -121,13 +245,20 @@ export function calculateLeadScoreV3(input: V3ScoreInput): V3ScoreResult {
   }
   const contactability_score = clamp(contact)
 
-  const potential_score = clamp(
+  const base_score = clamp(
     evidence_score      * 0.25 +
     fit_score           * 0.25 +
     urgency_score       * 0.10 +
     money_score         * 0.20 +
     contactability_score * 0.20
   )
+
+  const { risk: risk_score, reasons: risk_reasons } = computeRisk({
+    email: input.email,
+    hasRealWebsite: input.evidence.has_real_website,
+    behavioralFlags: input.behavioralFlags,
+  })
+  const potential_score = clamp(base_score - risk_score)
 
   const priority: 'low' | 'normal' | 'high' =
     potential_score >= 70 ? 'high' : potential_score < 45 ? 'low' : 'normal'
@@ -138,8 +269,12 @@ export function calculateLeadScoreV3(input: V3ScoreInput): V3ScoreResult {
     urgency_score,
     money_score,
     contactability_score,
+    base_score,
+    risk_score,
     potential_score,
     priority,
+    route: routeForScore(potential_score),
     score_reasons: reasons,
+    risk_reasons,
   }
 }

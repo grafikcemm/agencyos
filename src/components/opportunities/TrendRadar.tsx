@@ -41,7 +41,7 @@ const SOURCE_CONFIG: Record<string, { icon: typeof Activity; label: string; colo
 }
 
 function ConfidenceBar({ score }: { score: number }) {
-  const color = score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#71717a'
+  const color = score >= 70 ? '#22c55e' : score >= 40 ? 'var(--warning)' : '#71717a'
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 h-1.5 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
@@ -160,7 +160,7 @@ export function TrendRadar() {
             const config = SOURCE_CONFIG[src.id] ?? { icon: Activity, label: src.name, color: '#71717a' }
             const Icon = config.icon
             const isOk = src.last_status === 'ok'
-            const statusColor = isOk ? 'text-green-500 bg-green-500/10' : 'text-amber-500 bg-amber-500/10'
+            const statusColor = isOk ? 'text-green-500 bg-green-500/10' : 'text-[var(--warning)] bg-[var(--warning)]/10'
             
             return (
               <div 
@@ -201,7 +201,7 @@ export function TrendRadar() {
                 onClick={() => setActiveFilter(f)}
                 className={`px-3 py-1.5 rounded-md text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
                   isSelected 
-                    ? 'bg-[var(--accent)] text-black shadow-sm'
+                    ? 'bg-[var(--accent)] text-white shadow-sm'
                     : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                 }`}
               >
@@ -306,8 +306,8 @@ export function TrendRadar() {
                       disabled={signal.status === 'parked'}
                       className={`flex-1 py-1.5 rounded text-[10px] font-black flex items-center justify-center gap-1 transition-all cursor-pointer ${
                         signal.status === 'parked'
-                          ? 'bg-amber-500/10 text-amber-500 border border-amber-500/25 cursor-default'
-                          : 'bg-[var(--bg-elevated)] hover:bg-amber-500/15 hover:text-amber-500 text-[var(--text-secondary)] border border-[var(--border-subtle)]'
+                          ? 'bg-[var(--warning)]/10 text-[var(--warning)] border border-[var(--warning)]/25 cursor-default'
+                          : 'bg-[var(--bg-elevated)] hover:bg-[var(--warning)]/15 hover:text-[var(--warning)] text-[var(--text-secondary)] border border-[var(--border-subtle)]'
                       }`}
                     >
                       <Clock className="w-3 h-3" />

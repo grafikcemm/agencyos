@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Shield, Server, Activity, Save, AlertTriangle, Package, Trash2, RefreshCw, Link2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { fetchSettings, saveSetting } from '@/lib/repositories/settings'
-import { SIGNATURE_SETTING_KEYS, SIGNATURE_DEFAULTS } from '@/lib/coldEmail'
+import { SIGNATURE_SETTING_KEYS, SIGNATURE_DEFAULTS, COMPLIANCE_SETTING_KEYS } from '@/lib/coldEmail'
 
 interface ConfigHealth {
   success: boolean
@@ -28,6 +28,18 @@ const SIGNATURE_LABELS: Record<string, string> = {
   signature_email: 'E-posta',
 }
 
+const COMPLIANCE_LABELS: Record<string, string> = {
+  ticaret_unvani: 'Ticaret Unvanı',
+  mersis_no: 'MERSİS No',
+  compliance_enabled: 'Uyum Footer Aktif (true/false)',
+}
+
+const COMPLIANCE_PLACEHOLDERS: Record<string, string> = {
+  ticaret_unvani: 'Ali Cem Bozma',
+  mersis_no: '0000000000000000',
+  compliance_enabled: 'true',
+}
+
 export default function SettingsPage() {
   const queryClient = useQueryClient()
   const [seedLoading, setSeedLoading] = useState(false)
@@ -39,6 +51,8 @@ export default function SettingsPage() {
   const [savingAgency, setSavingAgency] = useState(false)
   const [signatureInputs, setSignatureInputs] = useState<Record<string, string>>({})
   const [savingSignature, setSavingSignature] = useState(false)
+  const [complianceInputs, setComplianceInputs] = useState<Record<string, string>>({})
+  const [savingCompliance, setSavingCompliance] = useState(false)
 
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -103,6 +117,26 @@ export default function SettingsPage() {
     }
   }
 
+  const complianceValue = (key: string): string =>
+    complianceInputs[key] ?? settings?.find((s) => s.key === key)?.value ?? ''
+
+  const handleSaveCompliance = async () => {
+    setSavingCompliance(true)
+    try {
+      for (const key of COMPLIANCE_SETTING_KEYS) {
+        await saveSetting(key, complianceValue(key).trim())
+      }
+      await queryClient.invalidateQueries({ queryKey: ['settings'] })
+      setComplianceInputs({})
+      showMsg('✓ İYS/KVKK uyum ayarları kaydedildi.', true)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Bilinmeyen hata'
+      showMsg(`Kaydetme başarısız: ${message}`, false)
+    } finally {
+      setSavingCompliance(false)
+    }
+  }
+
   const handleSeedPlaybooks = async (force = false) => {
     setSeedLoading(true)
     try {
@@ -128,7 +162,7 @@ export default function SettingsPage() {
     <div className="h-full overflow-y-auto p-6">
       <div className="space-y-5 max-w-[800px]">
         <div>
-          <h1 className="text-lg font-semibold text-[var(--text-primary)]">Sistem Ayarları</h1>
+          <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--text-primary)]">Sistem Ayarları</h1>
           <p className="text-xs text-[var(--text-muted)] mt-0.5">Ajans bilgileri, API anahtarları ve entegrasyonlar</p>
         </div>
 
@@ -172,7 +206,7 @@ export default function SettingsPage() {
               <button
                 onClick={handleSaveAgency}
                 disabled={savingAgency}
-                className="w-full flex items-center justify-center gap-2 py-2.5 bg-[var(--accent)] text-black text-sm font-semibold rounded-lg hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 py-2.5 bg-[var(--accent)] text-white text-sm font-semibold rounded-lg hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Save className="w-3.5 h-3.5" /> {savingAgency ? 'Kaydediliyor...' : 'Kaydet'}
               </button>
@@ -231,7 +265,7 @@ export default function SettingsPage() {
             <button
               onClick={() => handleSeedPlaybooks(false)}
               disabled={seedLoading}
-              className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-black text-xs font-semibold rounded-lg hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50"
+              className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-white text-xs font-semibold rounded-lg hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50"
             >
               <Package className="w-3.5 h-3.5" />
               {seedLoading ? 'Yükleniyor...' : 'Varsayılan Paketleri Yükle'}
@@ -272,9 +306,43 @@ export default function SettingsPage() {
           <button
             onClick={handleSaveSignature}
             disabled={savingSignature}
-            className="w-full flex items-center justify-center gap-2 py-2.5 bg-[var(--accent)] text-black text-sm font-semibold rounded-lg hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-2 py-2.5 bg-[var(--accent)] text-white text-sm font-semibold rounded-lg hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Save className="w-3.5 h-3.5" /> {savingSignature ? 'Kaydediliyor...' : 'İmza Linklerini Kaydet'}
+          </button>
+        </div>
+
+        {/* İYS/KVKK Uyum Footer */}
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-5 space-y-4">
+          <div className="flex items-center gap-2 pb-3 border-b border-[var(--border-subtle)]">
+            <Shield className="w-3.5 h-3.5 text-[var(--accent)]" />
+            <span className="text-xs font-semibold text-[var(--text-primary)] uppercase tracking-wider">İYS / KVKK Uyum Footer</span>
+          </div>
+          <p className="text-xs text-[var(--text-muted)]">
+            6563 sayılı ETK uyarınca B2B ticari iletide ticaret unvanı, MERSİS no ve kolay ret
+            imkânı zorunludur. Bu bilgiler soğuk e-posta taslaklarının sonuna otomatik eklenir.
+            MERSİS boşsa footer&apos;a eklenmez — eksiksiz uyum için doldurun.
+          </p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {COMPLIANCE_SETTING_KEYS.map((key) => (
+              <div key={key} className="space-y-1.5">
+                <label className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">{COMPLIANCE_LABELS[key]}</label>
+                <input
+                  type="text"
+                  value={complianceValue(key)}
+                  placeholder={COMPLIANCE_PLACEHOLDERS[key]}
+                  onChange={(e) => setComplianceInputs((prev) => ({ ...prev, [key]: e.target.value }))}
+                  className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg text-sm p-2.5 text-[var(--text-primary)] outline-none focus:border-[var(--border-highlight)] transition-all"
+                />
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={handleSaveCompliance}
+            disabled={savingCompliance}
+            className="w-full flex items-center justify-center gap-2 py-2.5 bg-[var(--accent)] text-white text-sm font-semibold rounded-lg hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Save className="w-3.5 h-3.5" /> {savingCompliance ? 'Kaydediliyor...' : 'Uyum Ayarlarını Kaydet'}
           </button>
         </div>
 

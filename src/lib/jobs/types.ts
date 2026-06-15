@@ -15,8 +15,9 @@ export interface RawJob {
   description?: string | null
 }
 
-// job_listings tablosu satırı (migration 011).
-export type JobStatus = 'new' | 'evaluating' | 'scored' | 'drafted' | 'dismissed'
+// job_listings tablosu satırı (migration 011 + 023).
+// 'dismissed' = kullanıcı elle düşürdü; 'rejected' = pipeline karma elemeyle otomatik eledi.
+export type JobStatus = 'new' | 'evaluating' | 'scored' | 'drafted' | 'dismissed' | 'rejected'
 export type Legitimacy = 'high' | 'caution' | 'suspicious'
 
 export interface JobListing {

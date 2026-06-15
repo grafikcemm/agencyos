@@ -1,8 +1,9 @@
 "use client"
 
 import { useState } from 'react'
-import { X, Sparkles, Building2, Copy, Trash2, CheckCircle2, Phone, MessageSquare, ShieldAlert, ChevronDown, ChevronUp, Check } from 'lucide-react'
+import { X, Sparkles, Building2, Copy, Trash2, CheckCircle2, Phone, MessageSquare, ShieldAlert, ChevronDown, ChevronUp, Check, Search } from 'lucide-react'
 import type { EnrichedLead } from '@/lib/enrichLead'
+import { BUDGET_BANDS } from '@/lib/leads/pipelineGate'
 
 // ─── Script generation ───────────────────────────────────────────────────────
 
@@ -81,8 +82,37 @@ export function LeadModal({ lead, onClose, onUpdate }: { lead: EnrichedLead; onC
   const [tab, setTab] = useState<'overview' | 'scripts'>('overview')
   const [copiedKey, setCopiedKey] = useState<string | null>(null)
   const [openObj, setOpenObj] = useState<number | null>(null)
+  const [flags, setFlags] = useState<Record<string, boolean>>(lead.behavioral_flags ?? {})
+  const [riskScore, setRiskScore] = useState<number>(lead.risk_score ?? 0)
+  const [riskSaving, setRiskSaving] = useState(false)
+  const [painPoint, setPainPoint] = useState(lead.pain_point ?? '')
+  const [decisionMaker, setDecisionMaker] = useState(lead.decision_maker ?? '')
+  const [budgetBand, setBudgetBand] = useState(lead.budget_band ?? '')
 
   const jsonHeaders = { 'Content-Type': 'application/json' }
+
+  // Davranışsal risk bayrağı değişince base_score korunarak yalnız risk yeniden hesaplanır.
+  const toggleFlag = async (key: string) => {
+    const next = { ...flags, [key]: !flags[key] }
+    setFlags(next)
+    setRiskSaving(true)
+    try {
+      const res = await fetch(`/api/leads/${lead.id}/risk`, {
+        method: 'POST',
+        headers: jsonHeaders,
+        body: JSON.stringify({ behavioral_flags: next }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        if (typeof data.risk_score === 'number') setRiskScore(data.risk_score)
+        onUpdate()
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setRiskSaving(false)
+    }
+  }
 
   const copy = (text: string, key: string) => {
     navigator.clipboard.writeText(text)
@@ -92,8 +122,27 @@ export function LeadModal({ lead, onClose, onUpdate }: { lead: EnrichedLead; onC
 
   const handleSave = async () => {
     setLoading(true)
-    await fetch('/api/db/leads', { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify({ id: lead.id, status }) })
+    const res = await fetch('/api/db/leads', {
+      method: 'PATCH',
+      headers: jsonHeaders,
+      body: JSON.stringify({
+        id: lead.id,
+        status,
+        pain_point: painPoint.trim() || null,
+        decision_maker: decisionMaker.trim() || null,
+        budget_band: budgetBand || null,
+      }),
+    })
     setLoading(false)
+    if (!res.ok) {
+      let message = 'Kaydedilemedi.'
+      try {
+        const data = await res.json()
+        if (data?.error) message = data.error
+      } catch { /* ignore */ }
+      alert(message)
+      return
+    }
     onUpdate()
     onClose()
   }
@@ -228,7 +277,7 @@ ${services}
                         onClick={() => setStatus(s)}
                         className={`px-2 py-1.5 text-[10px] font-bold rounded-lg border transition-all ${
                           status === s
-                            ? 'bg-[var(--accent)] text-black border-[var(--accent)]'
+                            ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
                             : 'bg-[var(--bg-base)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--text-muted)]'
                         }`}
                       >
@@ -244,7 +293,7 @@ ${services}
                       <Sparkles className="w-3 h-3" /> AI Analizi
                     </h3>
                     {!lead.ai_analysis && (
-                      <button onClick={handleAnalyze} disabled={loading} className="text-[10px] bg-[var(--accent)] text-black px-2 py-1 rounded-md font-bold hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50">
+                      <button onClick={handleAnalyze} disabled={loading} className="text-[10px] bg-[var(--accent)] text-white px-2 py-1 rounded-md font-bold hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50">
                         {loading ? 'Analiz...' : 'Analiz Et'}
                       </button>
                     )}
@@ -252,6 +301,88 @@ ${services}
                   <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed italic">
                     {lead.ai_analysis || 'Henüz analiz yapılmadı.'}
                   </p>
+                </div>
+
+                {/* Discovery — 'proposal' aşaması için zorunlu (gatekeeper) */}
+                <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] p-4 rounded-xl space-y-3">
+                  <h3 className="text-[10px] text-[var(--accent)] font-bold uppercase tracking-widest flex items-center gap-1.5">
+                    <Search className="w-3 h-3" /> Discovery (Teklif için zorunlu)
+                  </h3>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-[var(--text-muted)] uppercase tracking-wider">Acı Noktası — en kritik problem ne?</label>
+                    <input
+                      type="text"
+                      value={painPoint}
+                      onChange={(e) => setPainPoint(e.target.value)}
+                      placeholder="Örn: sosyal medya görselleri tutarsız, etkileşim düşük"
+                      className="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg text-[12px] p-2 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-[var(--text-muted)] uppercase tracking-wider">Karar Verici — kim onaylıyor?</label>
+                    <input
+                      type="text"
+                      value={decisionMaker}
+                      onChange={(e) => setDecisionMaker(e.target.value)}
+                      placeholder="Örn: işletme sahibi / pazarlama müdürü"
+                      className="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg text-[12px] p-2 text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-[var(--text-muted)] uppercase tracking-wider">Bütçe Bandı</label>
+                    <div className="grid grid-cols-4 gap-1">
+                      {BUDGET_BANDS.map((b) => (
+                        <button
+                          key={b}
+                          onClick={() => setBudgetBand(budgetBand === b ? '' : b)}
+                          className={`px-1 py-1.5 text-[10px] font-bold rounded-lg border transition-all ${
+                            budgetBand === b
+                              ? 'bg-[var(--accent)] text-white border-[var(--accent)]'
+                              : 'bg-[var(--bg-surface)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--text-muted)]'
+                          }`}
+                        >
+                          {b}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Risk bayrakları — base_score korunur, potential = base - risk */}
+                <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] p-4 rounded-xl space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-[10px] text-[var(--danger)] font-bold uppercase tracking-widest flex items-center gap-1.5">
+                      <ShieldAlert className="w-3 h-3" /> Risk Bayrakları
+                    </h3>
+                    <span className="text-[10px] font-bold text-[var(--text-muted)]">
+                      {riskSaving ? '...' : `−${riskScore} risk`}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {([
+                      { key: 'free_sample', label: 'Ücretsiz iş/örnek istedi' },
+                      { key: 'bargaining', label: 'Sürekli fiyat pazarlığı' },
+                      { key: 'payment_term_long', label: 'Uzun ödeme vadesi dayatıyor' },
+                      { key: 'scope_creep', label: 'Kapsam belirsiz / scope creep' },
+                      { key: 'no_company_record', label: 'Firma kaydı teyit edilemedi' },
+                    ] as const).map((f) => (
+                      <button
+                        key={f.key}
+                        onClick={() => toggleFlag(f.key)}
+                        disabled={riskSaving}
+                        className={`flex items-center gap-2 px-2.5 py-1.5 text-[11px] font-medium rounded-lg border text-left transition-all disabled:opacity-50 ${
+                          flags[f.key]
+                            ? 'bg-[var(--danger)]/10 border-[var(--danger)]/40 text-[var(--danger)]'
+                            : 'bg-[var(--bg-surface)] border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--text-muted)]'
+                        }`}
+                      >
+                        <span className={`w-3 h-3 rounded-sm border shrink-0 flex items-center justify-center ${flags[f.key] ? 'bg-[var(--danger)] border-[var(--danger)]' : 'border-[var(--border-subtle)]'}`}>
+                          {flags[f.key] && <Check className="w-2.5 h-2.5 text-white" />}
+                        </span>
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -367,7 +498,7 @@ ${services}
             <button onClick={handleConvertToProject} disabled={loading} className="flex items-center gap-1.5 px-4 py-2 bg-[var(--success)] text-white text-[11px] font-bold rounded-lg hover:opacity-90 transition-all disabled:opacity-50">
               <CheckCircle2 className="w-3.5 h-3.5" /> Projeye Dönüştür
             </button>
-            <button onClick={handleSave} disabled={loading} className="px-4 py-2 bg-[var(--accent)] text-black text-[11px] font-bold rounded-lg hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50">
+            <button onClick={handleSave} disabled={loading} className="px-4 py-2 bg-[var(--accent)] text-white text-[11px] font-bold rounded-lg hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50">
               {loading ? 'Kaydediliyor...' : 'Kaydet & Kapat'}
             </button>
           </div>

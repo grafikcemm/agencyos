@@ -43,6 +43,7 @@ interface RawLead {
   has_online_booking?: boolean
   has_ads_signal?: boolean
   instagram_as_site?: boolean
+  has_job_signal?: boolean
   disqualification_reason?: string | null
   sales_angle?: string | null
   first_message?: string | null
@@ -50,6 +51,8 @@ interface RawLead {
   confidence?: number | null
   google_place_id?: string | null
   branch_count?: number | null
+  email?: string | null
+  behavioral_flags?: Record<string, boolean> | null
 }
 
 interface LeadState {
@@ -182,6 +185,7 @@ export async function POST(req: Request) {
             has_online_booking: lead.has_online_booking ?? false,
             has_ads_signal: lead.has_ads_signal ?? false,
             instagram_as_site: lead.instagram_as_site ?? false,
+            has_job_signal: lead.has_job_signal ?? false,
             is_slow_or_dead: false,
             why_now: lead.why_now!,
             pain_signals: lead.pain_signals!,
@@ -214,6 +218,8 @@ export async function POST(req: Request) {
           reviewCount: lead.review_count ?? 0,
           phone: lead.phone,
           evidence,
+          email: evidence.found_email ?? lead.email ?? null,
+          behavioralFlags: lead.behavioral_flags ?? undefined,
         })
 
         const qualityResult = runQualityEngine({
@@ -241,6 +247,10 @@ export async function POST(req: Request) {
           district: loc.district || lead.district || null,
           normalized_sector: qualityResult.normalized_sector,
           potential_score: scoreResult.potential_score,
+          base_score: scoreResult.base_score,
+          risk_score: scoreResult.risk_score,
+          risk_reasons: scoreResult.risk_reasons,
+          route: scoreResult.route,
           evidence_score: scoreResult.evidence_score,
           fit_score: scoreResult.fit_score,
           urgency_score: scoreResult.urgency_score,
@@ -254,6 +264,7 @@ export async function POST(req: Request) {
           has_online_booking: evidence.has_online_booking,
           has_ads_signal: evidence.has_ads_signal,
           instagram_as_site: evidence.instagram_as_site,
+          has_job_signal: evidence.has_job_signal,
           why_now: evidence.why_now,
           pain_signals: evidence.pain_signals,
           proof_points: evidence.proof_points,

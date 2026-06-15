@@ -63,6 +63,63 @@ async function fetchTrSources(errors: string[]): Promise<RawJob[]> {
   return results.flat()
 }
 
+export interface IngestResult {
+  inserted: boolean
+  duplicate: boolean
+  enqueued: boolean
+  listingId?: string
+  error?: string
+}
+
+// Tek bir ham ilanı job_listings'e yazar + job_evaluator task'i kuyruğa atar.
+// Atomik dedup (url UNIQUE + ignoreDuplicates) → eşzamanlı tarama/manuel ingest
+// çakışmasında çift task oluşmaz. Hem runJobScan hem manuel ingest endpoint kullanır.
+export async function ingestJob(job: RawJob): Promise<IngestResult> {
+  const { data: insertedRows, error: insertErr } = await supabaseAdmin
+    .from('job_listings')
+    .upsert(
+      {
+        source: job.source,
+        source_job_id: job.sourceJobId ?? null,
+        url: job.url,
+        title: job.title,
+        company: job.company || null,
+        location: job.location || null,
+        description: job.description ?? null,
+        employment_type: job.employmentType ?? null,
+        remote: Boolean(job.remote),
+        posted_at: job.postedAt ?? null,
+        status: 'new',
+      },
+      { onConflict: 'url', ignoreDuplicates: true },
+    )
+    .select('id')
+    .returns<{ id: string }[]>()
+
+  if (insertErr) {
+    return { inserted: false, duplicate: false, enqueued: false, error: `insert "${job.title}": ${insertErr.message}` }
+  }
+  if (!insertedRows || insertedRows.length === 0) {
+    return { inserted: false, duplicate: true, enqueued: false }
+  }
+  const row = insertedRows[0]
+
+  const { error: taskErr } = await supabaseAdmin.from('agent_tasks').insert({
+    agent_key: 'job_evaluator',
+    title: `Fit değerlendir — ${job.title}`.slice(0, 200),
+    input: { listing_id: row.id },
+    status: 'queued',
+    directive_id: null,
+  })
+  return {
+    inserted: true,
+    duplicate: false,
+    enqueued: !taskErr,
+    listingId: row.id,
+    error: taskErr ? `enqueue "${job.title}": ${taskErr.message}` : undefined,
+  }
+}
+
 // URL'e göre batch içi tekilleştirme.
 function dedupeByUrl(jobs: RawJob[]): RawJob[] {
   const seen = new Set<string>()
@@ -88,50 +145,16 @@ export async function runJobScan(): Promise<ScanStats> {
   let enqueued = 0
 
   for (const job of passing) {
-    // Atomik dedup: url UNIQUE; ignoreDuplicates ile çakışan satır sessizce
-    // atlanır. Dönen satır boşsa zaten vardı → duplicate. (read-then-insert
-    // yarışını önler — eşzamanlı tarama/cron çakışmasında çift task oluşmaz.)
-    const { data: insertedRows, error: insertErr } = await supabaseAdmin
-      .from('job_listings')
-      .upsert(
-        {
-          source: job.source,
-          source_job_id: job.sourceJobId ?? null,
-          url: job.url,
-          title: job.title,
-          company: job.company || null,
-          location: job.location || null,
-          description: job.description ?? null,
-          employment_type: job.employmentType ?? null,
-          remote: Boolean(job.remote),
-          posted_at: job.postedAt ?? null,
-          status: 'new',
-        },
-        { onConflict: 'url', ignoreDuplicates: true },
-      )
-      .select('id')
-      .returns<{ id: string }[]>()
-
-    if (insertErr) {
-      errors.push(`insert "${job.title}": ${insertErr.message}`)
-      continue
-    }
-    if (!insertedRows || insertedRows.length === 0) {
+    const r = await ingestJob(job)
+    if (r.error) errors.push(r.error)
+    if (r.duplicate) {
       duplicates++
       continue
     }
-    const row = insertedRows[0]
-    inserted++
-
-    const { error: taskErr } = await supabaseAdmin.from('agent_tasks').insert({
-      agent_key: 'job_evaluator',
-      title: `Fit değerlendir — ${job.title}`.slice(0, 200),
-      input: { listing_id: row.id },
-      status: 'queued',
-      directive_id: null,
-    })
-    if (taskErr) errors.push(`enqueue "${job.title}": ${taskErr.message}`)
-    else enqueued++
+    if (r.inserted) {
+      inserted++
+      if (r.enqueued) enqueued++
+    }
   }
 
   // job_scout koordinatör debrief task'i (kısa tarama özeti üretir).

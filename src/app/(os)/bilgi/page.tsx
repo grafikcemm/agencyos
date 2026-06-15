@@ -117,7 +117,7 @@ export default function BilgiPage() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-[var(--bg-base)]">
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-[var(--bg-base)]">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-6 py-4 shrink-0">
         <div className="flex items-center gap-3">
@@ -125,7 +125,7 @@ export default function BilgiPage() {
             <Library className="w-5 h-5 text-[var(--accent)]" />
           </div>
           <div>
-            <h1 className="text-lg font-black text-[var(--text-primary)] tracking-tight">Bilgi Hazinesi</h1>
+            <h1 className="font-display text-2xl font-bold text-[var(--text-primary)] tracking-tight">Bilgi Hazinesi</h1>
             <p className="text-[11px] text-[var(--text-muted)] font-medium">
               Ajansın kurumsal hafızası — strateji, marka ve sistem belgeleri tek kasada.
             </p>

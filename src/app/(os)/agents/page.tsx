@@ -134,7 +134,7 @@ export default function AgentsPage() {
   const specialists = agents.filter(a => a !== ceo)
 
   return (
-    <div className="h-full flex overflow-hidden bg-[var(--bg-base)]">
+    <div className="flex-1 min-h-0 flex overflow-hidden bg-[var(--bg-base)]">
       {/* Agent network */}
       <div className={`flex-1 overflow-y-auto p-6 scrollbar-thin transition-all ${activeAgent ? 'hidden lg:block' : ''}`}>
         {loading ? (
@@ -265,7 +265,7 @@ export default function AgentsPage() {
                 <div key={i} className={`flex ${m.from === 'operator' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs leading-relaxed whitespace-pre-wrap ${
                     m.from === 'operator'
-                      ? 'bg-[var(--accent)] text-black font-semibold'
+                      ? 'bg-[var(--accent)] text-white font-semibold'
                       : 'bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] font-medium'
                   }`}>
                     {m.text}
@@ -308,7 +308,7 @@ export default function AgentsPage() {
                 onClick={sendMessage}
                 disabled={sending || !draft.trim()}
                 aria-label="Mesaj gönder"
-                className="w-10 h-10 flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-black rounded-xl transition-all disabled:opacity-50 shrink-0"
+                className="w-10 h-10 flex items-center justify-center bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white rounded-xl transition-all disabled:opacity-50 shrink-0"
               >
                 <Send className="w-4 h-4" />
               </button>

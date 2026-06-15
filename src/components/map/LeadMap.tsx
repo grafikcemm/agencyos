@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from 'react'
-import { MapContainer, TileLayer, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import 'leaflet.markercluster/dist/MarkerCluster.css'
 import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
@@ -112,12 +112,75 @@ function ClusterLayer({ leads, onLeadClick }: { leads: EnrichedLead[]; onLeadCli
   return null
 }
 
+export interface CircleArea {
+  lat: number
+  lng: number
+  radius: number
+}
+
+const DEFAULT_CIRCLE_RADIUS = 1500
+
+// Daire alan çizim katmanı — drawMode'da haritaya tıklamak merkezi belirler;
+// L.circle + merkez işareti çizilir. leaflet-draw gerekmez (native Leaflet + useMapEvents).
+function CircleDrawLayer({
+  drawMode,
+  circle,
+  onCircleChange,
+}: {
+  drawMode: boolean
+  circle: CircleArea | null
+  onCircleChange?: (area: CircleArea) => void
+}) {
+  const map = useMap()
+
+  // Inline handlers objesi her render'da yeni referans → useMapEvents handler'ı yeniden
+  // bağlar → closure her zaman taze (stale closure yok).
+  useMapEvents({
+    click(e) {
+      if (!drawMode || !onCircleChange) return
+      onCircleChange({
+        lat: e.latlng.lat,
+        lng: e.latlng.lng,
+        radius: circle?.radius ?? DEFAULT_CIRCLE_RADIUS,
+      })
+    },
+  })
+
+  useEffect(() => {
+    if (!circle) return
+    // hex zorunlu: var() Leaflet path option'larında çalışmaz (--accent = #5ee6b0).
+    const area = L.circle([circle.lat, circle.lng], {
+      radius: circle.radius,
+      color: '#5ee6b0',
+      weight: 2,
+      fillColor: '#5ee6b0',
+      fillOpacity: 0.08,
+    }).addTo(map)
+    const center = L.circleMarker([circle.lat, circle.lng], {
+      radius: 4,
+      color: '#5ee6b0',
+      fillColor: '#5ee6b0',
+      fillOpacity: 1,
+      weight: 2,
+    }).addTo(map)
+    return () => {
+      map.removeLayer(area)
+      map.removeLayer(center)
+    }
+  }, [circle, map])
+
+  return null
+}
+
 interface LeadMapProps {
   leads: EnrichedLead[]
   onLeadClick?: (lead: EnrichedLead) => void
+  drawMode?: boolean
+  circle?: CircleArea | null
+  onCircleChange?: (area: CircleArea) => void
 }
 
-export default function LeadMap({ leads, onLeadClick }: LeadMapProps) {
+export default function LeadMap({ leads, onLeadClick, drawMode = false, circle = null, onCircleChange }: LeadMapProps) {
   const [mounted, setMounted] = useState(false)
 
   const handleLeadClick = useCallback((lead: EnrichedLead) => {
@@ -134,7 +197,7 @@ export default function LeadMap({ leads, onLeadClick }: LeadMapProps) {
   if (!mounted) return null
 
   return (
-    <div className="w-full h-full relative">
+    <div className={`w-full h-full relative${drawMode ? ' draw-mode' : ''}`}>
       <MapContainer
         center={[38.96, 35.24]}
         zoom={5.5}
@@ -147,6 +210,7 @@ export default function LeadMap({ leads, onLeadClick }: LeadMapProps) {
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
         <ClusterLayer leads={leads} onLeadClick={handleLeadClick} />
+        <CircleDrawLayer drawMode={drawMode} circle={circle} onCircleChange={onCircleChange} />
       </MapContainer>
 
       {/* Cluster icon styles */}
@@ -194,6 +258,10 @@ export default function LeadMap({ leads, onLeadClick }: LeadMapProps) {
         }
         .dark-popup .leaflet-popup-tip {
           background: #1a1c20;
+        }
+        .draw-mode .leaflet-container,
+        .draw-mode .leaflet-grab {
+          cursor: crosshair !important;
         }
       `}</style>
     </div>

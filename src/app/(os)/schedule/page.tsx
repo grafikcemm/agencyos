@@ -41,7 +41,7 @@ export default function SchedulePage() {
 
         <div className="flex items-center gap-2">
           <CalendarClock className="w-4 h-4 text-[var(--accent)]" />
-          <h2 className="text-[11px] font-black tracking-widest text-[var(--text-secondary)] uppercase">
+          <h2 className="label-eyebrow">
             Zamanlanmış Ajan İşleri
           </h2>
         </div>

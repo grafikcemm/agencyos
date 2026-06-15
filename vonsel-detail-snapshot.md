@@ -1,0 +1,232 @@
+- generic [active] [ref=e1] [box=0,0,2545,4352]:
+  - generic [box=0,0,2545,0]:
+    - navigation [ref=e2] [box=20,20,2505,65]:
+      - generic [ref=e3] [box=49,33,2447,40]:
+        - link "Vonsel" [ref=e4] [cursor=pointer] [box=49,33,143,40]:
+          - /url: /
+          - img "Vonsel" [ref=e5] [box=49,33,143,40]
+        - generic [ref=e6] [box=1133,39,279,27]:
+          - link "Home" [ref=e7] [cursor=pointer] [box=1133,39,44,27]:
+            - /url: /
+          - link "Product" [ref=e8] [cursor=pointer] [box=1201,39,57,27]:
+            - /url: /business-finder
+          - link "Pricing" [ref=e9] [cursor=pointer] [box=1282,39,50,27]:
+            - /url: /pricing
+          - link "Contact" [ref=e10] [cursor=pointer] [box=1356,39,56,27]:
+            - /url: /contact
+        - generic [ref=e11] [box=2148,33,348,40]:
+          - button "Select language" [ref=e13] [cursor=pointer] [box=2148,35,59,36]
+          - button "Dashboard" [ref=e16] [cursor=pointer] [box=2219,33,121,40]
+          - link "Start Free Trial" [ref=e19] [cursor=pointer] [box=2352,33,144,40]:
+            - /url: /business-finder
+    - option "🇺🇸 English" [selected] [box=0,0,0,0]
+    - option "🇪🇸 Español" [box=0,0,0,0]
+    - option "🇫🇷 Français" [box=0,0,0,0]
+    - option "🇩🇪 Deutsch" [box=0,0,0,0]
+    - option "🇵🇹 Português" [box=0,0,0,0]
+    - option "🇮🇹 Italiano" [box=0,0,0,0]
+    - option "🇯🇵 日本語" [box=0,0,0,0]
+  - main [ref=e21] [box=0,0,2545,4017]:
+    - generic [ref=e23] [box=20,104,2505,859]:
+      - heading "Access any plumber 's address to scale your sales." [level=1] [ref=e520] [box=648,315,1249,211]:
+        - generic [ref=e25] [box=648,315,1249,106]:
+          - text: Access any
+          - generic [ref=e26] [box=1317,315,382,106]
+          - text: "'s"
+        - generic [ref=e28] [box=648,420,1249,106]:
+          - generic [ref=e29] [box=648,420,368,106]
+          - text: to scale your sales.
+      - generic [ref=e31] [box=1786,596,554,306]:
+        - img [box=1566,509,280,140]
+        - generic [ref=e32] [box=1849,587,171,53]: how we do it
+        - list [ref=e33] [box=1850,668,490,234]:
+          - listitem [ref=e34] [box=1850,668,490,45]
+          - listitem [ref=e39] [box=1850,727,490,47]
+          - listitem [ref=e45] [box=1850,788,490,47]
+          - listitem [ref=e50] [box=1850,849,490,53]
+    - generic [ref=e56] [box=20,1269,2505,1036]:
+      - button "Previous slide" [ref=e57] [cursor=pointer] [box=39,1761,52,52]:
+        - img [ref=e58] [box=54,1776,22,22]
+      - generic [ref=e61] [box=-4586,1334,2343,877]:
+        - tabpanel [ref=e62] [box=-4586,1334,2343,877]:
+          - generic [ref=e63] [box=-3295,1637,1053,271]
+        - tabpanel [ref=e69] [box=-2243,1334,2343,877]:
+          - generic [ref=e71] [box=-952,1615,1053,316]
+        - tabpanel [ref=e76] [box=101,1334,2343,877]:
+          - generic [ref=e77] [box=1391,1600,1053,345]
+        - tabpanel [ref=e84] [box=2444,1334,2343,877]:
+          - generic [ref=e86] [box=3735,1600,1053,345]
+        - tabpanel [ref=e92] [box=4787,1334,2343,877]:
+          - generic [ref=e94] [box=6078,1615,1053,316]
+        - tabpanel [ref=e99] [box=7131,1334,2343,877]:
+          - generic [ref=e100] [box=8421,1600,1053,345]
+        - tabpanel [ref=e106] [box=9474,1334,2343,877]:
+          - generic [ref=e107] [box=10765,1600,1053,345]
+        - tabpanel [ref=e113] [box=11817,1334,2343,877]:
+          - generic [ref=e115] [box=13108,1615,1053,316]
+        - tabpanel [ref=e120] [box=14161,1334,2343,877]:
+          - generic [ref=e121] [box=15451,1651,1053,242]
+        - tabpanel [ref=e127] [box=16504,1334,2343,877]:
+          - generic [ref=e129] [box=17795,1600,1053,345]
+      - button "Next slide" [ref=e135] [cursor=pointer] [box=2454,1761,52,52]:
+        - img [ref=e136] [box=2469,1776,22,22]
+      - tablist [ref=e138] [box=21,2247,2503,10]:
+        - tab "Slide 1" [ref=e139] [cursor=pointer] [box=1161,2247,10,10]
+        - tab "Slide 2" [ref=e140] [cursor=pointer] [box=1181,2247,10,10]
+        - tab "Slide 3" [selected] [ref=e141] [cursor=pointer] [box=1201,2247,42,10]
+        - tab "Slide 4" [ref=e142] [cursor=pointer] [box=1253,2247,10,10]
+        - tab "Slide 5" [ref=e143] [cursor=pointer] [box=1273,2247,10,10]
+        - tab "Slide 6" [ref=e144] [cursor=pointer] [box=1293,2247,10,10]
+        - tab "Slide 7" [ref=e145] [cursor=pointer] [box=1313,2247,10,10]
+        - tab "Slide 8" [ref=e146] [cursor=pointer] [box=1333,2247,10,10]
+        - tab "Slide 9" [ref=e147] [cursor=pointer] [box=1353,2247,10,10]
+        - tab "Slide 10" [ref=e148] [cursor=pointer] [box=1373,2247,10,10]
+    - generic [ref=e149] [box=0,2425,2545,512]:
+      - generic [ref=e150] [box=612,2449,1320,69]:
+        - paragraph [ref=e151] [box=612,2449,1320,17]: Companies that already trust Vonsel
+        - generic [ref=e153] [box=298,2495,3441,24]:
+          - generic [ref=e154] [box=298,2495,123,24]: brightwork
+          - generic [ref=e155] [box=481,2495,143,24]: SOLAR GROUP
+          - generic [ref=e156] [box=684,2495,101,24]: Meridian
+          - generic [ref=e157] [box=845,2495,111,24]: nexodigital
+          - generic [ref=e158] [box=1015,2495,115,24]: CLOUDBASE
+          - generic [ref=e159] [box=1190,2495,105,24]: ventapro.
+          - generic [ref=e160] [box=1355,2495,106,24]: SKYLINE
+          - generic [ref=e161] [box=1521,2495,122,24]
+          - generic [ref=e163] [box=1702,2495,77,24]: altared
+          - generic [ref=e164] [box=1839,2495,150,24]: PULSE AGENCY
+          - generic [ref=e165] [box=2049,2495,123,24]: brightwork
+          - generic [ref=e166] [box=2231,2495,143,24]: SOLAR GROUP
+          - generic [ref=e167] [box=2434,2495,101,24]: Meridian
+          - generic [ref=e168] [box=2595,2495,111,24]: nexodigital
+          - generic [ref=e169] [box=2766,2495,115,24]: CLOUDBASE
+          - generic [ref=e170] [box=2941,2495,105,24]: ventapro.
+          - generic [ref=e171] [box=3106,2495,106,24]: SKYLINE
+          - generic [ref=e172] [box=3271,2495,122,24]
+          - generic [ref=e174] [box=3453,2495,77,24]: altared
+          - generic [ref=e175] [box=3590,2495,150,24]: PULSE AGENCY
+      - generic [ref=e176] [box=612,2567,1320,291]:
+        - paragraph [ref=e177] [box=612,2567,1320,17]: What our clients say
+        - generic [ref=e180] [box=-2420,2628,7256,230]:
+          - generic [ref=e181] [box=-2420,2628,340,230]
+          - generic [ref=e188] [box=-2056,2628,340,230]
+          - generic [ref=e195] [box=-1692,2628,340,230]
+          - generic [ref=e202] [box=-1328,2628,340,230]
+          - generic [ref=e209] [box=-964,2628,340,230]
+          - generic [ref=e216] [box=-600,2628,340,230]
+          - generic [ref=e223] [box=-236,2628,340,230]
+          - generic [ref=e230] [box=128,2628,340,230]
+          - generic [ref=e237] [box=492,2628,340,230]
+          - generic [ref=e244] [box=856,2628,340,230]
+          - generic [ref=e251] [box=1220,2628,340,230]
+          - generic [ref=e258] [box=1584,2628,340,230]
+          - generic [ref=e265] [box=1948,2628,340,230]
+          - generic [ref=e272] [box=2312,2628,340,230]
+          - generic [ref=e279] [box=2676,2628,340,230]
+          - generic [ref=e286] [box=3040,2628,340,230]
+          - generic [ref=e293] [box=3404,2628,340,230]
+          - generic [ref=e300] [box=3768,2628,340,230]
+          - generic [ref=e307] [box=4132,2628,340,230]
+          - generic [ref=e314] [box=4496,2628,340,230]
+    - generic [ref=e321] [box=722,2938,1100,331]:
+      - heading "Ask AI about Vonsel" [level=2] [ref=e322] [box=746,2938,1052,70]
+      - paragraph [ref=e323] [box=822,3024,900,39]: Don't take our word for it. Ask any AI to research Vonsel and see what it finds.
+      - generic [ref=e324] [box=746,3111,1052,77]:
+        - link "ChatGPT" [ref=e325] [cursor=pointer] [box=836,3111,172,77]:
+          - /url: https://chatgpt.com/?prompt=I%E2%80%99m%20evaluating%20B2B%20lead%20generation%20tools%20for%20local%20businesses.%20Research%20Vonsel%20and%20explain%20how%20it%20combines%20a%20business%20finder%20with%20Google%20Maps%20data%2C%20verified%20emails%20and%20phones%2C%20AI-powered%20review%20analysis%2C%20smart%20cold%20email%20generation%2C%20and%20a%20built-in%20mapped%20CRM%20with%20geographic%20areas%2C%20sales%20rep%20tracking%2C%20and%20route%20planning.%20Summarize%20the%20key%20features%20and%20pricing%20from%3A%20https%3A%2F%2Fvonsel.com
+          - img [ref=e327] [box=868,3140,20,20]
+          - text: ChatGPT
+        - link "Claude" [ref=e329] [cursor=pointer] [box=1022,3111,159,77]:
+          - /url: https://claude.ai/new?q=I%E2%80%99m%20evaluating%20B2B%20lead%20generation%20tools%20for%20local%20businesses.%20Research%20Vonsel%20and%20explain%20how%20it%20combines%20a%20business%20finder%20with%20Google%20Maps%20data%2C%20verified%20emails%20and%20phones%2C%20AI-powered%20review%20analysis%2C%20smart%20cold%20email%20generation%2C%20and%20a%20built-in%20mapped%20CRM%20with%20geographic%20areas%2C%20sales%20rep%20tracking%2C%20and%20route%20planning.%20Summarize%20the%20key%20features%20and%20pricing%20from%3A%20https%3A%2F%2Fvonsel.com
+          - img [ref=e331] [box=1056,3142,16,16]
+          - text: Claude
+        - link "Perplexity" [ref=e333] [cursor=pointer] [box=1195,3111,181,77]:
+          - /url: https://www.perplexity.ai/search/new?q=I%E2%80%99m%20evaluating%20B2B%20lead%20generation%20tools%20for%20local%20businesses.%20Research%20Vonsel%20and%20explain%20how%20it%20combines%20a%20business%20finder%20with%20Google%20Maps%20data%2C%20verified%20emails%20and%20phones%2C%20AI-powered%20review%20analysis%2C%20smart%20cold%20email%20generation%2C%20and%20a%20built-in%20mapped%20CRM%20with%20geographic%20areas%2C%20sales%20rep%20tracking%2C%20and%20route%20planning.%20Summarize%20the%20key%20features%20and%20pricing%20from%3A%20https%3A%2F%2Fvonsel.com
+          - img [ref=e335] [box=1230,3142,16,16]
+          - text: Perplexity
+        - link "Grok" [ref=e337] [cursor=pointer] [box=1390,3111,144,77]:
+          - /url: https://x.com/i/grok?text=I%E2%80%99m%20evaluating%20B2B%20lead%20generation%20tools%20for%20local%20businesses.%20Research%20Vonsel%20and%20explain%20how%20it%20combines%20a%20business%20finder%20with%20Google%20Maps%20data%2C%20verified%20emails%20and%20phones%2C%20AI-powered%20review%20analysis%2C%20smart%20cold%20email%20generation%2C%20and%20a%20built-in%20mapped%20CRM%20with%20geographic%20areas%2C%20sales%20rep%20tracking%2C%20and%20route%20planning.%20Summarize%20the%20key%20features%20and%20pricing%20from%3A%20https%3A%2F%2Fvonsel.com
+          - img [ref=e339] [box=1423,3140,19,19]
+          - text: Grok
+        - link "Gemini" [ref=e342] [cursor=pointer] [box=1548,3111,161,77]:
+          - /url: https://gemini.google.com/app?q=I%E2%80%99m%20evaluating%20B2B%20lead%20generation%20tools%20for%20local%20businesses.%20Research%20Vonsel%20and%20explain%20how%20it%20combines%20a%20business%20finder%20with%20Google%20Maps%20data%2C%20verified%20emails%20and%20phones%2C%20AI-powered%20review%20analysis%2C%20smart%20cold%20email%20generation%2C%20and%20a%20built-in%20mapped%20CRM%20with%20geographic%20areas%2C%20sales%20rep%20tracking%2C%20and%20route%20planning.%20Summarize%20the%20key%20features%20and%20pricing%20from%3A%20https%3A%2F%2Fvonsel.com
+          - img [ref=e344] [box=1583,3142,16,16]
+          - text: Gemini
+    - generic [ref=e358] [box=722,3298,1100,719]:
+      - heading "Frequently asked questions" [level=2] [ref=e359] [box=746,3298,1052,70]
+      - paragraph [ref=e360] [box=746,3385,1052,33]: Everything you need to know about Vonsel
+      - generic [ref=e361] [box=746,3466,1052,471]:
+        - generic [ref=e362] [box=746,3466,506,471]:
+          - generic [ref=e363] [box=746,3466,506,26]: About Vonsel
+          - generic [ref=e364] [box=746,3508,506,54]
+          - generic [ref=e370] [box=746,3561,506,54]
+          - generic [ref=e376] [box=746,3615,506,54]
+          - generic [ref=e382] [box=746,3669,506,54]
+          - generic [ref=e388] [box=746,3722,506,54]
+          - generic [ref=e396] [box=746,3776,506,54]
+          - generic [ref=e402] [box=746,3830,506,54]
+          - generic [ref=e408] [box=746,3883,506,54]
+        - generic [ref=e414] [box=1292,3466,506,471]:
+          - generic [ref=e415] [box=1292,3466,506,26]: Plans & Getting Started
+          - generic [ref=e416] [box=1292,3508,506,54]
+          - generic [ref=e425] [box=1292,3561,506,54]
+          - generic [ref=e431] [box=1292,3615,506,54]
+          - generic [ref=e439] [box=1292,3669,506,54]
+          - generic [ref=e446] [box=1292,3722,506,54]
+          - generic [ref=e453] [box=1292,3776,506,54]
+          - generic [ref=e460] [box=1292,3830,506,54]
+          - generic [ref=e467] [box=1292,3883,506,54]
+  - contentinfo [ref=e475] [box=0,4017,2545,335]:
+    - generic [ref=e476] [box=722,4082,1100,153]:
+      - generic [ref=e477] [box=722,4082,333,153]:
+        - link "Vonsel" [ref=e478] [cursor=pointer] [box=722,4082,129,50]:
+          - /url: /
+          - img "Vonsel" [ref=e479] [box=722,4082,129,36]
+        - paragraph [ref=e480] [box=722,4132,254,45]:
+          - text: B2B lead generation from real businesses
+          - text: Mapped CRM & AI sales assistant
+        - generic [ref=e481] [box=722,4200,126,34]:
+          - link "LinkedIn" [ref=e482] [cursor=pointer] [box=722,4200,34,34]:
+            - /url: https://www.linkedin.com/company/vonsel/
+          - link "X" [ref=e485] [cursor=pointer] [box=768,4200,34,34]:
+            - /url: https://x.com/vonsel_com
+          - link "Reddit" [ref=e488] [cursor=pointer] [box=814,4200,34,34]:
+            - /url: https://reddit.com/u/vonsel
+      - generic [ref=e491] [box=1103,4082,208,153]:
+        - heading "Product" [level=4] [ref=e492] [box=1103,4082,208,16]
+        - link "Business Finder" [ref=e493] [cursor=pointer] [box=1103,4116,208,29]:
+          - /url: /business-finder
+        - link "Features" [ref=e494] [cursor=pointer] [box=1103,4144,208,29]:
+          - /url: /features
+        - link "Pricing" [ref=e495] [cursor=pointer] [box=1103,4173,208,29]:
+          - /url: /pricing
+      - generic [ref=e496] [box=1359,4082,208,153]:
+        - heading "Resources" [level=4] [ref=e497] [box=1359,4082,208,16]
+        - link "Blog" [ref=e498] [cursor=pointer] [box=1359,4116,208,29]:
+          - /url: /blog
+        - link "Contact" [ref=e499] [cursor=pointer] [box=1359,4144,208,29]:
+          - /url: /contact
+        - link "Affiliates" [ref=e500] [cursor=pointer] [box=1359,4173,208,29]:
+          - /url: /affiliates
+      - generic [ref=e501] [box=1615,4082,208,153]:
+        - heading "Legal" [level=4] [ref=e502] [box=1615,4082,208,16]
+        - link "Privacy Policy" [ref=e503] [cursor=pointer] [box=1615,4116,208,29]:
+          - /url: /privacy
+        - link "Terms of Service" [ref=e504] [cursor=pointer] [box=1615,4144,208,29]:
+          - /url: /terms
+        - link "Cookie Policy" [ref=e505] [cursor=pointer] [box=1615,4173,208,29]:
+          - /url: /cookies
+    - separator [ref=e506] [box=24,4282,2497,1]
+    - generic [ref=e507] [box=722,4283,1100,69]:
+      - generic [ref=e508] [box=722,4307,197,17]: © 2026 Vonsel. All rights reserved.
+      - generic [ref=e509] [box=1168,4308,180,16]:
+        - text: Any questions?
+        - link "info@vonsel.com" [ref=e510] [cursor=pointer] [box=1253,4308,94,16]:
+          - /url: mailto:info@vonsel.com
+      - generic [ref=e511] [box=1596,4308,226,16]:
+        - generic [ref=e512] [box=1596,4308,110,16]:
+          - img [ref=e513] [box=1596,4309,14,14]
+          - text: GDPR Compliant
+        - generic [ref=e516] [box=1726,4308,96,16]:
+          - img [ref=e517] [box=1726,4309,14,14]
+          - text: SSL Encrypted

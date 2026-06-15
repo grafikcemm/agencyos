@@ -1,25 +1,30 @@
 import type { Metadata } from 'next'
-import { DM_Sans, Fraunces } from 'next/font/google'
+import { Inter, Inter_Tight, IBM_Plex_Mono } from 'next/font/google'
 import './globals.css'
 
-const dmSans = DM_Sans({
+// Gövde metni (FTG "Sakin Karanlık Editöryel" sistemi)
+const inter = Inter({
   subsets: ['latin'],
-  variable: '--font-dm-sans',
-  weight: ['400', '500', '600', '700'],
+  variable: '--font-sans',
 })
 
-// Editorial serif for display headings + italic accents (reference "wow" lever)
-const fraunces = Fraunces({
+// Editöryel başlık (büyük, ağır) — "Günaydın, Cem"
+const interTight = Inter_Tight({
   subsets: ['latin'],
-  variable: '--font-serif',
+  variable: '--font-inter-tight',
+  weight: ['500', '600', '700', '800'],
+})
+
+// Zaman / etiket / data — timeline omurgası, mono numerikler
+const plexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  variable: '--font-mono',
   weight: ['400', '500', '600'],
-  style: ['normal', 'italic'],
-  display: 'swap',
 })
 
 export const metadata: Metadata = {
-  title: 'Grafikcem Agency // Komuta Merkezi',
-  description: 'Kişisel iş geliştirme ve proje yönetim sistemi',
+  title: 'Grafikcem OS // Komuta Merkezi',
+  description: 'Kişisel iş, yaşam ve gelişim işletim sistemi',
 }
 
 export default function RootLayout({
@@ -28,7 +33,11 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="tr" className={`${dmSans.variable} ${fraunces.variable} h-full dark`} suppressHydrationWarning>
+    <html
+      lang="tr"
+      className={`${inter.variable} ${interTight.variable} ${plexMono.variable} h-full dark`}
+      suppressHydrationWarning
+    >
       <body className="min-h-full font-sans antialiased" suppressHydrationWarning>
         {children}
       </body>

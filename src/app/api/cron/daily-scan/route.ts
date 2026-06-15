@@ -4,7 +4,8 @@ import { normalizeLocation, normalizeSector } from '@/lib/geo'
 import { runQualityEngine } from '@/lib/highQualityLeadEngine'
 import { runEvidenceEngine } from '@/lib/evidenceEngine'
 import { guardCronEnv, notifyOps } from '@/lib/env'
-import { buildDailySectorPlan, loadSectorEngagement } from '@/lib/sectorRotation'
+import { loadSectorEngagement } from '@/lib/sectorRotation'
+import { buildDailyTargetPlan, loadCityEngagement } from '@/lib/cityTargeting'
 
 export async function GET(req: Request) {
   return handleScan(req)
@@ -97,9 +98,6 @@ async function handleScan(req: Request) {
       return NextResponse.json({ error: 'GOOGLE_MAPS_KEY is missing on the server.' }, { status: 500 })
     }
 
-    // District & Sector Rotation Parameters
-    const districts = ['Kadıköy', 'Beşiktaş', 'Üsküdar', 'Şişli', 'Bakırköy', 'Ataşehir', 'Maltepe', 'Sarıyer']
-
     // Calculate daily sequence index since 2026-06-01
     const msDiff = now.getTime() - startDate.getTime()
     const daySequence = Math.floor(msDiff / (24 * 60 * 60 * 1000))
@@ -107,13 +105,12 @@ async function handleScan(req: Request) {
     const dayOffset = parseInt(searchParams.get('dayOffset') || '0', 10) || 0
     const baseIndex = (daySequence >= 0 ? daySequence : 0) + (isDryRun ? dayOffset : 0)
 
-    // Öğrenen ağırlıklı sektör planı: ödeme gücü (ticket band) + dönüşüm geçmişi.
-    // Plan günlük deterministik sıralıdır; sektör 0'dan başlanır.
-    const engagementStats = await loadSectorEngagement()
-    const sectors = buildDailySectorPlan(baseIndex, engagementStats)
-
-    let startDistrictIdx = baseIndex % districts.length
-    let startSectorIdx = 0
+    // Çok-şehirli şehir×sektör hedefleme planı (deep-research fırsat matrisi + öğrenme döngüsü).
+    // sectorStats: sektör çarpanı (013 view). cityStats: şehir×sektör çarpanı (025 view; boşsa nötr).
+    // Plan günlük deterministiktir; opportunityScore × bandWeight × learnedSector × learnedCity × jitter.
+    const sectorStats = await loadSectorEngagement()
+    const cityStats = await loadCityEngagement()
+    const targetPlan = buildDailyTargetPlan(baseIndex, sectorStats, cityStats)
 
     const acceptedLeads: Array<{
       id: string
@@ -137,22 +134,33 @@ async function handleScan(req: Request) {
     let skippedDuplicates = 0
     const scannedQueries: string[] = []
 
-    let districtIdx = startDistrictIdx
-    let sectorIdx = startSectorIdx
-
     let attempts = 0
-    const maxAttempts = 36 // avoid API/infinite loop issue, but allow broad rotation
+    const maxAttempts = 40 // API/sonsuz döngü koruması; geniş şehir×sektör rotasyonuna izin ver
+    const PER_CANDIDATE_BUDGET = 4 // bir şehir×sektör adayı en çok bu kadar ilçe denemesi tüketir
 
-    while (acceptedLeads.length < 5 && attempts < maxAttempts) {
-      attempts++
-      const district = districts[districtIdx % districts.length]
-      const sector = sectors[sectorIdx % sectors.length]
+    // Şehir×sektör adayları üzerinde dön: her aday için ilçe rotasyonu + sektör query'leri.
+    for (const candidate of targetPlan) {
+      if (acceptedLeads.length >= 5 || attempts >= maxAttempts) break
 
-      // Scan queries for this combination
-      for (const query of sector.queries) {
-        if (acceptedLeads.length >= 5) break
+      const sector = candidate.sector
+      const cleanSector = normalizeSector(sector.displayName)
+      const districtList = candidate.districts.length ? candidate.districts : ['']
+      // İlçe başlangıcını günlük kaydır → her gün farklı ilçeden başla (deterministik).
+      const startD = ((baseIndex % districtList.length) + districtList.length) % districtList.length
+      let candidateAttempts = 0
 
-        const searchQuery = `${query} ${district} İstanbul`
+      for (let di = 0; di < districtList.length; di++) {
+        if (acceptedLeads.length >= 5 || attempts >= maxAttempts || candidateAttempts >= PER_CANDIDATE_BUDGET) break
+        const district = districtList[(startD + di) % districtList.length]
+        const loc = normalizeLocation(candidate.city, district || null)
+        attempts++
+        candidateAttempts++
+
+        // Bu aday için sektör query'lerini tara
+        for (const query of sector.queries) {
+          if (acceptedLeads.length >= 5) break
+
+          const searchQuery = `${query} ${loc.googleQuery}`
         scannedQueries.push(searchQuery)
         console.log(`[DAILY CRON] Running query: "${searchQuery}" (Attempt ${attempts}, Accepted: ${acceptedLeads.length})`)
 
@@ -234,8 +242,7 @@ async function handleScan(req: Request) {
             continue
           }
 
-          const cleanSector = normalizeSector(sector.displayName)
-          const loc = normalizeLocation('İstanbul', district)
+          // cleanSector + loc aday/ilçe döngüsünde hesaplandı (çok-şehirli hedefleme).
 
           // Call runEvidenceEngine to fetch/verify website signals dynamically
           const evidence = await runEvidenceEngine({
@@ -389,13 +396,7 @@ async function handleScan(req: Request) {
             })
           }
         }
-      }
-
-      // Rotate district; advance sector every 3 district attempts so a single day
-      // covers multiple sectors instead of exhausting all districts on one sector.
-      districtIdx++
-      if (attempts % 3 === 0) {
-        sectorIdx++
+        }
       }
     }
 
@@ -408,7 +409,7 @@ async function handleScan(req: Request) {
           status: 'success',
           scanned: scannedQueries,
           added: acceptedLeads.length,
-          sectorPlan: sectors.map(s => s.id),
+          targetPlan: targetPlan.map(t => `${t.cityId}:${t.sector.id}`),
           timestamp: new Date().toISOString()
         })
       }, { onConflict: 'key' })
@@ -416,7 +417,7 @@ async function handleScan(req: Request) {
 
     const responsePayload: Record<string, any> = {
       date: todayStr,
-      sectorPlan: sectors.map(s => s.id),
+      targetPlan: targetPlan.map(t => `${t.cityId}:${t.sector.id}`),
       scannedQueries,
       skippedDuplicates,
       acceptedLeads,

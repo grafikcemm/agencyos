@@ -46,7 +46,23 @@ export const SCAN_SECTORS: ScanSector[] = [
     displayName: 'Özel Poliklinik / Tıp Merkezi',
     queries: ['özel poliklinik', 'tıp merkezi', 'fizik tedavi merkezi'],
     ticketBand: 'premium',
-    matchKeywords: ['poliklinik', 'tıp merkezi', 'fizyoterapi', 'fizik tedavi', 'özel hastane', 'göz'],
+    matchKeywords: ['poliklinik', 'fizyoterapi', 'fizik tedavi', 'özel hastane', 'göz'],
+  },
+  // Deep-research Tier A yeni sektörler: medikal turizm (5448 teşvik → fiyat itirazı düşük) +
+  // klinik zinciri (çok lokasyonlu, yüksek LTV). matchKeywords özgül tutuldu (cross-credit önler).
+  {
+    id: 'medikal_turizm',
+    displayName: 'Medikal Turizm / Aracı Kuruluş',
+    queries: ['sağlık turizmi acentesi', 'medikal turizm aracı kuruluş', 'saç ekim merkezi', 'health tourism agency'],
+    ticketBand: 'premium',
+    matchKeywords: ['medikal turizm', 'sağlık turizmi', 'aracı kuruluş'],
+  },
+  {
+    id: 'klinik_zinciri',
+    displayName: 'Klinik Zinciri / Sağlık Grubu',
+    queries: ['özel hastane', 'sağlık grubu', 'tıp merkezleri zinciri'],
+    ticketBand: 'premium',
+    matchKeywords: ['klinik zinciri', 'sağlık grubu', 'hastane grubu', 'tıp merkezi'],
   },
   {
     id: 'hukuk',
@@ -61,6 +77,15 @@ export const SCAN_SECTORS: ScanSector[] = [
     queries: ['mimarlık ofisi', 'iç mimarlık'],
     ticketBand: 'premium',
     matchKeywords: ['mimarlık', 'mimari', 'iç mimar'],
+  },
+  // Lüks gayrimenkul: ayrı SCAN sektörü — generic emlaktan daha yüksek bilet + kreatif bağımlılık.
+  // emlak'tan ÖNCE: engagement attribution'da emlak'ın 'gayrimenkul' keyword'ü çalmasın.
+  {
+    id: 'luks_gayrimenkul',
+    displayName: 'Lüks Gayrimenkul / Rezidans',
+    queries: ['lüks gayrimenkul', 'luxury real estate', 'rezidans projesi', 'villa satış'],
+    ticketBand: 'premium',
+    matchKeywords: ['lüks gayrimenkul', 'rezidans', 'luxury real estate', 'lüks emlak'],
   },
   {
     id: 'emlak',
@@ -149,10 +174,35 @@ export const SCAN_SECTORS: ScanSector[] = [
   {
     id: 'guzellik',
     displayName: 'Güzellik Salonu',
-    queries: ['güzellik salonu', 'cilt bakım merkezi'],
-    ticketBand: 'low',
+    queries: ['güzellik salonu', 'cilt bakım merkezi', 'lazer epilasyon merkezi'],
+    // Deep-research: devasa hacim + maksimum dijital açık (op. %90 Instagram). low→mid
+    // (dengeli orta-yüksek) → rotasyonda daha sık taranır.
+    ticketBand: 'mid',
     // 'salon' bilinçli dışarıda: "düğün salonu" gibi sektörlerle substring çakışması yapar.
     matchKeywords: ['güzellik', 'kuaför', 'berber', 'cilt bakım'],
+  },
+  // Tüketici/e-ticaret dikeyleri (TR araştırma Tier A): yüksek görsel ihtiyaç +
+  // güçlü sosyal medya görünürlüğü. Additive — öğrenme döngüsü dönüşüme göre sıralar.
+  {
+    id: 'moda_giyim',
+    displayName: 'Moda / Giyim Butiği',
+    queries: ['butik giyim mağazası', 'moda butik', 'tekstil mağazası'],
+    ticketBand: 'mid',
+    matchKeywords: ['moda', 'giyim', 'butik', 'tekstil', 'ayakkabı', 'aksesuar'],
+  },
+  {
+    id: 'ev_dekorasyon',
+    displayName: 'Ev Dekorasyon / Mobilya',
+    queries: ['mobilya mağazası', 'ev dekorasyon', 'iç dekorasyon mağazası'],
+    ticketBand: 'mid',
+    matchKeywords: ['mobilya', 'dekorasyon', 'ev tekstil', 'aydınlatma', 'mutfak dolabı'],
+  },
+  {
+    id: 'restoran_kafe',
+    displayName: 'Restoran / Kafe',
+    queries: ['restoran', 'kafe', 'cafe'],
+    ticketBand: 'low',
+    matchKeywords: ['restoran', 'kafe', 'cafe', 'lokanta', 'bistro', 'kahve'],
   },
 ]
 

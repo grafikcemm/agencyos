@@ -46,6 +46,16 @@ services-current.jpeg
 dashboard-current.jpeg
 harita.jpeg
 
+# Smoke/QA screenshot artifacts (sağlık raporu + manuel smoke çıktıları) — repo'ya girmesin
+aliskanliklar-*.png
+asistan-*.png
+finans-*.png
+command-center.png
+leadaicrm-*.png
+vonsel-*.png
+*-current.png
+*-smoke*.png
+
 # env files (can opt-in for committing if needed)
 .env*
 # ...but keep the documented template tracked for setup reproducibility.

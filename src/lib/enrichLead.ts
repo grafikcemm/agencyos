@@ -22,6 +22,7 @@ function toEvidenceSignals(raw: Partial<Lead>): EvidenceSignals {
     has_ads_signal: raw.has_ads_signal ?? false,
     instagram_as_site: raw.instagram_as_site ?? false,
     is_slow_or_dead: false,
+    has_job_signal: raw.has_job_signal ?? false,
   }
 }
 

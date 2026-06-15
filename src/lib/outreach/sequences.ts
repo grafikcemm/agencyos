@@ -1,7 +1,30 @@
 import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
+import { buildMultiChannelPlan, type CustomerType } from './channelMatrix'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
+
+// Çok-kanallı gün-bazlı sekansı follow_up_sequences'a yazar. Her adım, due_at'i
+// geldiğinde cron tarafından agent_task'a (hatırlatma) terfi eder — OTOMATİK GÖNDERİM YOK,
+// operatör taslağı kendisi gönderir. Aynı lead'e tekrar planlamayı çağıran önler.
+export async function scheduleMultiChannelSequence(opts: {
+  leadId: string
+  customerType: CustomerType
+}): Promise<{ scheduled: number }> {
+  const plan = buildMultiChannelPlan(opts.customerType)
+  const now = Date.now()
+
+  const rows = plan.map((step) => ({
+    lead_id: opts.leadId,
+    step: step.step,
+    channel: step.channel,
+    due_at: new Date(now + step.day * MS_PER_DAY).toISOString(),
+  }))
+
+  const { error } = await supabaseAdmin.from('follow_up_sequences').insert(rows)
+  if (error) throw error
+  return { scheduled: rows.length }
+}
 
 // Schedules the next follow-up step for a lead. due_at is computed from now.
 export async function scheduleFollowUp(opts: {

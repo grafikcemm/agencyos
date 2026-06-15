@@ -15,7 +15,12 @@ import {
   X,
   PenLine,
   Search,
+  Sparkles,
+  Clock,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
+import { classifyVisibility, isAgencySource, isStale, type Visibility } from '@/lib/jobs/scoring'
 
 interface Draft {
   id: string
@@ -41,8 +46,16 @@ interface Listing {
   fit_score: number | null
   fit_reasons: string[]
   scam_flags: string[]
+  posted_at: string | null
   scanned_at: string
   drafts: Draft[]
+}
+
+// Skorlanmamış (yeni/değerlendiriliyor) ilan henüz elenmez → 'show' (beklemede).
+// Skorlanmışta scoring.ts merkezi kuralı: show / gray / rejected.
+function visibilityOf(l: Listing): Visibility {
+  if (l.fit_score == null) return 'show'
+  return classifyVisibility(l.fit_score, l.legitimacy, l.posted_at)
 }
 
 const LEGIT_BADGE: Record<string, { label: string; cls: string; Icon: typeof ShieldCheck }> = {
@@ -65,7 +78,8 @@ export default function KariyerPage() {
   const [scanning, setScanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
-  const [tab, setTab] = useState<'all' | 'tr' | 'global' | 'unfit'>('all')
+  const [tab, setTab] = useState<'all' | 'tr' | 'global'>('all')
+  const [showGray, setShowGray] = useState(false)
   const [draftingId, setDraftingId] = useState<string | null>(null)
   const [draftError, setDraftError] = useState<{ id: string; msg: string } | null>(null)
 
@@ -140,35 +154,178 @@ export default function KariyerPage() {
     setTimeout(() => setCopiedId(null), 1500)
   }
 
-  // fit < 50 = "Uyumlu Değil" (skorlanmış ama düşük). null/skorlanmamış = uygun havuzda.
-  const UNFIT_THRESHOLD = 50
-  const isUnfit = (l: Listing) => l.fit_score != null && l.fit_score < UNFIT_THRESHOLD
-
+  // Karma eleme: 'rejected' API'de zaten gizli. Burada show (varsayılan) vs gray (katlanır).
+  // Ajans kaynaklı ilanlar fit-sırası içinde öne alınır (bonus skoru zaten üste taşır,
+  // eşitlikte ajansı öncele).
   const active = listings.filter((l) => l.status !== 'dismissed')
-  const fitList = active.filter((l) => !isUnfit(l)) // uygun + skorlanmamış
-  const unfitList = active.filter(isUnfit)
-  const trCount = fitList.filter((l) => l.market === 'tr').length
-  const globalCount = fitList.filter((l) => l.market === 'global').length
+  const byAgencyThenFit = (a: Listing, b: Listing) => {
+    const ag = Number(isAgencySource(b.source)) - Number(isAgencySource(a.source))
+    if (ag !== 0) return ag
+    return (b.fit_score ?? 0) - (a.fit_score ?? 0)
+  }
+  const showAll = active.filter((l) => visibilityOf(l) === 'show').sort(byAgencyThenFit)
+  const grayList = active.filter((l) => visibilityOf(l) === 'gray').sort(byAgencyThenFit)
+  const trCount = showAll.filter((l) => l.market === 'tr').length
+  const globalCount = showAll.filter((l) => l.market === 'global').length
 
-  const visible =
-    tab === 'unfit'
-      ? unfitList
-      : tab === 'all'
-        ? fitList
-        : fitList.filter((l) => l.market === tab)
+  const visible = tab === 'all' ? showAll : showAll.filter((l) => l.market === tab)
 
-  const TABS: { key: 'all' | 'tr' | 'global' | 'unfit'; label: string; count: number }[] = [
-    { key: 'all', label: 'Hepsi', count: fitList.length },
+  const TABS: { key: 'all' | 'tr' | 'global'; label: string; count: number }[] = [
+    { key: 'all', label: 'Hepsi', count: showAll.length },
     { key: 'tr', label: '🇹🇷 Türkiye', count: trCount },
     { key: 'global', label: '🌍 Global', count: globalCount },
-    { key: 'unfit', label: '⚠️ Uyumlu Değil', count: unfitList.length },
   ]
+
+  const renderListing = (l: Listing) => {
+    const badge = l.legitimacy ? LEGIT_BADGE[l.legitimacy] : null
+    const agency = isAgencySource(l.source)
+    const stale = isStale(l.posted_at)
+    const pending = l.fit_score == null
+    return (
+      <div
+        key={l.id}
+        className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-4 space-y-3 hover:border-[var(--border-highlight)] transition-colors"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 space-y-1.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <a
+                href={l.url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm font-semibold text-[var(--text-primary)] hover:text-[var(--accent)] inline-flex items-center gap-1"
+              >
+                {l.title}
+                <ExternalLink className="w-3 h-3 opacity-60" />
+              </a>
+              {badge && (
+                <span className={`inline-flex items-center gap-1 text-[9px] font-bold rounded px-1.5 py-0.5 border uppercase tracking-wider ${badge.cls}`}>
+                  <badge.Icon className="w-2.5 h-2.5" /> {badge.label}
+                </span>
+              )}
+              {agency && (
+                <span className="inline-flex items-center gap-1 text-[9px] font-bold rounded px-1.5 py-0.5 border uppercase tracking-wider text-[var(--accent)] bg-[var(--accent)]/10 border-[var(--accent)]/20">
+                  <Sparkles className="w-2.5 h-2.5" /> Ajans
+                </span>
+              )}
+              {stale && (
+                <span className="inline-flex items-center gap-1 text-[9px] font-bold rounded px-1.5 py-0.5 border uppercase tracking-wider text-[var(--text-muted)] bg-[var(--bg-elevated)] border-[var(--border-subtle)]">
+                  <Clock className="w-2.5 h-2.5" /> Eski
+                </span>
+              )}
+              {pending && (
+                <span className="inline-flex items-center gap-1 text-[9px] font-bold rounded px-1.5 py-0.5 border uppercase tracking-wider text-[var(--text-muted)] bg-[var(--bg-elevated)] border-[var(--border-subtle)]">
+                  <RefreshCw className="w-2.5 h-2.5 animate-spin" /> Değerlendiriliyor
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3 text-[10px] text-[var(--text-muted)] font-medium flex-wrap">
+              {l.company && (
+                <span className="inline-flex items-center gap-1">
+                  <Building2 className="w-2.5 h-2.5" /> {l.company}
+                </span>
+              )}
+              {(l.location || l.remote) && (
+                <span className="inline-flex items-center gap-1">
+                  <MapPin className="w-2.5 h-2.5" /> {l.remote ? 'Remote' : l.location}
+                </span>
+              )}
+              <span className="uppercase tracking-wider">{l.source}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="text-right">
+              <div className={`num text-lg font-black leading-none ${fitColor(l.fit_score)}`}>
+                {l.fit_score ?? '—'}
+              </div>
+              <div className="text-[8px] text-[var(--text-muted)] font-bold uppercase tracking-wider">fit</div>
+            </div>
+            <button
+              onClick={() => dismiss(l.id)}
+              title="İlgilenmiyorum"
+              className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-all"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {l.fit_reasons?.length > 0 && (
+          <ul className="flex flex-wrap gap-1.5">
+            {l.fit_reasons.map((r, i) => (
+              <li
+                key={i}
+                className="text-[10px] text-[var(--text-secondary)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded px-2 py-0.5"
+              >
+                {r}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {l.legitimacy === 'suspicious' && l.scam_flags?.length > 0 && (
+          <div className="text-[10px] text-[var(--danger)] bg-[var(--danger)]/5 border border-[var(--danger)]/15 rounded-lg px-2.5 py-1.5 space-y-0.5">
+            {l.scam_flags.map((f, i) => (
+              <div key={i} className="flex items-center gap-1">
+                <AlertTriangle className="w-2.5 h-2.5 shrink-0" /> {f}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {l.drafts?.length > 0 ? (
+          <div className="space-y-2">
+            {l.drafts.map((d) => (
+              <div key={d.id} className="bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg p-3 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                    Başvuru Taslağı ({d.lang})
+                  </span>
+                  <button
+                    onClick={() => copyDraft(d)}
+                    className="flex items-center gap-1 text-[9px] font-bold text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
+                  >
+                    {copiedId === d.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    {copiedId === d.id ? 'Kopyalandı' : 'Kopyala'}
+                  </button>
+                </div>
+                {d.subject && (
+                  <p className="text-[11px] font-semibold text-[var(--text-primary)]">{d.subject}</p>
+                )}
+                <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">{d.body}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <button
+              onClick={() => requestDraft(l.id)}
+              disabled={draftingId === l.id}
+              className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--text-secondary)] hover:text-[var(--accent)] border border-[var(--border-subtle)] hover:border-[var(--border-highlight)] rounded-lg px-2.5 py-1.5 transition-all uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {draftingId === l.id ? (
+                <RefreshCw className="w-3 h-3 animate-spin" />
+              ) : (
+                <PenLine className="w-3 h-3" />
+              )}
+              {draftingId === l.id ? 'Üretiliyor…' : 'Taslak üret'}
+            </button>
+            {draftError?.id === l.id && (
+              <p className="flex items-center gap-1 text-[9px] font-bold text-[var(--danger)]">
+                <AlertTriangle className="w-2.5 h-2.5 shrink-0" /> {draftError.msg}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-[var(--bg-base)]">
       <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border-subtle)] shrink-0">
         <div className="flex items-center gap-2">
-          <h2 className="text-[11px] font-black tracking-widest text-[var(--text-secondary)] uppercase">
+          <h2 className="label-eyebrow">
             Kariyer Radarı
           </h2>
           <span className="text-[9px] text-[var(--text-muted)] font-bold tracking-wider uppercase border-l border-[var(--border-subtle)] pl-2">
@@ -216,139 +373,31 @@ export default function KariyerPage() {
             <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
           </div>
         </div>
-      ) : visible.length === 0 ? (
+      ) : showAll.length === 0 && grayList.length === 0 ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-3 text-[var(--text-muted)]">
           <Search className="w-8 h-8" />
           <p className="text-xs font-bold tracking-wide">Henüz ilan yok. &quot;İlan Tara&quot; ile başlat.</p>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto p-6 space-y-3 scrollbar-thin">
-          {visible.map((l) => {
-            const badge = l.legitimacy ? LEGIT_BADGE[l.legitimacy] : null
-            return (
-              <div
-                key={l.id}
-                className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-4 space-y-3 hover:border-[var(--border-highlight)] transition-colors"
+          {visible.map(renderListing)}
+
+          {/* Gri bölge: orta uyum (fit [40,60)) — karma elemenin "sakla-ama-gizle" katmanı. */}
+          {grayList.length > 0 && (
+            <div className="pt-2 border-t border-[var(--border-subtle)] mt-4">
+              <button
+                onClick={() => setShowGray((v) => !v)}
+                className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--text-primary)] uppercase tracking-wider transition-colors py-1"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0 space-y-1.5">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <a
-                        href={l.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-sm font-semibold text-[var(--text-primary)] hover:text-[var(--accent)] inline-flex items-center gap-1"
-                      >
-                        {l.title}
-                        <ExternalLink className="w-3 h-3 opacity-60" />
-                      </a>
-                      {badge && (
-                        <span className={`inline-flex items-center gap-1 text-[9px] font-bold rounded px-1.5 py-0.5 border uppercase tracking-wider ${badge.cls}`}>
-                          <badge.Icon className="w-2.5 h-2.5" /> {badge.label}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 text-[10px] text-[var(--text-muted)] font-medium flex-wrap">
-                      {l.company && (
-                        <span className="inline-flex items-center gap-1">
-                          <Building2 className="w-2.5 h-2.5" /> {l.company}
-                        </span>
-                      )}
-                      {(l.location || l.remote) && (
-                        <span className="inline-flex items-center gap-1">
-                          <MapPin className="w-2.5 h-2.5" /> {l.remote ? 'Remote' : l.location}
-                        </span>
-                      )}
-                      <span className="uppercase tracking-wider">{l.source}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <div className="text-right">
-                      <div className={`num text-lg font-black leading-none ${fitColor(l.fit_score)}`}>
-                        {l.fit_score ?? '—'}
-                      </div>
-                      <div className="text-[8px] text-[var(--text-muted)] font-bold uppercase tracking-wider">fit</div>
-                    </div>
-                    <button
-                      onClick={() => dismiss(l.id)}
-                      title="İlgilenmiyorum"
-                      className="w-7 h-7 flex items-center justify-center rounded-md text-[var(--text-muted)] hover:text-[var(--danger)] hover:bg-[var(--danger)]/10 transition-all"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-
-                {l.fit_reasons?.length > 0 && (
-                  <ul className="flex flex-wrap gap-1.5">
-                    {l.fit_reasons.map((r, i) => (
-                      <li
-                        key={i}
-                        className="text-[10px] text-[var(--text-secondary)] bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded px-2 py-0.5"
-                      >
-                        {r}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                {l.legitimacy === 'suspicious' && l.scam_flags?.length > 0 && (
-                  <div className="text-[10px] text-[var(--danger)] bg-[var(--danger)]/5 border border-[var(--danger)]/15 rounded-lg px-2.5 py-1.5 space-y-0.5">
-                    {l.scam_flags.map((f, i) => (
-                      <div key={i} className="flex items-center gap-1">
-                        <AlertTriangle className="w-2.5 h-2.5 shrink-0" /> {f}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {l.drafts?.length > 0 ? (
-                  <div className="space-y-2">
-                    {l.drafts.map((d) => (
-                      <div key={d.id} className="bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg p-3 space-y-1.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
-                            Başvuru Taslağı ({d.lang})
-                          </span>
-                          <button
-                            onClick={() => copyDraft(d)}
-                            className="flex items-center gap-1 text-[9px] font-bold text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors"
-                          >
-                            {copiedId === d.id ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                            {copiedId === d.id ? 'Kopyalandı' : 'Kopyala'}
-                          </button>
-                        </div>
-                        {d.subject && (
-                          <p className="text-[11px] font-semibold text-[var(--text-primary)]">{d.subject}</p>
-                        )}
-                        <p className="text-[11px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">{d.body}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
-                    <button
-                      onClick={() => requestDraft(l.id)}
-                      disabled={draftingId === l.id}
-                      className="flex items-center gap-1.5 text-[10px] font-bold text-[var(--text-secondary)] hover:text-[var(--accent)] border border-[var(--border-subtle)] hover:border-[var(--border-highlight)] rounded-lg px-2.5 py-1.5 transition-all uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {draftingId === l.id ? (
-                        <RefreshCw className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <PenLine className="w-3 h-3" />
-                      )}
-                      {draftingId === l.id ? 'Üretiliyor…' : 'Taslak üret'}
-                    </button>
-                    {draftError?.id === l.id && (
-                      <p className="flex items-center gap-1 text-[9px] font-bold text-[var(--danger)]">
-                        <AlertTriangle className="w-2.5 h-2.5 shrink-0" /> {draftError.msg}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
+                {showGray ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                Gri bölge — orta uyum
+                <span className="text-[9px] font-mono bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded px-1 py-0.5">
+                  {grayList.length}
+                </span>
+              </button>
+              {showGray && <div className="space-y-3 mt-3 opacity-75">{grayList.map(renderListing)}</div>}
+            </div>
+          )}
         </div>
       )}
     </div>

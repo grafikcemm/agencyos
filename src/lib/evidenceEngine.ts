@@ -9,6 +9,8 @@ export interface EvidenceSignals {
   has_ads_signal: boolean
   instagram_as_site: boolean
   is_slow_or_dead: boolean
+  // Lead'in kendi sitesinde kariyer/işe-alım sinyali → büyüme + kreatif kapasite ihtiyacı.
+  has_job_signal: boolean
 }
 
 export interface EvidenceResult extends EvidenceSignals {
@@ -75,7 +77,11 @@ function extractSignals(html: string, url: string): Omit<EvidenceSignals, 'has_a
   const has_online_booking =
     /booking|randevu al|randevu-al|online randevu|reserve|appointment|calendly|setmore|acuityscheduling|booksy|treatwell/i.test(lower)
 
-  return { has_real_website, has_whatsapp, has_form, has_online_booking, instagram_as_site }
+  // Kariyer/işe-alım sinyali: ekip büyütüyor → kreatif/içerik kapasite ihtiyacı.
+  const has_job_signal =
+    /kariyer|açık pozisyon|acik pozisyon|ekibimize katıl|ekibimize katil|iş ilan|is ilan|bize katıl|join our team|careers|we['’\s]?re hiring|open position/i.test(lower)
+
+  return { has_real_website, has_whatsapp, has_form, has_online_booking, instagram_as_site, has_job_signal }
 }
 
 async function fetchWebsite(url: string, timeoutMs = 4000): Promise<{ html: string; ok: boolean }> {
@@ -163,6 +169,10 @@ function buildPainAndProof(ctx: BuildContext): {
     pain.push(`Kısıtlı yorum (${ctx.reviewCount})`)
   } else if (ctx.reviewCount >= 100) {
     proof.push(`${ctx.reviewCount} Google yorumu — güçlü sosyal kanıt`)
+  }
+
+  if (ctx.signals.has_job_signal) {
+    proof.push('Kariyer/işe-alım sayfası aktif — ekip büyütüyor (kreatif kapasite ihtiyacı)')
   }
 
   const disqualification_reason: string | null = null
@@ -281,6 +291,7 @@ export async function runEvidenceEngine(params: {
     has_ads_signal: false,
     instagram_as_site: false,
     is_slow_or_dead: false,
+    has_job_signal: false,
   }
   let evidence_verified = false
   let found_email: string | null = null

@@ -16,6 +16,12 @@ export interface ScanParams {
   limit?: number
   /** Tarama kaynağı — scan_runs geçmişine yazılır. */
   source?: 'manual' | 'jarvis' | 'cron'
+  /** Daire alan merkezi (enlem). lat+lng+radius birlikte verilirse Places location bias eklenir. */
+  lat?: number
+  /** Daire alan merkezi (boylam). */
+  lng?: number
+  /** Daire yarıçapı (metre). */
+  radius?: number
 }
 
 export interface ScanOutcome {
@@ -35,7 +41,7 @@ export interface ScanOutcome {
 const PLACES_BASE = 'https://maps.googleapis.com/maps/api/place'
 
 export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
-  const { sector, city, district = '', limit = 10, source = 'manual' } = params
+  const { sector, city, district = '', limit = 10, source = 'manual', lat, lng, radius } = params
   const apiKey = process.env.GOOGLE_MAPS_KEY
 
   const empty: ScanOutcome = { success: true, insertedCount: 0, updatedCount: 0, skippedCount: 0, count: 0 }
@@ -48,18 +54,76 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
   const cleanSector = normalizeSector(sector)
   const searchQuery = `${cleanSector} ${loc.googleQuery}`
 
-  const searchUrl = `${PLACES_BASE}/textsearch/json?query=${encodeURIComponent(searchQuery)}&key=${apiKey}&language=tr&region=tr`
-  const searchRes = await fetch(searchUrl)
-  const searchData = await searchRes.json()
+  // Daire alan aracı: lat+lng+radius birlikte ve geçerliyse Places text search'e
+  // &location=lat,lng&radius=m eklenir (alan bias'ı). Yoksa URL eskisiyle birebir aynı kalır.
+  const hasCircle =
+    Number.isFinite(lat) && Number.isFinite(lng) && Number.isFinite(radius) && (radius as number) > 0
+  const searchBase = `${PLACES_BASE}/textsearch/json?query=${encodeURIComponent(searchQuery)}&key=${apiKey}&language=tr&region=tr`
+  const buildSearchUrl = (pagetoken?: string): string =>
+    searchBase +
+    (hasCircle ? `&location=${lat},${lng}&radius=${Math.round(radius as number)}` : '') +
+    (pagetoken ? `&pagetoken=${pagetoken}` : '')
 
-  if (searchData.status !== 'OK' && searchData.status !== 'ZERO_RESULTS') {
-    return { ...empty, success: false, error: searchData.status as string, message: searchData.error_message as string | undefined }
+  // Places legacy text search sayfa başına ~20 sonuç döner; daha fazlası için next_page_token
+  // ile en çok 3 sayfa (60 sonuç). Token bir sonraki istekte geçerli olmadan önce ~2sn gecikme
+  // ister. NOT: serverless deploy'da bu gecikme fonksiyon timeout'una yaklaşabilir → MAX_PAGES=3.
+  // limit ≤ ilk sayfa boyutu olduğunda döngü page 0'da kırılır → gecikme yok, çıktı eskiyle özdeş.
+  const MAX_PAGES = 3
+  const collected: Record<string, unknown>[] = []
+  let pagetoken: string | undefined
+  let firstStatus: string | null = null
+  let firstErrorMessage: string | undefined
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    if (page > 0) {
+      await new Promise(resolve => setTimeout(resolve, 2000))
+    }
+    const res = await fetch(buildSearchUrl(pagetoken))
+    const data = await res.json()
+    if (page === 0) {
+      firstStatus = data.status as string
+      firstErrorMessage = data.error_message as string | undefined
+    }
+
+    if (data.status === 'OK' && Array.isArray(data.results)) {
+      collected.push(...(data.results as Record<string, unknown>[]))
+      pagetoken = data.next_page_token as string | undefined
+    } else if (data.status === 'INVALID_REQUEST' && pagetoken) {
+      // Token henüz hazır değil — bir kez daha kısa bekleyip tekrar dene, sonra bırak.
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      const retry = await fetch(buildSearchUrl(pagetoken))
+      const retryData = await retry.json()
+      if (retryData.status === 'OK' && Array.isArray(retryData.results)) {
+        collected.push(...(retryData.results as Record<string, unknown>[]))
+        pagetoken = retryData.next_page_token as string | undefined
+      } else {
+        // Sonraki sayfa retry'i başarısız — page 0 sonuçları best-effort döndürülür; sessiz kalma.
+        if (retryData.status !== 'ZERO_RESULTS') {
+          console.warn(`scanLeads: next_page_token retry başarısız (${retryData.status as string})`)
+        }
+        break
+      }
+    } else {
+      // ZERO_RESULTS veya sert hata — döngüyü kır; ilk sayfa semantiği aşağıda firstStatus ile korunur.
+      // Sonraki sayfadaki hata page 0 sonuçlarını engellemez (best-effort) ama yine de loglanır.
+      if (page > 0 && data.status !== 'ZERO_RESULTS') {
+        console.warn(`scanLeads: sayfa ${page} durdu (${data.status as string})`)
+      }
+      break
+    }
+
+    if (collected.length >= limit || !pagetoken) break
   }
-  if (searchData.status === 'ZERO_RESULTS' || !searchData.results) {
+
+  // Hata/boş semantiği ESKİSİYLE AYNI: ilk sayfa status'una göre değerlendir.
+  if (firstStatus && firstStatus !== 'OK' && firstStatus !== 'ZERO_RESULTS') {
+    return { ...empty, success: false, error: firstStatus, message: firstErrorMessage }
+  }
+  if (collected.length === 0) {
     return empty
   }
 
-  const places = (searchData.results as Record<string, unknown>[]).slice(0, limit)
+  const places = collected.slice(0, limit)
 
   // Pre-check which place ids already exist → true insert vs update counts,
   // and avoid overwriting a manually curated e-mail.
@@ -100,6 +164,7 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
       reviewCount: (d.user_ratings_total as number) ?? 0,
       phone: d.formatted_phone_number as string,
       evidence,
+      email: evidence.found_email,
     })
 
     const qualityResult = runQualityEngine({
@@ -140,6 +205,10 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
       status: 'new',
       // V3 scores
       potential_score: scoreResult.potential_score,
+      base_score: scoreResult.base_score,
+      risk_score: scoreResult.risk_score,
+      risk_reasons: scoreResult.risk_reasons,
+      route: scoreResult.route,
       evidence_score: scoreResult.evidence_score,
       fit_score: scoreResult.fit_score,
       urgency_score: scoreResult.urgency_score,
@@ -154,6 +223,7 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
       has_online_booking: evidence.has_online_booking,
       has_ads_signal: evidence.has_ads_signal,
       instagram_as_site: evidence.instagram_as_site,
+      has_job_signal: evidence.has_job_signal,
       // Evidence intelligence
       why_now: evidence.why_now,
       pain_signals: evidence.pain_signals,

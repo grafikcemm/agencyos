@@ -114,13 +114,13 @@ export default function IcraatFirsatlariPage() {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden bg-[var(--bg-base)]">
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden bg-[var(--bg-base)]">
       {/* Header */}
       <div className="p-6 pb-4 border-b border-[var(--border-subtle)] shrink-0 bg-[var(--bg-base)] z-10">
         <div className="max-w-[1600px] mx-auto space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <h1 className="text-2xl font-black text-[var(--text-primary)] flex items-center gap-2">
+              <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--text-primary)] flex items-center gap-2">
                 <Target className="w-6 h-6 text-[var(--accent)]" />
                 Opportunity Intelligence OS
               </h1>
@@ -139,7 +139,7 @@ export default function IcraatFirsatlariPage() {
               <button
                 type="button"
                 disabled={directive.running || launchNowItems.length === 0}
-                className="flex items-center gap-1.5 px-4 py-2 bg-[var(--accent)] text-black text-xs font-black rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity whitespace-nowrap cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2 bg-[var(--accent)] text-white text-xs font-black rounded-md hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity whitespace-nowrap cursor-pointer"
                 onClick={dispatchSprint}
               >
                 {directive.running && directive.label === 'Aktif sprint'
@@ -175,7 +175,7 @@ export default function IcraatFirsatlariPage() {
                 <button
                   type="button"
                   disabled={directive.running}
-                  className="flex items-center justify-center gap-1.5 h-10 px-4 rounded-md bg-[var(--accent)] text-black text-xs font-black whitespace-nowrap cursor-pointer hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+                  className="flex items-center justify-center gap-1.5 h-10 px-4 rounded-md bg-[var(--accent)] text-white text-xs font-black whitespace-nowrap cursor-pointer hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
                   onClick={() => dispatchOpportunity(active)}
                 >
                   {directive.running && directive.label === active.title
@@ -299,7 +299,7 @@ export default function IcraatFirsatlariPage() {
                             disabled={directive.running}
                             onClick={() => dispatchOpportunity(opp)}
                             title="Bu fırsatı ajanlara devret"
-                            className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--accent)] text-black text-[9px] font-black opacity-0 group-hover/opp:opacity-100 disabled:opacity-50 transition-opacity shadow-lg cursor-pointer"
+                            className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--accent)] text-white text-[9px] font-black opacity-0 group-hover/opp:opacity-100 disabled:opacity-50 transition-opacity shadow-lg cursor-pointer"
                           >
                             {directive.running && directive.label === opp.title
                               ? <Loader2 className="w-3 h-3 animate-spin" />
@@ -359,7 +359,7 @@ function TabButton({
       type="button"
       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-bold transition-all cursor-pointer ${
         active
-          ? 'bg-[var(--accent)] text-black shadow-sm'
+          ? 'bg-[var(--accent)] text-white shadow-sm'
           : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-elevated)]'
       }`}
       onClick={onClick}

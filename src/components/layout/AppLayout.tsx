@@ -17,7 +17,15 @@ const PAGE_TITLES: Record<string, string> = {
   '/services': 'Hizmetlerim',
   '/bilgi': 'Bilgi Merkezi',
   '/icraat-firsatlari': 'İcraat Fırsatları',
-  '/settings': 'Sistem Ayarları'
+  '/kariyer': 'Kariyer Radarı',
+  '/settings': 'Sistem Ayarları',
+  '/asistan': 'Asistan',
+  '/aliskanliklar': 'Alışkanlıklar',
+  '/gunluk': 'Günlük',
+  '/gelisim': 'Gelişim',
+  '/akademi': 'Akademi',
+  '/kutuphane': 'Kütüphane',
+  '/finans': 'Finans'
 }
 
 interface AppLayoutProps {
@@ -62,7 +70,7 @@ export function AppLayout({ children }: AppLayoutProps) {
       )}
 
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        <header className="relative z-20 h-[60px] border-b border-[var(--border-subtle)] flex items-center justify-between px-4 md:px-6 shrink-0 bg-[var(--bg-base)]/70 backdrop-blur-xl">
+        <header className="relative z-20 h-[60px] border-b border-[var(--border-subtle)] flex items-center justify-between px-4 md:px-6 shrink-0 bg-[var(--bg-base)]">
           <div className="flex items-center gap-2.5 min-w-0">
             <button
               aria-label="Menüyü aç"
@@ -72,8 +80,8 @@ export function AppLayout({ children }: AppLayoutProps) {
               <Menu className="w-4 h-4" />
             </button>
             <div className="flex items-baseline gap-2.5 min-w-0">
-              <span className="hidden sm:inline text-[11px] text-[var(--text-muted)] tracking-wide">Dashboard /</span>
-              <h1 className="font-display text-lg font-medium text-[var(--text-primary)] leading-none truncate">{pageTitle}</h1>
+              <span className="hidden sm:inline label-eyebrow">Grafikcem /</span>
+              <h1 className="font-display text-xl font-bold text-[var(--text-primary)] leading-none truncate tracking-tight">{pageTitle}</h1>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -91,12 +99,12 @@ export function AppLayout({ children }: AppLayoutProps) {
           </div>
         </header>
 
-        <main className="relative flex-1 overflow-hidden">
+        <main className="relative flex-1 overflow-y-auto">
           <div
             aria-hidden
             className="glow-bg top-0 left-1/2 -translate-x-1/2 h-[420px] w-[1100px] max-w-full opacity-70"
           />
-          <div className="relative z-10 h-full">{children}</div>
+          <div className="relative z-10 min-h-full flex flex-col">{children}</div>
         </main>
       </div>
     </div>

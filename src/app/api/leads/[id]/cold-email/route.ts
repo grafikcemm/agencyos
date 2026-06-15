@@ -11,28 +11,32 @@ import {
   buildColdEmailSystemPrompt,
   buildColdEmailUserPrompt,
   buildSignatureBlock,
+  buildComplianceFooter,
   parseColdEmailOutput,
   SIGNATURE_SETTING_KEYS,
+  COMPLIANCE_SETTING_KEYS,
   type ColdEmailLead,
 } from '@/lib/coldEmail'
+import { COLD_EMAIL_TEMPLATES, selectColdEmailTemplate } from '@/lib/coldEmailTemplates'
 
 // LLM çağrısı birkaç saniye sürebilir — serverless timeout'u yükselt.
 export const maxDuration = 60
 
 const LEAD_SELECT =
-  'id, business_name, sector, district, rating, review_count, has_real_website, has_whatsapp, website, pain_signals, proof_points, why_now, why_this_will_convert'
+  'id, business_name, sector, district, rating, review_count, has_real_website, has_whatsapp, has_ads_signal, has_job_signal, instagram_as_site, website, pain_signals, proof_points, why_now, why_this_will_convert'
 
-async function loadSignatureLinks(): Promise<Record<string, string>> {
-  const links: Record<string, string> = {}
+// İmza linkleri + İYS/KVKK uyum ayarlarını tek sorguda yükler.
+async function loadEmailSettings(): Promise<Record<string, string>> {
+  const settings: Record<string, string> = {}
   const { data } = await supabaseAdmin
     .from('settings')
     .select('key, value')
-    .in('key', [...SIGNATURE_SETTING_KEYS])
+    .in('key', [...SIGNATURE_SETTING_KEYS, ...COMPLIANCE_SETTING_KEYS])
 
   for (const row of data ?? []) {
-    if (row.key && row.value) links[row.key] = row.value
+    if (row.key && row.value) settings[row.key] = row.value
   }
-  return links
+  return settings
 }
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -51,10 +55,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (leadErr) throw leadErr
     if (!lead) return NextResponse.json({ error: 'Lead bulunamadı' }, { status: 404 })
 
+    const templateId = selectColdEmailTemplate({
+      hasAdsSignal: lead.has_ads_signal,
+      hasJobSignal: lead.has_job_signal,
+      instagramAsSite: lead.instagram_as_site,
+      hasRealWebsite: lead.has_real_website,
+      rating: lead.rating,
+    })
+    const template = COLD_EMAIL_TEMPLATES[templateId]
+
     const { content } = await callWithOperation(
       'draft_email',
       buildColdEmailSystemPrompt(),
-      buildColdEmailUserPrompt(lead),
+      buildColdEmailUserPrompt(lead, template),
       700,
     )
 
@@ -66,8 +79,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       )
     }
 
-    const signatureLinks = await loadSignatureLinks()
-    const fullBody = `${parsed.body.trim()}\n\n${buildSignatureBlock(signatureLinks)}`
+    const emailSettings = await loadEmailSettings()
+    const footer = buildComplianceFooter(emailSettings)
+    const fullBody = [
+      parsed.body.trim(),
+      buildSignatureBlock(emailSettings),
+      footer,
+    ]
+      .filter(Boolean)
+      .join('\n\n')
 
     const { data: draft, error: insertErr } = await supabaseAdmin
       .from('outreach_messages')

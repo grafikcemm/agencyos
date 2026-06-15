@@ -1,0 +1,18 @@
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#ajax-content-wrap"
+  - generic [ref=e4]:
+    - banner [ref=e6]:
+      - generic [ref=e8]:
+        - link "LeadAI" [ref=e10] [cursor=pointer]:
+          - /url: https://leadaicrm.com
+        - navigation [ref=e13]
+    - generic [ref=e33]:
+      - main [ref=e35]:
+        - generic [ref=e36]
+      - generic [ref=e567]:
+        - generic [ref=e570]
+        - generic [ref=e612]
+  - link "Close Menu":
+    - /url: "#"
+    - generic [ref=e637] [cursor=pointer]: Close Menu

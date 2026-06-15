@@ -90,7 +90,7 @@ export default function PipelinePage() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       <div className="px-4 py-3 border-b border-[var(--border-subtle)] shrink-0 bg-[var(--bg-base)]">
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
           <SummaryCard icon={Flame} label="Bugün takip" value={summary.today} color="#5ee6b0" />
@@ -170,7 +170,7 @@ export default function PipelinePage() {
                                       lead.lead_tier === 'A' 
                                         ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' 
                                         : lead.lead_tier === 'B'
-                                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                                          ? 'bg-[var(--warning)]/10 text-[var(--warning)] border-[var(--warning)]/20'
                                           : lead.lead_tier === 'C'
                                             ? 'bg-[var(--warning)]/10 text-[var(--warning)] border-[var(--warning)]/20'
                                             : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'

@@ -33,6 +33,11 @@ export interface TrTarget {
   titleFromSlug?: boolean
   // Anchor metni yoksa fallback şirket etiketi.
   defaultCompany?: string
+  // job_listings.source değeri. Belirtilmezse 'firecrawl' (jenerik TR havuzu: LinkedIn,
+  // kariyer.net). Küratörlü ajans kaynakları kendi id'sini verir → scoring.ts ajans bonusu.
+  sourceId?: string
+  // Detay URL pathname'i /YYYY/MM/DD/<slug>/ ise tarihi posted_at olarak çıkar (tazelik filtresi).
+  postedAtFromPath?: boolean
 }
 
 // --- LinkedIn (guest job-cards endpoint) -------------------------------------
@@ -59,6 +64,54 @@ export function kariyerTarget(searchUrl: string): TrTarget {
   return { url: searchUrl, detailRe: KARIYER_DETAIL_RE, hostRe: KARIYER_HOST_RE, titleFromSlug: true }
 }
 
+// --- Küratörlü ajans kaynakları (scoring.ts AGENCY_SOURCE_IDS ile eşleşir) ----
+// Hepsi WordPress-benzeri server-render board; tekil ilan detay anchor'ları regex'le süzülür.
+
+// bigumigu.com/is-ilanlari → /is-ilani/<slug>/ detay sayfaları (tasarım sektörü board'u).
+const BIGUMIGU_DETAIL_RE = /\/is-ilani\/([a-z0-9-]+)/i
+const BIGUMIGU_HOST_RE = /(^|\.)bigumigu\.com$/i
+
+export function bigumiguTarget(): TrTarget {
+  return {
+    url: 'https://bigumigu.com/is-ilanlari/',
+    detailRe: BIGUMIGU_DETAIL_RE,
+    hostRe: BIGUMIGU_HOST_RE,
+    titleFromSlug: true,
+    sourceId: 'bigumigu',
+  }
+}
+
+// dijitalajanslar.com/kariyer → /kariyer/<slug>-<id>/ detay sayfaları.
+// Negatif lookahead: /kariyer/page/N/ sayfalama linklerini ele.
+const DIJITALAJANSLAR_DETAIL_RE = /\/kariyer\/(?!page\/)([a-z0-9%-]+)/i
+const DIJITALAJANSLAR_HOST_RE = /(^|\.)dijitalajanslar\.com$/i
+
+export function dijitalajanslarTarget(): TrTarget {
+  return {
+    url: 'https://www.dijitalajanslar.com/kariyer/',
+    detailRe: DIJITALAJANSLAR_DETAIL_RE,
+    hostRe: DIJITALAJANSLAR_HOST_RE,
+    titleFromSlug: true,
+    sourceId: 'dijitalajanslar',
+  }
+}
+
+// ajanshayvanlari.co → /YYYY/MM/DD/<slug>/ tarihli ilan permalink'leri.
+// /ajans/<name>/ profil sayfaları tarih öneki olmadığından regex'e takılmaz → elenir.
+const AJANSHAYVANLARI_DETAIL_RE = /\/\d{4}\/\d{2}\/\d{2}\/([a-z0-9%-]+)/i
+const AJANSHAYVANLARI_HOST_RE = /(^|\.)ajanshayvanlari\.co$/i
+
+export function ajanshayvanlariTarget(): TrTarget {
+  return {
+    url: 'https://ajanshayvanlari.co/',
+    detailRe: AJANSHAYVANLARI_DETAIL_RE,
+    hostRe: AJANSHAYVANLARI_HOST_RE,
+    titleFromSlug: true,
+    sourceId: 'ajanshayvanlari',
+    postedAtFromPath: true,
+  }
+}
+
 // HTML inner metnini temizle: etiket sök, birkaç entity çöz, boşluk daralt.
 function cleanText(html: string): string {
   return html
@@ -73,13 +126,31 @@ function cleanText(html: string): string {
     .trim()
 }
 
-// Slug'ı insan-okunur başlığa çevir: tire→boşluk, baş harf büyüt, sondaki sayısal id at.
+// Slug'ı insan-okunur başlığa çevir: percent-encode'u ÖNCE çöz (TR harfleri ş/ı/ğ
+// korunur, %f0.. emoji gerçek karaktere döner), kalan bozuk %XX'i temizle, tire→boşluk,
+// baş harf büyüt. Sondaki sayısal id deriveFromSlug'da zaten atılır.
 function humanize(slug: string): string {
-  return slug
+  let decoded = slug
+  try {
+    decoded = decodeURIComponent(slug)
+  } catch {
+    // bozuk encoding → ham slug ile devam
+  }
+  return decoded
+    .replace(/%[0-9a-f]{2}/gi, ' ') // kalan/bozuk URL-encode parçaları at
     .replace(/-/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+// /YYYY/MM/DD/ pathname öneki → ISO posted_at. Eşleşmezse null.
+function postedAtFromPathname(pathname: string): string | null {
+  const m = pathname.match(/\/(\d{4})\/(\d{2})\/(\d{2})\//)
+  if (!m) return null
+  const [, y, mo, d] = m
+  const iso = `${y}-${mo}-${d}T00:00:00Z`
+  return Number.isNaN(Date.parse(iso)) ? null : iso
 }
 
 // Detay URL pathname'inden başlık (+ opsiyonel company) türet. Anchor metni yoksa fallback.
@@ -118,7 +189,9 @@ export function extractDetailJobs(html: string, target: TrTarget): RawJob[] {
     }
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null
     if (!target.hostRe.test(parsed.hostname)) return null
-    return { id: match[1] || `${parsed.hostname}${parsed.pathname}`, canonical: `${parsed.origin}${parsed.pathname}` }
+    // Trailing slash normalize (WP board'ları /is-ilani/slug/ kullanır) → tutarlı dedup.
+    const path = parsed.pathname.replace(/\/+$/, '')
+    return { id: match[1] || `${parsed.hostname}${path}`, canonical: `${parsed.origin}${path}` }
   }
 
   // 1) anchor'lar — href + iç metin.
@@ -156,11 +229,11 @@ export function extractDetailJobs(html: string, target: TrTarget): RawJob[] {
       url: canonical,
       company,
       location: 'Türkiye',
-      source: 'firecrawl',
+      source: target.sourceId ?? 'firecrawl',
       remote: /\bremote\b|uzaktan/i.test(`${title} ${company}`),
       description: null,
       employmentType: null,
-      postedAt: null,
+      postedAt: target.postedAtFromPath ? postedAtFromPathname(pathname) : null,
       sourceJobId: id,
     })
   }

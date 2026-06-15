@@ -1,16 +1,16 @@
 import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { parseJsonObject, toStringArray } from './parse'
+import { applyAgencyBonus, classifyVisibility, AGENCY_FIT_BONUS, AGENCY_BOOST_REASON_PREFIX } from './scoring'
 
 // Subagent boru hattının "yapıştırıcı"sı. runner.ts bir job_* task'ini LLM ile
 // çalıştırdıktan sonra burayı çağırır: LLM çıktısını ayrıştırır, job_listings'i
 // günceller ve bir sonraki uzmanı (evaluator → legitimacy → writer) kuyruğa atar.
 //
 // Adversarial tasarım: fit skoru (job_evaluator) ile scam kararı (job_legitimacy)
-// AYRI agent'lardan gelir. Taslak (job_writer) yalnızca fit eşiği geçilirse VE
-// legitimacy 'suspicious' DEĞİLSE üretilir.
-
-const FIT_THRESHOLD = 60
+// AYRI agent'lardan gelir. Taslak (job_writer) yalnızca ilan 'show' görünürlüğüne
+// ulaşırsa (efektif fit ≥ SHOW_THRESHOLD, suspicious değil, bayat değil) üretilir.
+// Eleme kararları scoring.ts'te merkezi — UI ile tek kaynaktan tutarlı.
 
 export function isJobAgent(key: string): boolean {
   return key === 'job_evaluator' || key === 'job_legitimacy' || key === 'job_writer' || key === 'job_scout'
@@ -26,13 +26,15 @@ interface ListingRow {
   source: string
   remote: boolean
   fit_score: number | null
+  fit_reasons: string[] | null
+  posted_at: string | null
   legitimacy: string | null
 }
 
 async function loadListing(listingId: string): Promise<ListingRow | null> {
   const { data } = await supabaseAdmin
     .from('job_listings')
-    .select('id, title, company, location, description, url, source, remote, fit_score, legitimacy')
+    .select('id, title, company, location, description, url, source, remote, fit_score, fit_reasons, posted_at, legitimacy')
     .eq('id', listingId)
     .maybeSingle<ListingRow>()
   return data ?? null
@@ -119,14 +121,36 @@ export async function handleJobTaskResult(
     const raw = parsed && typeof parsed.legitimacy === 'string' ? parsed.legitimacy : 'caution'
     const legitimacy = raw === 'high' || raw === 'caution' || raw === 'suspicious' ? raw : 'caution'
     const flags = parsed ? toStringArray(parsed.scam_flags) : ['denetim ayrıştırılamadı']
+
+    // Ajans bonusu + karma eleme. fit_score'a boost'lu efektif skoru yaz; görünürlük
+    // sınıfı 'rejected' ise status='rejected' (DB'de kalır, UI'da gizli — geri dönülebilir).
+    const l = await loadListing(listingId)
+    const rawFit = l?.fit_score ?? 0
+    const reasons = l?.fit_reasons ?? []
+    // Idempotent: legitimacy ikinci kez koşarsa fit_score zaten boost'lu — çift-boost'u önle.
+    const alreadyBoosted = reasons.some((r) => r.startsWith(AGENCY_BOOST_REASON_PREFIX))
+    const effectiveFit = alreadyBoosted ? rawFit : applyAgencyBonus(rawFit, l?.source)
+    const boostedReasons =
+      !alreadyBoosted && effectiveFit > rawFit
+        ? [...reasons, `${AGENCY_BOOST_REASON_PREFIX} +${AGENCY_FIT_BONUS}`]
+        : reasons
+    const visibility = classifyVisibility(effectiveFit, legitimacy, l?.posted_at ?? null)
+    const status = visibility === 'rejected' ? 'rejected' : 'scored'
+
     await supabaseAdmin
       .from('job_listings')
-      .update({ legitimacy, scam_flags: flags, status: 'scored', updated_at: new Date().toISOString() })
+      .update({
+        legitimacy,
+        scam_flags: flags,
+        fit_score: effectiveFit,
+        fit_reasons: boostedReasons,
+        status,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', listingId)
 
-    const l = await loadListing(listingId)
-    const fit = l?.fit_score ?? 0
-    if (legitimacy !== 'suspicious' && fit >= FIT_THRESHOLD) {
+    // 'show' = efektif fit ≥ SHOW_THRESHOLD VE suspicious değil VE bayat değil → taslak üret.
+    if (visibility === 'show') {
       await enqueue('job_writer', `Başvuru taslağı — ${l?.title ?? listingId}`, { listing_id: listingId })
     }
     return

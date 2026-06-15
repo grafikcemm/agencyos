@@ -66,6 +66,9 @@ export interface Lead {
   phone?: string | null
   website?: string | null
   email?: string | null
+  // NOT: whatsapp/instagram (string) leads tablosuna YAZILMAZ — cosmetic/legacy
+  // görünüm alanları. Kanal sinyali için persisted has_whatsapp / instagram_as_site
+  // (boolean) kullanılır. Migration 024 bunlar için kolon açmaz.
   whatsapp?: string | null
   instagram?: string | null
   priority?: Priority | string
@@ -92,6 +95,7 @@ export interface Lead {
   has_ecommerce?: boolean
   has_ads_signal?: boolean
   instagram_as_site?: boolean
+  has_job_signal?: boolean
   branch_count?: number
 
   // V3 scoring sub-scores
@@ -102,9 +106,23 @@ export interface Lead {
   contactability_score?: number
   confidence?: number
 
+  // RISK skoru + hot-lead yönlendirme (migration 019)
+  base_score?: number
+  risk_score?: number
+  risk_reasons?: { reason: string; points: number }[]
+  behavioral_flags?: Record<string, boolean> | null
+  route?: 'manual_hyper_personalization' | 'personalized_sequence' | 'nurture' | 'skip' | null
+
+  // Discovery alanları — 'proposal' aşaması gatekeeper'ı (migration 020)
+  pain_point?: string | null
+  decision_maker?: string | null
+  budget_band?: string | null
+
   estimated_ticket_size?: 'low' | 'mid' | 'high' | 'premium'
   pain_points?: string[]
 
+  // computed: alt-skorların (evidence_score, fit_score, …) toplu görünümü;
+  // leads tablosunda kolon DEĞİL, runtime'da türetilir.
   scores?: LeadScoreBreakdown
   score_reasons?: ScoreReason[] | { reason: string; points: number }[]
 
@@ -152,6 +170,8 @@ export interface Lead {
   enrichment_status?: string | null
   last_enriched_at?: string | null
 
+  // NOT: leads.source kolonu yok — tarama kaynağı scan_runs.source'a yazılır.
+  // Bu alan UI/tip kolaylığı içindir, leads satırına persist edilmez.
   source?: string
   ai_analysis?: string
   notes?: string

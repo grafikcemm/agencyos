@@ -2,6 +2,8 @@
 // imza bloğu. LLM hiçbir zaman link/imza yazmaz — imza settings'ten okunup
 // gövdenin sonuna kod tarafında eklenir (halüsinasyon/bozuk link riski sıfır).
 
+import type { ColdEmailTemplate } from './coldEmailTemplates'
+
 export interface ColdEmailLead {
   id: string
   business_name: string
@@ -11,6 +13,9 @@ export interface ColdEmailLead {
   review_count: number | null
   has_real_website: boolean | null
   has_whatsapp: boolean | null
+  has_ads_signal: boolean | null
+  has_job_signal: boolean | null
+  instagram_as_site: boolean | null
   website: string | null
   pain_signals: string[] | null
   proof_points: string[] | null
@@ -35,6 +40,13 @@ export const SIGNATURE_DEFAULTS: Record<string, string> = {
   signature_google_business: 'https://maps.app.goo.gl/cmYbYzmojz6v4eiu7?g_st=ic',
   signature_email: 'info@grafikcem.com',
 }
+
+// İYS/KVKK uyum footer ayarları — settings'ten okunur (migration 018).
+export const COMPLIANCE_SETTING_KEYS = [
+  'ticaret_unvani',
+  'mersis_no',
+  'compliance_enabled',
+] as const
 
 export function buildColdEmailSystemPrompt(): string {
   return [
@@ -64,7 +76,7 @@ export function buildColdEmailSystemPrompt(): string {
   ].join('\n')
 }
 
-export function buildColdEmailUserPrompt(lead: ColdEmailLead): string {
+export function buildColdEmailUserPrompt(lead: ColdEmailLead, template?: ColdEmailTemplate): string {
   const lines: string[] = ['İŞLETME BİLGİLERİ:', `Ad: ${lead.business_name}`]
 
   if (lead.sector) lines.push(`Sektör: ${lead.sector}`)
@@ -91,6 +103,15 @@ export function buildColdEmailUserPrompt(lead: ColdEmailLead): string {
   }
   if (lead.why_now) lines.push(`Neden şimdi: ${lead.why_now}`)
   if (lead.why_this_will_convert) lines.push(`Dönüşüm gerekçesi: ${lead.why_this_will_convert}`)
+
+  if (template) {
+    lines.push(
+      '',
+      'TERCİH EDİLEN AÇI (bu açıyı kullan; iskeleti birebir kopyalama, ton/yapı referansı al):',
+      `Açı: ${template.angle}`,
+      `İskelet: ${template.skeleton}`,
+    )
+  }
 
   return lines.join('\n')
 }
@@ -147,5 +168,28 @@ export function buildSignatureBlock(links: Record<string, string>): string {
     `💼 LinkedIn: ${value('signature_linkedin')}`,
     `📍 Google Business: ${value('signature_google_business')}`,
     `📩 E-posta: ${value('signature_email')}`,
+  ].join('\n')
+}
+
+/**
+ * İYS/KVKK uyum footer'ı — 6563 sayılı ETK uyarınca B2B ticari iletide ticaret
+ * unvanı, MERSİS no ve kolay ret imkânı zorunlu. Settings'ten deterministik üretilir.
+ * compliance_enabled='false' ise veya unvan/MERSİS boşsa boş string döner (footer eklenmez).
+ * Manuel-gönder modeli olduğundan ret, link yerine "yanıtla" talimatıyla sağlanır.
+ */
+export function buildComplianceFooter(settings: Record<string, string>): string {
+  const enabled = (settings.compliance_enabled ?? 'true').toLowerCase() !== 'false'
+  if (!enabled) return ''
+
+  const unvan = (settings.ticaret_unvani ?? '').trim()
+  const mersis = (settings.mersis_no ?? '').trim()
+  if (!unvan && !mersis) return ''
+
+  const identityParts = [unvan, mersis ? `MERSİS: ${mersis}` : ''].filter(Boolean)
+  return [
+    '—',
+    identityParts.join(' | '),
+    'Bu ileti B2B ticari ileti niteliğindedir.',
+    'Bu tür e-postaları almak istemezseniz "ret" yazarak yanıtlamanız yeterlidir.',
   ].join('\n')
 }

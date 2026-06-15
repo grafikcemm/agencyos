@@ -7,7 +7,15 @@
 //  2. TR keyword aramaları (Firecrawl) — öncelikli Türkiye/İstanbul pazarı.
 import type { AtsSourceEntry } from '../types'
 import { ATS_PROVIDERS } from './ats'
-import { fetchTrJobs, kariyerTarget, linkedinGuestTarget, type TrTarget } from './firecrawl'
+import {
+  fetchTrJobs,
+  kariyerTarget,
+  linkedinGuestTarget,
+  bigumiguTarget,
+  dijitalajanslarTarget,
+  ajanshayvanlariTarget,
+  type TrTarget,
+} from './firecrawl'
 
 export { ATS_PROVIDERS, fetchTrJobs }
 export type { TrTarget }
@@ -37,6 +45,8 @@ export const JOB_SOURCES: AtsSourceEntry[] = [
 //  • LinkedIn guest job-cards endpoint — anti-bot'suz HTML fragment; her kart
 //    /jobs/view/<id>'e linkler. (Eski /jobs/search JS sayfası anti-bot'a takılıyordu.)
 //  • kariyer.net arama sayfası — /is-ilani/<slug> detay anchor'ları.
+//  • Küratörlü ajans board'ları (bigumigu / dijitalajanslar / ajanshayvanlari) — kendi
+//    source id'leriyle gelir; scoring.ts fit bonusu uygular ve UI'da ajans rozeti gösterir.
 export const TR_SCRAPE_TARGETS: TrTarget[] = [
   linkedinGuestTarget('grafik tasarımcı'),
   linkedinGuestTarget('sosyal medya tasarımcısı'),
@@ -45,4 +55,7 @@ export const TR_SCRAPE_TARGETS: TrTarget[] = [
   kariyerTarget('https://www.kariyer.net/is-ilanlari/grafik-tasarimci'),
   kariyerTarget('https://www.kariyer.net/is-ilanlari/sosyal-medya-tasarimcisi'),
   kariyerTarget('https://www.kariyer.net/is-ilanlari/ui-ux-tasarimci'),
+  bigumiguTarget(),
+  dijitalajanslarTarget(),
+  ajanshayvanlariTarget(),
 ]

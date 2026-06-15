@@ -7,7 +7,14 @@ import {
   parseRecruiteeResponse,
   parseSmartRecruitersResponse,
 } from './providers/ats'
-import { extractDetailJobs, linkedinGuestTarget, kariyerTarget } from './providers/firecrawl'
+import {
+  extractDetailJobs,
+  linkedinGuestTarget,
+  kariyerTarget,
+  bigumiguTarget,
+  dijitalajanslarTarget,
+  ajanshayvanlariTarget,
+} from './providers/firecrawl'
 import { passesTitle, passesLocation, passesFilter } from './filter'
 import { parseJsonObject, toStringArray } from './parse'
 import { classifyMarket } from './market'
@@ -140,6 +147,52 @@ describe('TR HTML detay-URL parse', () => {
     const t = kariyerTarget('https://www.kariyer.net/is-ilanlari/x')
     expect(extractDetailJobs('', t)).toEqual([])
     expect(extractDetailJobs('<html>hiç ilan yok</html>', t)).toEqual([])
+  })
+})
+
+describe('TR ajans kaynakları (küratörlü parser)', () => {
+  it('bigumigu: /is-ilani/<slug> → tekil ilan, source=bigumigu, sosyal/nav linkleri elenir', () => {
+    const target = bigumiguTarget()
+    const html = `
+      <a href="https://bigumigu.com/is-ilani/motif-sr-art-director/">Motif Sr Art Director</a>
+      <a href="https://bigumigu.com/is-ilani/motif-sr-art-director/">Motif Sr Art Director</a>
+      <a href="https://instagram.com/bigumigu/">Instagram</a>
+      <a href="https://bigumigu.com/yaratici-ilham/">Yaratıcı İlham</a>`
+    const out = extractDetailJobs(html, target)
+    expect(out).toHaveLength(1) // dedup + nav/sosyal elenir
+    expect(out[0].source).toBe('bigumigu')
+    expect(out[0].title).toBe('Motif Sr Art Director')
+    expect(out[0].url).toBe('https://bigumigu.com/is-ilani/motif-sr-art-director')
+    expect(out[0].location).toBe('Türkiye')
+  })
+
+  it('dijitalajanslar: /kariyer/<slug> ilan, /kariyer/page/N sayfalama elenir', () => {
+    const target = dijitalajanslarTarget()
+    const html = `
+      <a href="https://www.dijitalajanslar.com/kariyer/videographer-ariyoruz-cipsx/">Videographer</a>
+      <a href="/kariyer/bbco-studio-grafik-tasarim-stajyeri-ariyoruz-v0ksj/">Stajyer</a>
+      <a href="/kariyer/page/2/">2</a>
+      <a href="https://www.dijitalajanslar.com/kariyer/">Kariyer</a>`
+    const out = extractDetailJobs(html, target)
+    expect(out).toHaveLength(2) // iki ilan; page/2 ve kök /kariyer/ elenir
+    expect(out.every((j) => j.source === 'dijitalajanslar')).toBe(true)
+    expect(out.some((j) => j.url.endsWith('/kariyer/videographer-ariyoruz-cipsx'))).toBe(true)
+  })
+
+  it('ajanshayvanlari: /YYYY/MM/DD/<slug> → posted_at çıkar, /ajans/ profil elenir, emoji temizlenir', () => {
+    const target = ajanshayvanlariTarget()
+    const html = `
+      <a href="https://ajanshayvanlari.co/2026/05/12/sr-art-director/">Sr Art Director</a>
+      <a href="https://ajanshayvanlari.co/2026/06/11/%f0%9f%9a%80-epik-plus-sosyal-medya-stajyeri/">Stajyer</a>
+      <a href="https://ajanshayvanlari.co/ajans/kontra/">Kontra ajans profili</a>`
+    const out = extractDetailJobs(html, target)
+    expect(out).toHaveLength(2) // /ajans/ profil sayfası tarih öneki yok → elenir
+    expect(out.every((j) => j.source === 'ajanshayvanlari')).toBe(true)
+    const sr = out.find((j) => j.url.endsWith('/2026/05/12/sr-art-director'))!
+    expect(sr.postedAt).toBe('2026-05-12T00:00:00Z') // tarih URL'den
+    const emoji = out.find((j) => j.url.includes('epik-plus'))!
+    expect(emoji.title).not.toContain('%') // percent-encode emoji temizlendi
+    expect(emoji.title.toLowerCase()).toContain('epik')
   })
 })
 

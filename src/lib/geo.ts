@@ -49,6 +49,14 @@ const CITY_CANONICAL: Record<string, string> = {
   'sanliurfa': 'Şanlıurfa',
   'trabzon': 'Trabzon',
   'eskisehir': 'Eskişehir',
+  // Çok-şehirli hedefleme (deep-research) ile eklenenler — taranan her şehir
+  // burada olmalı, yoksa leads.city ham kalır ve getCityBonus/city_slug/öğrenme join'i kırılır.
+  'mugla': 'Muğla',
+  'denizli': 'Denizli',
+  'kayseri': 'Kayseri',
+  'sakarya': 'Sakarya',
+  'tekirdag': 'Tekirdağ',
+  'samsun': 'Samsun',
 }
 
 function canonicalCity(raw: string): string {

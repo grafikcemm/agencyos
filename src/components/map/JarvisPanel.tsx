@@ -202,8 +202,8 @@ export function JarvisPanel({ leadsCount = 0, stats, onLeadsChanged }: JarvisPan
 
         {/* Approval badge */}
         {message.pendingApproval && (
-          <div className="mt-2 flex items-center gap-2 bg-yellow-900/20 border border-yellow-500/30 rounded-lg px-3 py-2">
-            <span className="text-[10px] text-yellow-400 font-bold tracking-wider uppercase">⚠️ ONAY BEKLİYOR</span>
+          <div className="mt-2 flex items-center gap-2 bg-[var(--accent-muted)] border border-[var(--accent)]/30 rounded-lg px-3 py-2">
+            <span className="text-[10px] text-[var(--accent)] font-bold tracking-wider uppercase">⚠️ ONAY BEKLİYOR</span>
             <span className="text-[10px] text-[var(--text-muted)]">• &quot;onayla&quot; veya &quot;gönder&quot; yazın</span>
           </div>
         )}
@@ -342,7 +342,7 @@ export function JarvisPanel({ leadsCount = 0, stats, onLeadsChanged }: JarvisPan
           <button
             type="submit"
             disabled={isTyping || !input.trim()}
-            className="w-10 h-10 bg-[var(--accent)] text-black rounded-lg flex items-center justify-center hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50"
+            className="w-10 h-10 bg-[var(--accent)] text-white rounded-lg flex items-center justify-center hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50"
           >
             <Send className="w-4 h-4" />
           </button>

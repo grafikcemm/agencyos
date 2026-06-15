@@ -23,6 +23,7 @@ const painfulEvidence: EvidenceSignals = {
   has_ads_signal: false,
   instagram_as_site: false,
   is_slow_or_dead: false,
+  has_job_signal: false,
 }
 
 describe('runQualityEngine — A-tier eligibility (TRAN-ITEM-2.2 regresyonu)', () => {

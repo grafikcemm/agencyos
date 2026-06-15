@@ -66,7 +66,7 @@ export default async function ProjectsPage() {
       <div className="space-y-5">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-lg font-semibold text-[var(--text-primary)]">Proje Takibi</h1>
+            <h1 className="font-display text-2xl font-bold tracking-tight text-[var(--text-primary)]">Proje Takibi</h1>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">Gelir, tahsilat, teslimat ve upsell yönetimi</p>
           </div>
           <div className="flex items-center gap-2">

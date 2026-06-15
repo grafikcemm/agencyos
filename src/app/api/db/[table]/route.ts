@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireApiUser } from '@/lib/auth'
+import { isAllowedOrder } from '@/lib/db/orderGuard'
+import {
+  missingProposalFields,
+  proposalGateMessage,
+  type DiscoveryFields,
+} from '@/lib/leads/pipelineGate'
 
 // Strict whitelist — prevents arbitrary table access via this proxy
 const READ_ALLOWED = new Set(['leads', 'follow_ups', 'ai_cost_logs', 'settings', 'projects', 'playbooks', 'sessions', 'memories', 'strategy', 'hypotheses', 'decisions', 'autoresearch_runs', 'council_debates'])
@@ -50,7 +56,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ table: s
     }
 
     const order = searchParams.get('order')
-    if (order) query = query.order(order, { ascending: searchParams.get('asc') === 'true' })
+    if (order) {
+      if (!isAllowedOrder(table, order)) {
+        return NextResponse.json({ error: `Invalid order column: ${order}` }, { status: 400 })
+      }
+      query = query.order(order, { ascending: searchParams.get('asc') === 'true' })
+    }
 
     const { data, error } = await withTimeout(query)
     if (error) throw error
@@ -96,6 +107,26 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ table:
     const body = await req.json()
     const { id, ...updates } = body
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+
+    // Pipeline gatekeeper: leads → 'proposal' geçişi için discovery alanları zorunlu.
+    // Eksik alanlar updates'te yoksa mevcut kayıttan tamamlanır (merge).
+    if (table === 'leads' && updates.status === 'proposal') {
+      const { data: existing } = await withTimeout(
+        supabaseAdmin.from('leads').select('pain_point, decision_maker, budget_band').eq('id', id).maybeSingle(),
+      )
+      const merged: DiscoveryFields = {
+        pain_point: updates.pain_point ?? existing?.pain_point,
+        decision_maker: updates.decision_maker ?? existing?.decision_maker,
+        budget_band: updates.budget_band ?? existing?.budget_band,
+      }
+      const missing = missingProposalFields(merged)
+      if (missing.length > 0) {
+        return NextResponse.json(
+          { error: proposalGateMessage(missing), gate: 'proposal', missing },
+          { status: 422 },
+        )
+      }
+    }
 
     const { data, error } = await withTimeout(supabaseAdmin.from(table).update(updates).eq('id', id).select())
     if (error) throw error

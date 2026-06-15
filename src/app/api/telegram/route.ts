@@ -1,0 +1,691 @@
+import { NextResponse } from 'next/server';
+import { lifeSupabaseAdmin as supabaseAdmin } from '@/lib/lifeSupabaseAdmin';
+import { parseTelegramMessage, parseTimeHint } from '@/lib/telegramCommandParser';
+import { calculateLocalTodayPlan } from '@/lib/dailyOrchestrator';
+import { isOrchestratorActive } from '@/data/orchestratorConfig';
+import { extractPrefSignals, upsertAssistantPrefs } from '@/lib/assistant/learnPrefs';
+import type { AssistantDailyState, AgencyLoad, EnergyLevel, PlanMode, UnifiedTodayPlan } from '@/lib/dailyOrchestrator';
+import { derivePolicyState } from '@/app/actions/dailyV2';
+import { getIstanbulDateAndDay } from '@/lib/assistant/timezone';
+import {
+  logConversationTurn,
+  getCommitment,
+  setCommitment,
+  markCommitmentDone,
+  markCommitmentMissed,
+} from '@/lib/assistant/memory';
+import {
+  runMentorFreeText,
+  decideSnooze,
+  microStartAck,
+  commitmentTimeQuestion,
+  commitmentSetConfirmation,
+  eveningDoneCelebration,
+} from '@/lib/assistant/mentorLoop';
+
+// OpenRouter reasoning modelleri yavaş — 25s LLM timeout'una alan tanı (Vercel).
+export const maxDuration = 60;
+
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
+const CHAT_ID   = process.env.TELEGRAM_CHAT_ID ?? '';
+
+interface DailyV2State {
+  date: string;
+  day_mode: string;
+  agency_load: AgencyLoad;
+  energy: EnergyLevel;
+  ui_mode: string;
+  mode: PlanMode;
+  max_auto_tasks: number;
+  locked_modules: string[];
+  unlocked_modules: string[];
+  assistant_reason: string;
+  next_action: string;
+  today_plan_json: UnifiedTodayPlan | null;
+}
+
+type DailyV2Patch = Partial<Omit<DailyV2State, 'date'>>;
+
+async function sendTelegram(text: string): Promise<{ ok: boolean; status: number }> {
+  if (!BOT_TOKEN || !CHAT_ID) {
+    console.error('[telegram] BOT_TOKEN/CHAT_ID eksik — mesaj gönderilemedi');
+    return { ok: false, status: 0 };
+  }
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: CHAT_ID, text, parse_mode: 'HTML' }),
+    });
+    if (!res.ok) {
+      console.error('[telegram] sendMessage failed', res.status);
+    }
+    return { ok: res.ok, status: res.status };
+  } catch (err) {
+    console.error('[telegram] sendMessage threw', err instanceof Error ? err.name : 'unknown');
+    return { ok: false, status: 0 };
+  }
+}
+
+/** sendTelegram + assistant turunu telegram_conversations'a logla (best-effort).
+ *  Gönderim başarısızsa tur LOGLANMAZ — kullanıcının görmediği mesaj LLM geçmişini kirletmesin. */
+async function reply(text: string, date: string, intent?: string, agent?: string): Promise<void> {
+  const sent = await sendTelegram(text);
+  if (!sent.ok) {
+    console.error('[telegram] reply delivery failed', { intent: intent ?? null, status: sent.status });
+    return;
+  }
+  await logConversationTurn({ date, role: 'assistant', message: text, intent: intent ?? null, agent: agent ?? null });
+}
+
+/** Bugün belirli bir item için kaç kez snooze edildiğini sayar (akıllı snooze). */
+async function countTodayDeferrals(date: string): Promise<number> {
+  try {
+    const { data } = await supabaseAdmin
+      .from('assistant_reminders')
+      .select('id')
+      .eq('date', date)
+      .eq('status', 'snoozed');
+    return data?.length ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Snooze'u kaydeder. Açık saat verildiyse o güne ait scheduled_at kurar;
+ * yoksa relative bir gevşek pencere (1.5 saat) — sabit 2h yerine daha yumuşak.
+ */
+async function markSnoozed(date: string, originalText: string, timeHint: string | null): Promise<void> {
+  let scheduledAt: string;
+  if (timeHint && /^\d{2}:\d{2}$/.test(timeHint)) {
+    // Istanbul saatini bugünün tarihine sabitle (basit ISO; cron HH:MM ile karşılaştırır).
+    scheduledAt = `${date}T${timeHint}:00`;
+  } else {
+    scheduledAt = new Date(Date.now() + 90 * 60 * 1000).toISOString();
+  }
+
+  const { data: lastPending } = await supabaseAdmin
+    .from('assistant_reminders')
+    .select('id')
+    .eq('date', date)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (lastPending) {
+    await supabaseAdmin
+      .from('assistant_reminders')
+      .update({ status: 'snoozed', scheduled_at: scheduledAt, updated_at: new Date().toISOString() })
+      .eq('id', lastPending.id);
+  } else {
+    try {
+      await supabaseAdmin.from('assistant_reminders').insert({
+        date,
+        reminder_type: 'deferred_task',
+        status: 'snoozed',
+        scheduled_at: scheduledAt,
+        metadata: { original_message: originalText.slice(0, 200), time_hint: timeHint },
+      });
+    } catch { /* non-critical */ }
+  }
+}
+
+/** Energy kelimesi mi? (taahhüt akışında ilk soru enerji.) */
+function parseEnergyWord(text: string): 'low' | 'medium' | 'high' | null {
+  const t = text.toLowerCase().trim();
+  if (/^(düşük|dusuk|low|yorgun|bitik)$/.test(t)) return 'low';
+  if (/^(orta|medium|idare|normal)$/.test(t)) return 'medium';
+  if (/^(yüksek|yuksek|high|enerjik|formda)$/.test(t)) return 'high';
+  return null;
+}
+
+/**
+ * Sabah enerji/ajans cevabından sonra taahhüt döngüsünü ilerletir.
+ *
+ * Bare enerji kelimeleri ("orta" → set_agency, "düşük" → set_energy) parser
+ * tarafından state-intent'lerine yönlenir. Bu yardımcı, henüz bugünün taahhüdü
+ * yoksa enerji kalibrasyonunu "bugünün tek kesin işi" sorusuna bağlar.
+ *
+ * @returns true → taahhüt sorusu gönderildi (handler kendi mesajını ATLAMALI)
+ */
+async function maybeAdvanceMorningCommitment(date: string): Promise<boolean> {
+  const existing = await getCommitment(date);
+  if (existing) return false; // zaten akıştayız veya taahhüt verilmiş.
+
+  // Sadece sabah check-in canlıyken ilerlet (gün içi /yogun gibi komutları tetikleme).
+  try {
+    const { data: morning } = await supabaseAdmin
+      .from('assistant_reminders')
+      .select('status')
+      .eq('date', date)
+      .eq('reminder_type', 'morning_checkin')
+      .maybeSingle();
+    if (!morning) return false; // sabah sorusu henüz gitmemiş → taahhüt akışı başlatma.
+  } catch {
+    return false;
+  }
+
+  await setCommitment(date, { commitment: null, status: 'pending', asked_evening: false });
+  await reply(
+    'Not aldım. Şimdi tek soru: bugünü "iyi geçti" saymak için kesin yapman gereken <b>tek</b> şey ne? Bir cümleyle yaz.',
+    date,
+    'energy_captured',
+  );
+  return true;
+}
+
+async function getOrCreateDailyState(date: string): Promise<DailyV2State> {
+  const { data } = await supabaseAdmin
+    .from('daily_v2')
+    .select('*')
+    .eq('date', date)
+    .maybeSingle();
+  if (data) {
+    return {
+      ...data,
+      mode: data.ui_mode ?? 'denge'
+    };
+  }
+
+  const newState = {
+    date,
+    day_mode: 'normal',
+    agency_load: 'normal',
+    energy: 'medium',
+    ui_mode: 'denge',
+    max_auto_tasks: 3,
+    locked_modules: [],
+    unlocked_modules: [],
+    assistant_reason: 'Denge modu aktif. Rutinler ve ana görevler açık.',
+    next_action: 'Günlük planına göz at.',
+    today_plan_json: null,
+  };
+  const { data: inserted } = await supabaseAdmin
+    .from('daily_v2')
+    .insert(newState)
+    .select()
+    .single();
+  const result = inserted ?? newState;
+  return {
+    ...result,
+    mode: result.ui_mode ?? 'denge'
+  };
+}
+
+async function updateDailyState(date: string, patch: DailyV2Patch): Promise<void> {
+  const { data: current } = await supabaseAdmin
+    .from('daily_v2')
+    .select('*')
+    .eq('date', date)
+    .maybeSingle();
+
+  const dayMode = patch.day_mode ?? current?.day_mode ?? 'normal';
+  const agencyLoad = patch.agency_load ?? current?.agency_load ?? 'normal';
+  const energy = patch.energy ?? current?.energy ?? 'medium';
+
+  const policy = await derivePolicyState(dayMode, agencyLoad, energy);
+
+  const payload = {
+    date,
+    day_mode: dayMode,
+    agency_load: agencyLoad,
+    energy,
+    ...policy,
+    ...patch,
+    updated_at: new Date().toISOString()
+  };
+
+  await supabaseAdmin
+    .from('daily_v2')
+    .upsert(payload, { onConflict: 'date' });
+}
+
+async function buildTodayPlan(
+  date: string,
+  state: { agency_load: AgencyLoad; energy: EnergyLevel },
+): Promise<string> {
+  const { data: activeTasks } = await supabaseAdmin
+    .from('active_tasks')
+    .select('id, title, category, is_priority')
+    .order('is_priority', { ascending: false })
+    .limit(10);
+
+  const { data: phases } = await supabaseAdmin
+    .from('career_phases')
+    .select('id, title, is_active');
+  const { data: skills } = await supabaseAdmin
+    .from('career_skills')
+    .select('id, phase_id, title, is_completed')
+    .order('sort_order');
+
+  const activePhase = phases?.find(p => p.is_active);
+  const activeStep = activePhase
+    ? skills?.find(s => s.phase_id === activePhase.id && !s.is_completed) ?? null
+    : null;
+
+  const plan = calculateLocalTodayPlan({
+    date,
+    agencyLoad: state.agency_load,
+    energy: state.energy,
+    activeTasks: (activeTasks ?? []).filter(t => t.category === 'active'),
+    waitingTasks: (activeTasks ?? []).filter(t => t.category === 'waiting'),
+    criticalRoutines: [],
+    todayRhythms: [],
+    healthProtocol: { protocolDay: 1, phase: 'Saldırı', shampoo: null, supplementList: [] },
+    financeSnapshot: { hasDebtService: false, haineWarning: false },
+    activeBook: null,
+    activeGrowthStep: activeStep ? { title: activeStep.title } : null,
+  });
+
+  await updateDailyState(date, { today_plan_json: plan, ui_mode: plan.mode });
+
+  const modeLabel: Record<string, string> = { koruma: '🛡 Koruma', denge: '⚖️ Denge', atak: '🚀 Atak' };
+  const agencyLabel: Record<string, string> = { low: 'Rahat', normal: 'Normal', high: 'Yoğun' };
+  const energyLabel: Record<string, string> = { low: 'Düşük', medium: 'Orta', high: 'Yüksek' };
+
+  const lines = [
+    `<b>Feed The Goat — ${date} Planı</b>`,
+    `Mod: ${modeLabel[plan.mode] ?? plan.mode} | Ajans: ${agencyLabel[plan.agencyLoad]} | Enerji: ${energyLabel[plan.energy]}`,
+    '',
+    `<b>Kilit:</b> ${plan.todayLock}`,
+    `<b>Maks görev:</b> ${plan.maxActiveTasks}`,
+    '',
+  ];
+
+  if (plan.priorityTasks.length > 0) {
+    lines.push('<b>Öncelikli işler:</b>');
+    plan.priorityTasks.forEach((t, i) => lines.push(`${i + 1}. ${t.title}`));
+    lines.push('');
+  }
+
+  lines.push(`<b>Sağlık:</b> ${plan.health.todaySummary}`);
+
+  if (plan.readingTarget) lines.push(`<b>Okuma:</b> ${plan.readingTarget}`);
+
+  if (plan.financeWarnings.length > 0) {
+    lines.push('');
+    lines.push(`<b>Finans:</b> ${plan.financeWarnings[0]}`);
+  }
+
+  return lines.join('\n');
+}
+
+// v2 intent detection is handled by central parseTelegramMessage
+
+async function buildMealSuggestion(): Promise<string> {
+  const { data: prefs } = await supabaseAdmin
+    .from('assistant_prefs')
+    .select('food_likes, food_dislikes, notes')
+    .eq('id', 1)
+    .maybeSingle();
+
+  const dislikes: string[] = prefs?.food_dislikes ?? [];
+
+  // Pool: [fast option, filling option] — each with dislike tags
+  // Protein source candidates
+  const fastPool = [
+    { label: 'Tavuklu yumurta (10 dk, yüksek protein)', avoids: [] },
+    { label: 'Ton balığı + salatalık (5 dk)', avoids: ['ton balığı'] },
+    { label: 'Yumurta (haşlanmış, 5 dk)', avoids: [] },
+    { label: 'Lor peyniri + ceviz (2 dk)', avoids: ['süt ürünleri'] },
+  ];
+
+  const fillingPool = [
+    { label: 'Tavuk + yulaf ezmesi (30 dk, tok tutar)', avoids: ['gluten'] },
+    { label: 'Yumurta + avokado (protein + sağlıklı yağ)', avoids: [] },
+    { label: 'Lor + muz (tok + pratik)', avoids: ['süt ürünleri'] },
+    { label: 'Ton balığı + haşlanmış patates (tok tutar)', avoids: ['ton balığı'] },
+  ];
+
+  function pickFrom(pool: typeof fastPool): string {
+    const valid = pool.filter(o => !o.avoids.some(a => dislikes.some(d => d.includes(a))));
+    const chosen = valid.length ? valid[Math.floor(Math.random() * valid.length)] : pool[0];
+    return chosen.label;
+  }
+
+  const fast = pickFrom(fastPool);
+  const filling = pickFrom(fillingPool);
+
+  const lines = [
+    '<b>Öğün önerisi:</b>',
+    `⚡ En hızlı: ${fast}`,
+    `🍽 Daha tok tutan: ${filling}`,
+  ];
+
+  if (dislikes.length) lines.push(`<i>Kaçınılanlar gözetildi: ${dislikes.join(', ')}</i>`);
+
+  return lines.join('\n');
+}
+
+export async function POST(req: Request): Promise<NextResponse> {
+  try {
+    // Webhook auth: Telegram secret token ZORUNLU (body alanları spoof edilebilir, tek auth budur).
+    // setWebhook ... secret_token=<TELEGRAM_WEBHOOK_SECRET> ile eşleşmeli; secret yoksa webhook kapalı.
+    const expectedSecret = process.env.TELEGRAM_WEBHOOK_SECRET;
+    if (!expectedSecret || req.headers.get('x-telegram-bot-api-secret-token') !== expectedSecret) {
+      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    }
+
+    const body = await req.json() as {
+      message?: { text?: string; chat?: { id: number }; message_id?: number };
+    };
+
+    const text = body?.message?.text;
+    if (!text) return NextResponse.json({ ok: true });
+
+    // Yalnızca yetkili sohbet işlenir (CHAT_ID yapılandırılmışsa) — yabancı update'leri sessizce yut.
+    const allowedChat = process.env.TELEGRAM_CHAT_ID;
+    const incomingChat = body?.message?.chat?.id;
+    if (allowedChat && incomingChat != null && String(incomingChat) !== allowedChat) {
+      return NextResponse.json({ ok: true });
+    }
+
+    const { todayStr: today } = getIstanbulDateAndDay();
+
+    if (!isOrchestratorActive(today)) {
+      await sendTelegram(
+        `Asistan henüz aktif değil.\nSistem ${process.env.ORCHESTRATOR_START_DATE ?? '2026-06-01'} tarihinde başlıyor.`
+      );
+      return NextResponse.json({ ok: true });
+    }
+
+    // Central parser handles all intents — v2 and legacy
+    const intent = parseTelegramMessage(text);
+
+    // Log inbound user turn (multi-turn context for the mentor LLM).
+    await logConversationTurn({ date: today, role: 'user', message: text, intent: intent.type });
+
+    // v2: preference learning (passive signal, process before intent dispatch)
+    if (intent.type === 'learn_preferences') {
+      const signals = extractPrefSignals(intent.raw);
+      if (signals.food_likes?.length || signals.food_dislikes?.length || signals.notes) {
+        await upsertAssistantPrefs(signals).catch(() => {});
+        await sendTelegram('Anladım, not aldım. Bir daha önermem.');
+      } else {
+        // Unknown preference — fall through to unknown handler
+        await sendTelegram(
+          'Komutlar:\n/plan — Bugünün planı\n/durum — Anlık durum\n/bonuslar — Bugünün bonusları\n/saglik — Sağlık minimumu\n/finans — Finans notu\n/kitap — Okuma hedefi\n/shutdown — Günü kapat\n\nYa da yaz: "normal", "yoğun", "dağılmış", "tamam", "pas", "ertele", "bugün ne yiyeceğim"'
+        );
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // Also extract passive pref signals from any message (non-intrusive)
+    const passiveSignals = extractPrefSignals(text);
+    if (passiveSignals.food_likes?.length || passiveSignals.food_dislikes?.length) {
+      await upsertAssistantPrefs(passiveSignals).catch(() => {});
+    }
+
+    // v2: day mode
+    if (intent.type === 'set_day_mode') {
+      const { error } = await supabaseAdmin.from('daily_v2').upsert(
+        { date: today, day_mode: intent.mode, updated_at: new Date().toISOString() },
+        { onConflict: 'date' }
+      );
+      if (error) {
+        await sendTelegram('Mod kaydedilemedi. Tekrar dene.');
+        return NextResponse.json({ ok: true });
+      }
+      const label = intent.mode === 'normal' ? 'Normal' : intent.mode === 'yogun' ? 'Yoğun' : 'Dağılmış';
+      await sendTelegram(`Mod ayarlandı: <b>${label}</b>\nUygulama otomatik güncellendi.`);
+      return NextResponse.json({ ok: true });
+    }
+
+    // v2: tamam → tamamlandı (+ akşam taahhüt geri-çağırması)
+    if (intent.type === 'complete_last_reminder') {
+      const { data: reminder } = await supabaseAdmin
+        .from('assistant_reminders')
+        .select('id')
+        .eq('date', today)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (reminder) {
+        await supabaseAdmin
+          .from('assistant_reminders')
+          .update({ status: 'done', updated_at: new Date().toISOString() })
+          .eq('id', reminder.id);
+      }
+
+      // Akşam yoklamasına "tamam" → taahhüdü done + özel kutlama.
+      const commitment = await getCommitment(today);
+      if (commitment?.asked_evening && commitment.status === 'pending' && commitment.commitment) {
+        await markCommitmentDone(today);
+        await reply(await eveningDoneCelebration(commitment.commitment), today, 'commitment_done');
+        return NextResponse.json({ ok: true });
+      }
+
+      await reply('Helal. Devam et — momentumu koru. 💪', today, 'complete');
+      return NextResponse.json({ ok: true });
+    }
+
+    // v2: pas / olmadı → skipped (+ akşam taahhüt "olmadı" merak sorusu)
+    if (intent.type === 'skip_last_reminder') {
+      const { data: reminder } = await supabaseAdmin
+        .from('assistant_reminders')
+        .select('id')
+        .eq('date', today)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (reminder) {
+        await supabaseAdmin
+          .from('assistant_reminders')
+          .update({ status: 'skipped', updated_at: new Date().toISOString() })
+          .eq('id', reminder.id);
+      }
+
+      // Akşam yoklamasına "olmadı" → blocker'ı sor (tek meraklı soru), taahhüdü missed işaretle.
+      const commitment = await getCommitment(today);
+      if (commitment?.asked_evening && commitment.status === 'pending') {
+        await markCommitmentMissed(today);
+        await reply(
+          'Sorun değil, sistem bozulmadı. Sadece merak ediyorum: önüne ne çıktı? (tek cümle yeter — yarın ona göre ayarlarız)',
+          today,
+          'commitment_missed_probe',
+        );
+        return NextResponse.json({ ok: true });
+      }
+
+      await reply('Tamam, geçelim. Yarın tekrar deneriz. Sistem bozulmadı.', today, 'skip');
+      return NextResponse.json({ ok: true });
+    }
+
+    // mentor: mikro başlangıç onayı ("açtım")
+    if (intent.type === 'micro_start_done') {
+      await reply(microStartAck(), today, 'micro_start_done');
+      return NextResponse.json({ ok: true });
+    }
+
+    // mentor: akıllı snooze — açık saatli ("15:00 sor")
+    if (intent.type === 'snooze_with_time') {
+      const commitment = await getCommitment(today);
+      const itemKey = commitment?.commitment ?? text.slice(0, 80);
+      const todayDefers = await countTodayDeferrals(today);
+      const decision = await decideSnooze(itemKey, todayDefers);
+
+      // Kullanıcı saati verdiyse onu kullan; yoksa kararın mesajını gönder.
+      await markSnoozed(today, text, intent.time);
+      if (decision.suppressNextNudge) {
+        await reply(decision.message, today, 'snooze_suppressed');
+      } else {
+        await reply(`Tamam, ${intent.time} için not ettim. O saatte tek bir kez sorarım, üstüne gelmem.`, today, 'snooze_timed');
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // mentor: akıllı snooze — saatsiz ("ertele")
+    if (intent.type === 'snooze_last_reminder') {
+      const commitment = await getCommitment(today);
+      const itemKey = commitment?.commitment ?? text.slice(0, 80);
+      const todayDefers = await countTodayDeferrals(today);
+      const decision = await decideSnooze(itemKey, todayDefers);
+      await markSnoozed(today, text, null);
+      await reply(decision.message, today, `snooze_${decision.deferCount}`);
+      return NextResponse.json({ ok: true });
+    }
+
+    // v2: öğün sorusu
+    if (intent.type === 'meal_question') {
+      const msg = await buildMealSuggestion();
+      await sendTelegram(msg);
+      return NextResponse.json({ ok: true });
+    }
+    const state = await getOrCreateDailyState(today);
+
+    switch (intent.type) {
+      case 'send_plan': {
+        const msg = await buildTodayPlan(today, state);
+        await sendTelegram(msg);
+        break;
+      }
+
+      case 'set_state': {
+        await updateDailyState(today, { agency_load: intent.agencyLoad, energy: intent.energy });
+        const updated: AssistantDailyState = { ...state, agency_load: intent.agencyLoad, energy: intent.energy };
+        const msg = await buildTodayPlan(today, updated);
+        await sendTelegram(msg);
+        break;
+      }
+
+      case 'set_agency': {
+        await updateDailyState(today, { agency_load: intent.agencyLoad });
+        // Sabah taahhüt akışı: enerji/ajans cevabı → "tek kesin iş" sorusu.
+        if (await maybeAdvanceMorningCommitment(today)) break;
+        const agencyLabel: Record<string, string> = { low: 'Rahat', normal: 'Normal', high: 'Yoğun' };
+        await reply(`Ajans yoğunluğu güncellendi: ${agencyLabel[intent.agencyLoad]}`, today, 'set_agency');
+        break;
+      }
+
+      case 'set_energy': {
+        await updateDailyState(today, { energy: intent.energy });
+        // Sabah taahhüt akışı: enerji cevabı → "tek kesin iş" sorusu.
+        if (await maybeAdvanceMorningCommitment(today)) break;
+        const energyLabel: Record<string, string> = { low: 'Düşük', medium: 'Orta', high: 'Yüksek' };
+        await reply(`Enerji seviyesi güncellendi: ${energyLabel[intent.energy]}`, today, 'set_energy');
+        break;
+      }
+
+      case 'simplify': {
+        await updateDailyState(today, { agency_load: 'high', energy: 'low', mode: 'koruma' });
+        await sendTelegram('Sadeleştirme moduna geçildi. 1 ana iş + rutinler. Yeni görev ekleme.');
+        break;
+      }
+
+      case 'send_rhythms': {
+        const dow = new Date().getDay();
+        const dayBonuses: Record<number, string> = {
+          1: '<b>Pazartesi bonusları:</b>\n- İngilizce: Günlük kelime (20 dk)\n- Antrenman: Upper A',
+          2: '<b>Salı bonusları:</b>\n- İngilizce: Ana ders (35–45 dk)\n- Antrenman: Lower A',
+          3: '<b>Çarşamba bonusları:</b>\n- İngilizce: Dinleme + shadowing (25 dk)',
+          4: '<b>Perşembe bonusları:</b>\n- İngilizce: Writing (30 dk)\n- Antrenman: Upper B',
+          5: '<b>Cuma bonusları:</b>\n- İngilizce: Kelime tekrar (20–25 dk)',
+          6: '<b>Cumartesi bonusları:</b>\n- İngilizce: Hafif okuma / dinleme (20 dk)\n- Antrenman: Lower B',
+          0: '<b>Pazar bonusları:</b>\n- İngilizce: Haftalık tekrar + mini konuşma (35–45 dk)',
+        };
+        await sendTelegram(dayBonuses[dow] ?? 'Bugün bonus bilgisi yok.');
+        break;
+      }
+
+      case 'send_health': {
+        await sendTelegram(
+          '<b>Sağlık minimumu:</b>\n✓ Proteinli ilk öğün\n✓ 3 litre su\n✓ 35 dk yürüyüş / koşu bandı'
+        );
+        break;
+      }
+
+      case 'send_finance': {
+        await sendTelegram(
+          '<b>Finans notu:</b>\nBugün yeni taksit yok. Yeni SaaS yok.\nKural: Yeni borç yok. Yeni taksit yok.'
+        );
+        break;
+      }
+
+      case 'send_book': {
+        await sendTelegram(
+          '<b>Okuma hedefi:</b>\nBugünkü hedef: 10 sayfa.\nEnerji düşükse: 5 sayfa yeterli.'
+        );
+        break;
+      }
+
+      case 'send_shutdown': {
+        await sendTelegram(
+          'Günü kapatalım Cem.\n1) En kritik görevi bitirdin mi?\n2) Sağlık minimumu tamam mı?\n3) Yarın ilk hamle ne?'
+        );
+        break;
+      }
+
+      case 'send_status': {
+        const { data: v2 } = await supabaseAdmin
+          .from('daily_v2')
+          .select('day_mode, protein_meal, water_3l, walk_35')
+          .eq('date', today)
+          .maybeSingle();
+        const modeLabel: Record<string, string> = { normal: 'Normal', yogun: 'Yoğun', dagilmis: 'Dağılmış' };
+        const mode = v2?.day_mode ? (modeLabel[v2.day_mode] ?? v2.day_mode) : 'Seçilmedi';
+        await sendTelegram(
+          `<b>Bugünkü durum — ${today}</b>\nMod: ${mode}\nProtein: ${v2?.protein_meal ? '✓' : '·'} Su: ${v2?.water_3l ? '✓' : '·'} Yürüyüş: ${v2?.walk_35 ? '✓' : '·'}`
+        );
+        break;
+      }
+
+      case 'add_task_draft': {
+        await sendTelegram(
+          `Görevi nereye ekleyeyim?\n"${intent.title}"\n\n1) Aktif görevler\n2) Bekleyenler\n\nCevapla: 1 veya 2`
+        );
+        break;
+      }
+
+      default: {
+        // ── Taahhüt döngüsü (sabah) + LLM serbest-metin fallback ──────────────
+        const commitment = await getCommitment(today);
+
+        // 3. adım: taahhüt var, saat yok → bu mesaj saat cevabı.
+        if (commitment && commitment.commitment && !commitment.do_at && !commitment.asked_evening) {
+          const timeHint = parseTimeHint(text) ?? text.trim().slice(0, 40);
+          await setCommitment(today, { do_at: timeHint });
+          await reply(commitmentSetConfirmation(commitment.commitment, timeHint), today, 'commitment_time_set');
+          break;
+        }
+
+        // 2. adım: enerji alındı (placeholder satır var), taahhüt yok → bu mesaj taahhüt.
+        if (commitment && !commitment.commitment && !commitment.asked_evening && text.trim().length > 2) {
+          const commitmentText = text.trim().slice(0, 200);
+          await setCommitment(today, { commitment: commitmentText, status: 'pending' });
+          await reply(commitmentTimeQuestion(commitmentText), today, 'commitment_captured');
+          break;
+        }
+
+        // 1. adım: taahhüt satırı yok ve mesaj bir enerji kelimesi → sabah enerji cevabı.
+        const energyWord = parseEnergyWord(text);
+        if (!commitment && energyWord) {
+          await updateDailyState(today, { energy: energyWord });
+          // morning check-in canlıysa taahhüt sorusuna ilerle (gated).
+          if (await maybeAdvanceMorningCommitment(today)) break;
+        }
+
+        // ── LLM serbest-metin fallback (brain + geçmiş + bellek) ──────────────
+        const { data: v2state } = await supabaseAdmin
+          .from('daily_v2')
+          .select('energy')
+          .eq('date', today)
+          .maybeSingle();
+        const energyLevel =
+          v2state?.energy === 'low' ? 'LOW' : v2state?.energy === 'high' ? 'HIGH' : 'NORMAL';
+
+        const { reply: llmReply, agent } = await runMentorFreeText(text, { energyLevel });
+        await reply(llmReply, today, 'llm_freetext', agent);
+        break;
+      }
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error('Telegram Webhook Error:', error);
+    return NextResponse.json({ ok: false }, { status: 500 });
+  }
+}
