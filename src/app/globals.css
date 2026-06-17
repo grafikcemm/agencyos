@@ -358,12 +358,14 @@
   --accent: #c21f23;
 }
 
-/* Enerji modu geçiş animasyonu — yalnızca tema wrapper içinde (global değil) */
+/* Enerji modu geçiş animasyonu — yalnızca tema wrapper içinde (global değil).
+   200ms: hem mod geçişi yumuşak hem de günlük hover/state'ler tembel hissettirmez
+   (Emil: hover 150–200ms). */
 .theme-low, .theme-mid, .theme-high {
-  transition: background-color 0.4s ease, color 0.4s ease;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 .theme-low *, .theme-mid *, .theme-high * {
-  transition: border-color 0.4s ease, background-color 0.4s ease, color 0.4s ease;
+  transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease;
 }
 
 @media (prefers-reduced-motion: reduce) {

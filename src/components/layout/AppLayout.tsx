@@ -81,7 +81,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             </button>
             <div className="flex items-baseline gap-2.5 min-w-0">
               <span className="hidden sm:inline label-eyebrow">Grafikcem /</span>
-              <h1 className="font-display text-xl font-bold text-[var(--text-primary)] leading-none truncate tracking-tight">{pageTitle}</h1>
+              <h1 className="font-display text-xl font-semibold text-[var(--text-primary)] leading-none truncate tracking-tight">{pageTitle}</h1>
             </div>
           </div>
           <div className="flex items-center gap-3">
