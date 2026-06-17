@@ -78,7 +78,7 @@ export function TimelineRow({
           aria-label="toggle"
           className={cn(
             "relative z-10 w-8 h-8 rounded-full flex items-center justify-center border transition-all duration-300",
-            done ? "border-transparent" : "border-[#26262b]"
+            done ? "border-transparent" : "border-[var(--border-subtle)]"
           )}
           style={{
             backgroundColor: done ? accentColor : `color-mix(in srgb, ${accentColor} 14%, transparent)`,
@@ -95,7 +95,7 @@ export function TimelineRow({
       <div
         className={cn(
           "flex-1 min-w-0 mb-3 rounded-card border bg-(--surface) transition-all duration-300",
-          done ? "border-[#161616] opacity-55" : "border-(--border)"
+          done ? "border-[var(--border-subtle)] opacity-55" : "border-(--border)"
         )}
       >
         <div
@@ -109,20 +109,20 @@ export function TimelineRow({
           <span
             className={cn(
               "flex-1 min-w-0 text-sm font-medium leading-snug truncate transition-colors",
-              done ? "text-[#5a5a5a] line-through" : "text-white"
+              done ? "text-[var(--text-tertiary)] line-through" : "text-[var(--text-primary)]"
             )}
           >
             {title}
           </span>
 
           {meta && (
-            <span className="shrink-0 font-mono text-[10px] text-[#5a5a5a] tabular-nums">{meta}</span>
+            <span className="shrink-0 font-mono text-[10px] text-[var(--text-tertiary)] tabular-nums">{meta}</span>
           )}
 
           {hasDetail && (
             <svg
               className={cn(
-                "w-3.5 h-3.5 text-[#4a4a4a] shrink-0 transition-transform duration-300",
+                "w-3.5 h-3.5 text-[var(--text-tertiary)] shrink-0 transition-transform duration-300",
                 expanded && "rotate-180"
               )}
               fill="none"
@@ -136,7 +136,7 @@ export function TimelineRow({
         </div>
 
         {hasDetail && expanded && (
-          <div className="border-t border-[#161616] animate-in fade-in duration-200">{detail}</div>
+          <div className="border-t border-[var(--border-subtle)] animate-in fade-in duration-200">{detail}</div>
         )}
       </div>
     </div>
@@ -150,7 +150,7 @@ export function TimelineSectionLabel({ children }: { children: React.ReactNode }
       <div className="relative flex flex-col items-center shrink-0 w-8">
         <span className="w-1.5 h-1.5 rounded-full bg-(--timeline-line)" />
       </div>
-      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#4a4a4a] py-1.5">
+      <p className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--text-tertiary)] py-1.5">
         {children}
       </p>
     </div>

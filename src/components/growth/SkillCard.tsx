@@ -16,7 +16,7 @@ interface Props {
 }
 
 const TYPE_BADGE: Record<string, string> = {
-  technical: "border-blue-500/30 text-blue-400",
+  technical: "border-[var(--info)]/30 text-[var(--info)]",
   personal: "border-purple-500/30 text-purple-400",
 }
 
@@ -32,7 +32,7 @@ export function SkillCard({
 }: Props) {
   const [open, setOpen] = useState(false)
 
-  const badgeClass = TYPE_BADGE[skill.type] ?? "border-[#333] text-[#666]"
+  const badgeClass = TYPE_BADGE[skill.type] ?? "border-[var(--border-subtle)] text-[var(--text-muted)]"
 
   return (
     <div
@@ -40,8 +40,8 @@ export function SkillCard({
         isActiveFocus
           ? "border-[var(--accent)]/40"
           : isCompleted
-          ? "border-green-500/20"
-          : "border-[#1f1f1f]"
+          ? "border-[var(--success)]/20"
+          : "border-[var(--border-subtle)]"
       }`}
     >
       <button
@@ -56,7 +56,7 @@ export function SkillCard({
               </span>
             )}
             {isCompleted && (
-              <span className="text-[9px] font-mono text-green-400 bg-green-400/10 border border-green-400/30 px-1.5 py-0.5 rounded">
+              <span className="text-[9px] font-mono text-[var(--success)] bg-[var(--success)]/10 border border-[var(--success)]/30 px-1.5 py-0.5 rounded">
                 ✓
               </span>
             )}
@@ -64,14 +64,14 @@ export function SkillCard({
               {skill.type === "technical" ? "teknik" : "kişisel"}
             </span>
           </div>
-          <p className="text-sm font-display text-white truncate">{skill.title}</p>
+          <p className="text-sm font-display text-[var(--text-primary)] truncate">{skill.title}</p>
           {!open && (
-            <p className="text-xs text-[#555] font-sans mt-0.5 line-clamp-1">
+            <p className="text-xs text-[var(--text-muted)] font-sans mt-0.5 line-clamp-1">
               {skill.shortDescription}
             </p>
           )}
         </div>
-        <span className="text-[#444] font-mono text-sm shrink-0 mt-0.5">
+        <span className="text-[var(--text-tertiary)] font-mono text-sm shrink-0 mt-0.5">
           {open ? "−" : "+"}
         </span>
       </button>

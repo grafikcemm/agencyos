@@ -32,7 +32,7 @@ export function BonusesSection({ initialEnglishDone }: BonusesSectionProps) {
 
   return (
     <div className="flex flex-col gap-3 p-4 bg-[var(--surface)] border border-[var(--border)] rounded-card shadow-soft mt-3">
-      <p className="font-mono text-[10px] font-semibold tracking-[0.18em] uppercase text-[#555555]">
+      <p className="font-mono text-[10px] font-semibold tracking-[0.18em] uppercase text-[var(--text-tertiary)]">
         Bonuslar
       </p>
       <button
@@ -41,7 +41,7 @@ export function BonusesSection({ initialEnglishDone }: BonusesSectionProps) {
       >
         <span
           className={`w-5 h-5 rounded-sm border shrink-0 flex items-center justify-center transition-all ${
-            englishDone ? 'bg-[#22c55e] border-[#22c55e]' : 'border-[#2a2a2a] bg-[#0a0a0a]'
+            englishDone ? 'bg-[var(--success)] border-[var(--success)]' : 'border-[var(--border-subtle)] bg-[var(--bg-base)]'
           }`}
         >
           {englishDone && (
@@ -51,16 +51,16 @@ export function BonusesSection({ initialEnglishDone }: BonusesSectionProps) {
           )}
         </span>
         <div className="flex-1 min-w-0">
-          <span className={`text-sm block transition-colors ${englishDone ? 'text-[#555555] line-through' : 'text-[#cccccc]'}`}>
+          <span className={`text-sm block transition-colors ${englishDone ? 'text-[var(--text-tertiary)] line-through' : 'text-[var(--text-secondary)]'}`}>
             İngilizce — {plan.focus}
           </span>
-          <span className="text-[10px] text-[#444444]">
+          <span className="text-[10px] text-[var(--text-tertiary)]">
             {plan.duration} · {plan.goal}
           </span>
         </div>
       </button>
       {error && (
-        <p className="text-[10px] text-[#ef4444] mt-1 animate-in fade-in duration-200">
+        <p className="text-[10px] text-[var(--danger)] mt-1 animate-in fade-in duration-200">
           {error}
         </p>
       )}

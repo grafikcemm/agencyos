@@ -56,10 +56,10 @@ export function GrowthPage({}: { uiMode: 'koruma' | 'denge' | 'atak' }) {
 
       {/* AI Recommendation Banner when no active focus */}
       {!activeFocusSkillId && recommendedSkill && (
-        <div className="bg-[#0b0c10] border border-[var(--accent)]/20 rounded-xl p-4 mb-4 animate-in fade-in slide-in-from-top-2 duration-300">
+        <div className="bg-[var(--bg-base)] border border-[var(--accent)]/20 rounded-xl p-4 mb-4 animate-in fade-in slide-in-from-top-2 duration-300">
           <p className="text-[10px] font-mono text-[var(--accent)] uppercase tracking-wider mb-1">🎯 BUGÜNÜN GELİŞİM ADIMI ÖNERİSİ</p>
-          <h3 className="text-sm font-mono font-bold text-white mb-1">{recommendedSkill.title}</h3>
-          <p className="text-xs text-[#888888] leading-relaxed mb-3">{recommendedSkill.shortDescription}</p>
+          <h3 className="text-sm font-mono font-bold text-[var(--text-primary)] mb-1">{recommendedSkill.title}</h3>
+          <p className="text-xs text-[var(--text-muted)] leading-relaxed mb-3">{recommendedSkill.shortDescription}</p>
           <button
             onClick={() => setActiveFocus(recommendedSkill.id, activeLevel.id)}
             className="bg-[var(--accent)] text-white font-mono font-bold text-xs px-3.5 py-1.5 rounded hover:bg-[var(--accent-hover)] transition-colors"
@@ -71,10 +71,10 @@ export function GrowthPage({}: { uiMode: 'koruma' | 'denge' | 'atak' }) {
 
       {/* Grafikcem Plan mini card connected to active focus */}
       {activeFocusSkillId && (
-        <div className="bg-[#111111] border border-[#1f1f1f] rounded-[6px] p-3 mb-4 flex items-center justify-between">
+        <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-[6px] p-3 mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-xs">🎨</span>
-            <p className="text-xs font-mono text-[#ababab]">Grafikcem Stratejik Planı</p>
+            <p className="text-xs font-mono text-[var(--text-secondary)]">Grafikcem Stratejik Planı</p>
           </div>
           <button
             onClick={() => setShowGrafikcemPlan(!showGrafikcemPlan)}
@@ -126,11 +126,11 @@ export function GrowthPage({}: { uiMode: 'koruma' | 'denge' | 'atak' }) {
       </div>
 
       {/* Parked & Archived items wrapped under a details toggle */}
-      <details className="group border border-[#1f1f1f] rounded-xl overflow-hidden mt-6 bg-[#0c0c0d]/30">
-        <summary className="w-full flex items-center justify-between p-4 text-left font-mono text-xs text-[#555] hover:text-white cursor-pointer select-none">
+      <details className="group border border-[var(--border-subtle)] rounded-xl overflow-hidden mt-6 bg-[var(--bg-base)]/30">
+        <summary className="w-full flex items-center justify-between p-4 text-left font-mono text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer select-none">
           <span>Kitaplık Deposu & Park Edilenler (Arşiv)</span>
-          <span className="text-[#333] font-mono text-sm group-open:hidden">+</span>
-          <span className="text-[#333] font-mono text-sm hidden group-open:inline">−</span>
+          <span className="text-[var(--text-tertiary)] font-mono text-sm group-open:hidden">+</span>
+          <span className="text-[var(--text-tertiary)] font-mono text-sm hidden group-open:inline">−</span>
         </summary>
         <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-300">
           <ArchivedCareerItems />

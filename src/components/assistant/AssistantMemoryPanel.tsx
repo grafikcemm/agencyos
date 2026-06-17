@@ -30,11 +30,11 @@ const CATEGORY_LABELS: Record<MemoryItem["category"], string> = {
 };
 
 const CATEGORY_COLORS: Record<MemoryItem["category"], string> = {
-  preference: "#3b82f6",
-  goal: "#22c55e",
+  preference: "var(--info)",
+  goal: "var(--success)",
   routine: "var(--accent)",
-  warning: "#ef4444",
-  project: "#f97316",
+  warning: "var(--danger)",
+  project: "var(--fire)",
   reflection: "#a855f7",
 };
 
@@ -87,28 +87,28 @@ export function AssistantMemoryPanel() {
   }
 
   return (
-    <div className="bg-[#111111] rounded-xl border border-[#1f1f1f] overflow-hidden">
+    <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] overflow-hidden">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full px-5 pt-4 pb-3 flex items-center justify-between hover:bg-[#161616] transition-colors"
+        className="w-full px-5 pt-4 pb-3 flex items-center justify-between hover:bg-[var(--bg-card-hover)] transition-colors"
       >
         <div className="flex items-center gap-2">
-          <Brain size={13} className="text-[#555555]" strokeWidth={1.8} />
-          <span className="text-[10px] uppercase tracking-widest text-[#444444] font-medium">
+          <Brain size={13} className="text-[var(--text-tertiary)]" strokeWidth={1.8} />
+          <span className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-medium">
             Asistan Hafızası
           </span>
-          <span className="text-[10px] text-[#333333]">({memories.length})</span>
+          <span className="text-[10px] text-[var(--text-tertiary)]">({memories.length})</span>
         </div>
         {isOpen ? (
-          <ChevronUp size={13} className="text-[#444444]" />
+          <ChevronUp size={13} className="text-[var(--text-tertiary)]" />
         ) : (
-          <ChevronDown size={13} className="text-[#444444]" />
+          <ChevronDown size={13} className="text-[var(--text-tertiary)]" />
         )}
       </button>
 
       {isOpen && (
         <>
-          <div className="h-px bg-[#1a1a1a]" />
+          <div className="h-px bg-[var(--border-subtle)]" />
 
           {/* Memory list */}
           <div className="px-5 py-3 flex flex-col gap-2 max-h-64 overflow-y-auto">
@@ -127,19 +127,19 @@ export function AssistantMemoryPanel() {
                 >
                   {CATEGORY_LABELS[m.category]}
                 </span>
-                <p className="text-xs text-[#666666] flex-1 leading-relaxed">{m.text}</p>
+                <p className="text-xs text-[var(--text-muted)] flex-1 leading-relaxed">{m.text}</p>
                 <button
                   onClick={() => deleteMemory(m.id)}
                   className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                 >
-                  <Trash2 size={11} className="text-[#444444] hover:text-[#ef4444] transition-colors" />
+                  <Trash2 size={11} className="text-[var(--text-tertiary)] hover:text-[var(--danger)] transition-colors" />
                 </button>
               </div>
             ))}
           </div>
 
           {/* Add memory */}
-          <div className="h-px bg-[#1a1a1a]" />
+          <div className="h-px bg-[var(--border-subtle)]" />
           <div className="px-5 py-3 flex flex-col gap-2">
             <input
               type="text"
@@ -147,13 +147,13 @@ export function AssistantMemoryPanel() {
               onChange={(e) => setNewText(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addMemory()}
               placeholder="Yeni hafıza ekle..."
-              className="w-full bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2 text-xs text-[#888888] placeholder:text-[#333333] outline-none focus:border-[#2a2a2a]"
+              className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-xs text-[var(--text-muted)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--border-strong)]"
             />
             <div className="flex items-center gap-2">
               <select
                 value={newCategory}
                 onChange={(e) => setNewCategory(e.target.value as MemoryItem["category"])}
-                className="flex-1 bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-1.5 text-xs text-[#555555] outline-none"
+                className="flex-1 bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg px-3 py-1.5 text-xs text-[var(--text-tertiary)] outline-none"
               >
                 {Object.entries(CATEGORY_LABELS).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
@@ -162,7 +162,7 @@ export function AssistantMemoryPanel() {
               <button
                 onClick={addMemory}
                 disabled={!newText.trim()}
-                className="flex items-center gap-1 px-3 py-1.5 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg text-xs text-[#666666] hover:text-[#888888] disabled:opacity-40 transition-colors"
+                className="flex items-center gap-1 px-3 py-1.5 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] disabled:opacity-40 transition-colors"
               >
                 <Plus size={11} />
                 Ekle

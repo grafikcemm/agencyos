@@ -14,7 +14,7 @@ export function MoneyRulesPanel() {
         <button
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-white/[0.02] transition-colors"
+          className="w-full flex items-center justify-between gap-3 px-5 py-4 text-left hover:bg-[var(--bg-card-hover)] transition-colors"
         >
           <span className="flex items-center gap-2.5">
             <Coins className="w-4 h-4 text-[var(--accent-yellow)]" />

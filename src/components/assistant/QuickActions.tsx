@@ -21,8 +21,8 @@ export function QuickActions({ onAction, loading }: QuickActionsProps) {
           key={a.id}
           onClick={() => onAction(a.id)}
           disabled={loading}
-          className="px-3 py-1.5 bg-[#111111] border border-[#1f1f1f] rounded-lg text-xs text-[#666666]
-                     hover:border-[#2a2a2a] hover:text-[#888888] disabled:opacity-40 transition-all"
+          className="px-3 py-1.5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-lg text-xs text-[var(--text-muted)]
+                     hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)] disabled:opacity-40 transition-all"
         >
           {a.label}
         </button>

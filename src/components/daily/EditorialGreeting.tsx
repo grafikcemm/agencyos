@@ -52,16 +52,16 @@ export function EditorialGreeting({ progressLabel }: EditorialGreetingProps) {
 
   return (
     <header className="flex flex-col mb-1">
-      <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[#5a5a5a]">
+      <p className="font-mono text-[10px] uppercase tracking-[0.22em] text-[var(--text-tertiary)]">
         {dateString}
       </p>
-      <h1 className="font-display text-4xl sm:text-5xl font-semibold tracking-tight text-white leading-[1.02] mt-2">
+      <h1 className="font-display text-4xl sm:text-5xl font-semibold tracking-tight text-[var(--text-primary)] leading-[1.02] mt-2">
         {hello},
         <br />
-        <span className="text-[#9a9a9a]">Cem.</span>
+        <span className="text-[var(--text-secondary)]">Cem.</span>
       </h1>
       {progressLabel && (
-        <p className="font-mono text-[11px] text-[#666] mt-3 tabular-nums">{progressLabel}</p>
+        <p className="font-mono text-[11px] text-[var(--text-muted)] mt-3 tabular-nums">{progressLabel}</p>
       )}
     </header>
   );

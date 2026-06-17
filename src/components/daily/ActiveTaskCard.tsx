@@ -123,7 +123,7 @@ export function ActiveTaskCard({ task, isDev = false }: ActiveTaskCardProps) {
     return (
       <div
         className={cn(
-          "flex items-center gap-2 py-1.5 text-[#444444] hover:text-[#666666] transition-colors group",
+          "flex items-center gap-2 py-1.5 text-[var(--text-tertiary)] hover:text-[var(--text-muted)] transition-colors group",
           isPending && "opacity-60"
         )}
       >
@@ -132,8 +132,8 @@ export function ActiveTaskCard({ task, isDev = false }: ActiveTaskCardProps) {
           className={cn(
             "w-4 h-4 rounded-sm border shrink-0 flex items-center justify-center transition-all duration-300",
             optimisticDone
-              ? "bg-[#30d158] border-[#30d158] text-white"
-              : "border-[#2a2a2a] bg-transparent hover:border-[#6366f1]"
+              ? "bg-[var(--success)] border-[var(--success)] text-white"
+              : "border-[var(--border-subtle)] bg-transparent hover:border-[var(--info)]"
           )}
         >
           {optimisticDone && (
@@ -146,7 +146,7 @@ export function ActiveTaskCard({ task, isDev = false }: ActiveTaskCardProps) {
         <span
           className={cn(
             "flex-1 transition-all line-clamp-2 whitespace-normal break-words",
-            optimisticDone ? "line-through opacity-70 text-[15px] text-[#666666]" : "text-[15px] text-[#444444]"
+            optimisticDone ? "line-through opacity-70 text-[15px] text-[var(--text-muted)]" : "text-[15px] text-[var(--text-tertiary)]"
           )}
         >
           {task.title}
@@ -154,7 +154,7 @@ export function ActiveTaskCard({ task, isDev = false }: ActiveTaskCardProps) {
 
         <button
           onClick={(e) => handleMove(e, "active")}
-          className="text-[#666666] hover:text-[#6366f1] transition-colors ml-auto text-xs opacity-0 group-hover:opacity-100 px-1"
+          className="text-[var(--text-muted)] hover:text-[var(--info)] transition-colors ml-auto text-xs opacity-0 group-hover:opacity-100 px-1"
           title="Aktife taşı"
         >
           ↑
@@ -162,7 +162,7 @@ export function ActiveTaskCard({ task, isDev = false }: ActiveTaskCardProps) {
 
         <button
           onClick={handleDelete}
-          className="text-[#2a2a2a] hover:text-[#ff453a] transition-colors text-xs opacity-0 group-hover:opacity-100"
+          className="text-[var(--border-subtle)] hover:text-[var(--danger)] transition-colors text-xs opacity-0 group-hover:opacity-100"
           title="Görevi sil"
         >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -195,8 +195,8 @@ export function ActiveTaskCard({ task, isDev = false }: ActiveTaskCardProps) {
         className={cn(
           "w-5 h-5 rounded-sm border shrink-0 flex items-center justify-center transition-all duration-300",
           optimisticDone
-            ? "bg-[#30d158] border-[#30d158] text-white"
-            : "border-[#2a2a2a] bg-[#141414] hover:border-[#6366f1]/50"
+            ? "bg-[var(--success)] border-[var(--success)] text-white"
+            : "border-[var(--border-subtle)] bg-[var(--bg-surface)] hover:border-[var(--info)]/50"
         )}
       >
         {optimisticDone && (
@@ -214,14 +214,14 @@ export function ActiveTaskCard({ task, isDev = false }: ActiveTaskCardProps) {
       >
         <span
           className={cn(
-            "block transition-all text-sm font-medium line-clamp-2 whitespace-normal break-words group-hover/title:underline decoration-dotted underline-offset-4 decoration-[#444]",
-            optimisticDone ? "text-[#666666] line-through" : "text-white"
+            "block transition-all text-sm font-medium line-clamp-2 whitespace-normal break-words group-hover/title:underline decoration-dotted underline-offset-4 decoration-[var(--text-tertiary)]",
+            optimisticDone ? "text-[var(--text-muted)] line-through" : "text-[var(--text-primary)]"
           )}
         >
           {task.title}
         </span>
         {task.description && (
-          <span className="block text-[11px] text-[#5f5f5f] truncate mt-0.5">{task.description}</span>
+          <span className="block text-[11px] text-[var(--text-tertiary)] truncate mt-0.5">{task.description}</span>
         )}
       </button>
 
@@ -258,7 +258,7 @@ export function ActiveTaskCard({ task, isDev = false }: ActiveTaskCardProps) {
           background: "none",
           border: "none",
           cursor: "pointer",
-          color: optimisticPriority ? "#EF4444" : "#444444",
+          color: optimisticPriority ? "var(--danger)" : "var(--text-tertiary)",
           fontWeight: "bold",
           fontSize: "16px",
           padding: "4px 8px",
@@ -278,7 +278,7 @@ export function ActiveTaskCard({ task, isDev = false }: ActiveTaskCardProps) {
       {isDev && (
         <button
           onClick={(e) => handleMove(e, "waiting")}
-          className="w-7 h-7 bg-[#1c1c1c] border border-[#2a2a2a] rounded-lg flex items-center justify-center text-[#555555] hover:border-[#333333] transition-colors ml-1 opacity-0 group-hover:opacity-100"
+          className="w-7 h-7 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-lg flex items-center justify-center text-[var(--text-tertiary)] hover:border-[var(--border-strong)] transition-colors ml-1 opacity-0 group-hover:opacity-100"
           title="Bekleyene taşı"
         >
           <span className="text-[10px]">⏳</span>
@@ -287,7 +287,7 @@ export function ActiveTaskCard({ task, isDev = false }: ActiveTaskCardProps) {
 
       <button
         onClick={handleDelete}
-        className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 flex items-center justify-center text-[#666666] hover:text-[#ff453a] shrink-0 ml-1"
+        className="opacity-0 group-hover:opacity-100 transition-opacity w-5 h-5 flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--danger)] shrink-0 ml-1"
         title="Görevi sil"
       >
         <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -310,8 +310,8 @@ export function ActiveTaskCard({ task, isDev = false }: ActiveTaskCardProps) {
           onKeyDown={e => { if (e.key === 'Enter') { e.currentTarget.blur(); } }}
           placeholder={noteSaveError ? "Kaydedilemedi" : "Kendime not"}
           className={cn(
-            "w-full px-4 pt-0.5 pb-2.5 text-xs bg-transparent text-[#555555] focus:outline-none focus:text-[#888888] transition-colors rounded-b-[14px]",
-            noteSaveError ? "placeholder-[#ef4444]/70" : "placeholder-[#333333]"
+            "w-full px-4 pt-0.5 pb-2.5 text-xs bg-transparent text-[var(--text-tertiary)] focus:outline-none focus:text-[var(--text-muted)] transition-colors rounded-b-[14px]",
+            noteSaveError ? "placeholder-[var(--danger)]/70" : "placeholder-[var(--border-strong)]"
           )}
         />
       </div>

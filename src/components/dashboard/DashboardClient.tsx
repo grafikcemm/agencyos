@@ -128,14 +128,14 @@ interface DashboardClientProps {
 // hex-alpha suffixes (`${color}1f`) and inline styles where var()-inside-color-mix
 // is unreliable cross-browser (Safari/Firefox). Keep in sync with globals.css.
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  active: { label: 'Aktif', color: '#5ee6b0' },        // --success
-  completed: { label: 'Tamamlandı', color: '#5ac8fa' }, // --info
-  pending: { label: 'Bekliyor', color: '#e5b567' },     // --warning
-  cancelled: { label: 'İptal', color: '#f2555a' },      // --danger
-  new: { label: 'Yeni', color: '#5ac8fa' },             // --info
-  contacted: { label: 'İletişim', color: '#e5b567' },   // --warning
-  converted: { label: 'Kazanıldı', color: '#5ee6b0' },  // --success
-  proposal: { label: 'Teklif', color: '#5ee6b0' },      // --accent
+  active: { label: 'Aktif', color: '#1a8a3a' },        // --success
+  completed: { label: 'Tamamlandı', color: '#0071a8' }, // --info
+  pending: { label: 'Bekliyor', color: '#b25e00' },     // --warning
+  cancelled: { label: 'İptal', color: '#d11507' },      // --danger
+  new: { label: 'Yeni', color: '#0071a8' },             // --info
+  contacted: { label: 'İletişim', color: '#b25e00' },   // --warning
+  converted: { label: 'Kazanıldı', color: '#1a8a3a' },  // --success
+  proposal: { label: 'Teklif', color: '#1a8a3a' },      // --accent
 }
 
 export function DashboardClient(props: DashboardClientProps) {
@@ -277,7 +277,7 @@ export function DashboardClient(props: DashboardClientProps) {
                     alert('Dry-run isteği başarısız oldu.');
                   }
                 }}
-                className="text-[10px] bg-[var(--success)] hover:bg-[var(--accent-hover)] text-black font-black px-4 py-2.5 rounded-xl shrink-0 transition-all shadow-[0_4px_12px_var(--accent-glow)] flex items-center gap-1"
+                className="text-[10px] bg-[var(--success)] hover:bg-[var(--accent-hover)] text-white font-black px-4 py-2.5 rounded-xl shrink-0 transition-all shadow-[0_4px_12px_var(--accent-glow)] flex items-center gap-1"
               >
                 Dry-run Testi Yap <ChevronRight className="w-3.5 h-3.5" />
               </button>
@@ -309,7 +309,7 @@ export function DashboardClient(props: DashboardClientProps) {
                     alert('Ağ hatası oluştu.');
                   }
                 }}
-                className="text-[10px] bg-[var(--warning)] hover:brightness-110 text-black font-black px-4 py-2 rounded-xl shrink-0 transition-all shadow-[0_4px_12px_color-mix(in_srgb,var(--warning)_25%,transparent)]"
+                className="text-[10px] bg-[var(--warning)] hover:brightness-110 text-white font-black px-4 py-2 rounded-xl shrink-0 transition-all shadow-[0_4px_12px_color-mix(in_srgb,var(--warning)_25%,transparent)]"
               >
                 Şimdi Backfill Çalıştır
               </button>
@@ -340,16 +340,16 @@ export function DashboardClient(props: DashboardClientProps) {
 
           {/* Bugünün 5 Yeni Lead'i */}
           {todaysLeads.length > 0 && (
-            <div className="bg-[var(--bg-surface)] border border-emerald-500/20 rounded-2xl p-5 space-y-4 shadow-[0_0_24px_rgba(16,185,129,0.03)]">
+            <div className="bg-[var(--bg-surface)] border border-[var(--success)]/20 rounded-2xl p-5 space-y-4 shadow-soft">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-xs font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
+                  <h3 className="text-xs font-black text-[var(--success)] uppercase tracking-widest flex items-center gap-2">
                     <CheckCircle className="w-3.5 h-3.5" />
                     Bugünün 5 Yeni Müşteri Adayı
                   </h3>
                   <p className="text-[10px] text-[var(--text-secondary)] mt-0.5">1 Haziran 2026 Pazartesi&apos;den itibaren her gün otomatik olarak taranan en taze fırsatlar.</p>
                 </div>
-                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 font-bold px-2.5 py-1 rounded-md border border-emerald-500/20">
+                <span className="text-[10px] bg-[var(--success)]/10 text-[var(--success)] font-bold px-2.5 py-1 rounded-md border border-[var(--success)]/20">
                   {todaysLeads.length} Yeni Lead
                 </span>
               </div>
@@ -363,15 +363,15 @@ export function DashboardClient(props: DashboardClientProps) {
                   return (
                     <div
                       key={l.id}
-                      className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-emerald-500/30 rounded-xl p-4 flex flex-col justify-between transition-all duration-300 relative group cursor-pointer"
+                      className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--success)]/30 rounded-xl p-4 flex flex-col justify-between transition-all duration-300 relative group cursor-pointer"
                       onClick={() => setSelectedLead(l)}
                     >
                       <div className="space-y-2">
                         {/* Header: Name & Tier */}
                         <div className="flex items-start justify-between gap-2">
-                          <h4 className="text-xs font-extrabold text-[var(--text-primary)] line-clamp-1 group-hover:text-emerald-400 transition-colors">{l.business_name}</h4>
+                          <h4 className="text-xs font-extrabold text-[var(--text-primary)] line-clamp-1 group-hover:text-[var(--success)] transition-colors">{l.business_name}</h4>
                           <span className={`text-[8px] font-black px-1.5 py-0.5 rounded shrink-0 ${
-                            isA ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20' : 'bg-blue-500/15 text-blue-400 border border-blue-500/20'
+                            isA ? 'bg-[var(--success)]/15 text-[var(--success)] border border-[var(--success)]/20' : 'bg-[var(--info)]/15 text-[var(--info)] border border-[var(--info)]/20'
                           }`}>
                             {l.lead_tier}-Tier
                           </span>
@@ -384,7 +384,7 @@ export function DashboardClient(props: DashboardClientProps) {
 
                         {/* Why Now */}
                         <div className="bg-[var(--bg-elevated)] rounded-lg p-2.5 space-y-1">
-                          <span className="text-[8px] font-black text-emerald-500 uppercase tracking-wider block">Neden Şimdi?</span>
+                          <span className="text-[8px] font-black text-[var(--success)] uppercase tracking-wider block">Neden Şimdi?</span>
                           <p className="text-[9px] text-[var(--text-primary)] leading-relaxed line-clamp-3 italic">
                             &quot;{l.why_this_will_convert || l.why_now || 'Güçlü dönüşüm sinyalleri.'}&quot;
                           </p>
@@ -392,8 +392,8 @@ export function DashboardClient(props: DashboardClientProps) {
 
                         {/* Pitch */}
                         {pitchText && (
-                          <div className="bg-emerald-500/5 rounded-lg p-2.5 space-y-1 border border-emerald-500/10 relative group/pitch">
-                            <span className="text-[8px] font-black text-emerald-400 uppercase tracking-wider block">Açılış Pitch / İlk Mesaj</span>
+                          <div className="bg-[var(--success)]/5 rounded-lg p-2.5 space-y-1 border border-[var(--success)]/10 relative group/pitch">
+                            <span className="text-[8px] font-black text-[var(--success)] uppercase tracking-wider block">Açılış Pitch / İlk Mesaj</span>
                             <p className="text-[9px] text-[var(--text-secondary)] leading-relaxed line-clamp-4 select-all">
                               {pitchText}
                             </p>
@@ -403,7 +403,7 @@ export function DashboardClient(props: DashboardClientProps) {
                                 navigator.clipboard.writeText(pitchText);
                                 alert('Pitch kopyalandı!');
                               }}
-                              className="absolute top-1 right-1 opacity-0 group-hover/pitch:opacity-100 bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-emerald-400 p-1 rounded transition-all text-[8px] text-emerald-400 font-bold"
+                              className="absolute top-1 right-1 opacity-0 group-hover/pitch:opacity-100 bg-[var(--bg-surface)] border border-[var(--border-subtle)] hover:border-[var(--success)] p-1 rounded transition-all text-[8px] text-[var(--success)] font-bold"
                             >
                               Kopyala
                             </button>
@@ -664,18 +664,18 @@ export function DashboardClient(props: DashboardClientProps) {
                     <BarChart data={cashFlowData}>
                       {/* SVG <stop>/tick render as presentation attributes where CSS var()
                           does NOT resolve, so these mirror the globals.css token hexes:
-                          accent #5ee6b0, accent-2 #3dd68c, info #5ac8fa, text-muted #5e646e. */}
+                          success #1a8a3a, info #0071a8, text-muted #86868b. */}
                       <defs>
                         <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#5ee6b0" stopOpacity={0.9} />
-                          <stop offset="100%" stopColor="#3dd68c" stopOpacity={0.15} />
+                          <stop offset="0%" stopColor="#1a8a3a" stopOpacity={0.9} />
+                          <stop offset="100%" stopColor="#1a8a3a" stopOpacity={0.15} />
                         </linearGradient>
                         <linearGradient id="barGradSecondary" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#5ac8fa" stopOpacity={0.2} />
-                          <stop offset="100%" stopColor="#5ac8fa" stopOpacity={0.02} />
+                          <stop offset="0%" stopColor="#0071a8" stopOpacity={0.2} />
+                          <stop offset="100%" stopColor="#0071a8" stopOpacity={0.02} />
                         </linearGradient>
                       </defs>
-                      <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#5e646e', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#86868b', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
                       <Tooltip
                         contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: '12px', fontSize: '10px', color: 'var(--text-primary)' }}
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any

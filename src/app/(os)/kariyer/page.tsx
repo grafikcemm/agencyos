@@ -351,7 +351,7 @@ export default function KariyerPage() {
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all ${
               tab === t.key
                 ? 'bg-[var(--accent-muted)] text-[var(--text-primary)] shadow-[inset_0_0_0_1px_rgba(94,230,176,0.18)]'
-                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-white/5'
+                : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
             }`}
           >
             {t.label}

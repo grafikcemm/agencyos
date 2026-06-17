@@ -70,7 +70,7 @@ export function LibraryShell({ uiMode }: { uiMode: 'koruma' | 'denge' | 'atak' }
       {/* Section 2: Active Book */}
       <section>
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-[#555] font-bold">Aktif Kitap</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-muted)] font-bold">Aktif Kitap</span>
         </div>
         <ActiveBookCard
           book={activeBook}
@@ -90,13 +90,13 @@ export function LibraryShell({ uiMode }: { uiMode: 'koruma' | 'denge' | 'atak' }
       </section>
 
       {/* Collapsiblebottom container for secondary library panels */}
-      <details className="group border border-[#1f1f1f] rounded-card overflow-hidden mt-6 bg-[#0c0c0d]/30 shadow-soft">
-        <summary className="w-full flex items-center justify-between p-4 text-left font-mono text-xs text-[#555] hover:text-white cursor-pointer select-none">
+      <details className="group border border-[var(--border-subtle)] rounded-card overflow-hidden mt-6 bg-[var(--bg-base)]/30 shadow-soft">
+        <summary className="w-full flex items-center justify-between p-4 text-left font-mono text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer select-none">
           <span>Kitaplık Deposu &amp; Park Edilenler (Tüm Kitaplar &amp; Raflar)</span>
-          <span className="text-[#333] font-mono text-sm group-open:hidden">+</span>
-          <span className="text-[#333] font-mono text-sm hidden group-open:inline">−</span>
+          <span className="text-[var(--text-tertiary)] font-mono text-sm group-open:hidden">+</span>
+          <span className="text-[var(--text-tertiary)] font-mono text-sm hidden group-open:inline">−</span>
         </summary>
-        <div className="p-4 space-y-8 border-t border-[#1f1f1f]/30">
+        <div className="p-4 space-y-8 border-t border-[var(--border-subtle)]/30">
           {/* Section 4: Problem-based shelves */}
           <section>
             <ProblemBasedShelves

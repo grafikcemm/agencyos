@@ -60,23 +60,23 @@ export function LibraryAssistantPanel({ activeBook, completedCount, totalBooks }
   }
 
   return (
-    <div className="border border-[#1f1f1f] rounded-card overflow-hidden shadow-soft">
+    <div className="border border-[var(--border-subtle)] rounded-card overflow-hidden shadow-soft">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between p-4 bg-[#0f0f0f] hover:bg-[#111] transition-colors"
+        className="w-full flex items-center justify-between p-4 bg-[var(--bg-surface)] hover:bg-[var(--bg-card-hover)] transition-colors"
       >
         <div className="flex items-center gap-2">
           <span className="w-6 h-6 rounded-pill bg-cat-purple/15 border border-cat-purple/30 flex items-center justify-center shrink-0">
             <Bot size={13} className="text-cat-purple" />
           </span>
-          <span className="text-xs text-white font-display font-medium">AI Kitap Koçu</span>
-          <span className="text-[10px] text-[#555]">— Okuma planına yardım</span>
+          <span className="text-xs text-[var(--text-primary)] font-display font-medium">AI Kitap Koçu</span>
+          <span className="text-[10px] text-[var(--text-muted)]">— Okuma planına yardım</span>
         </div>
-        {isOpen ? <ChevronUp size={12} className="text-[#555]" /> : <ChevronDown size={12} className="text-[#555]" />}
+        {isOpen ? <ChevronUp size={12} className="text-[var(--text-muted)]" /> : <ChevronDown size={12} className="text-[var(--text-muted)]" />}
       </button>
 
       {isOpen && (
-        <div className="border-t border-[#1f1f1f] p-4 space-y-4">
+        <div className="border-t border-[var(--border-subtle)] p-4 space-y-4">
           {/* Quick prompts */}
           <div className="flex flex-wrap gap-2">
             {QUICK_PROMPTS.map(prompt => (
@@ -89,7 +89,7 @@ export function LibraryAssistantPanel({ activeBook, completedCount, totalBooks }
                 className={`px-3 py-1.5 text-xs rounded-pill border transition-colors
                   ${selectedPrompt === prompt
                     ? 'border-cat-purple/40 bg-cat-purple/10 text-cat-purple'
-                    : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#888] hover:text-white hover:border-[#333]'
+                    : 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-strong)]'
                   }`}
               >
                 {prompt}
@@ -98,7 +98,7 @@ export function LibraryAssistantPanel({ activeBook, completedCount, totalBooks }
           </div>
 
           {loading && (
-            <div className="flex items-center gap-2 text-[#555] text-xs">
+            <div className="flex items-center gap-2 text-[var(--text-muted)] text-xs">
               <Loader2 size={12} className="animate-spin" />
               Düşünüyor...
             </div>
@@ -121,7 +121,7 @@ export function LibraryAssistantPanel({ activeBook, completedCount, totalBooks }
               )}
               {advice.avoidStarting.length > 0 && (
                 <div>
-                  <span className="text-[9px] font-mono uppercase tracking-widest text-[#555] block mb-1">Şu An Başlama</span>
+                  <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)] block mb-1">Şu An Başlama</span>
                   <div className="flex flex-wrap gap-1.5">
                     {advice.avoidStarting.map(t => (
                       <span key={t} className="text-[10px] px-2 py-0.5 bg-cat-pink/10 border border-cat-pink/20 text-cat-pink rounded-pill">
@@ -135,7 +135,7 @@ export function LibraryAssistantPanel({ activeBook, completedCount, totalBooks }
           )}
 
           {!advice && !loading && !error && (
-            <p className="text-[#444] text-xs">Yukarıdan bir soru seç veya koç ile konuş.</p>
+            <p className="text-[var(--text-tertiary)] text-xs">Yukarıdan bir soru seç veya koç ile konuş.</p>
           )}
         </div>
       )}
@@ -146,8 +146,8 @@ export function LibraryAssistantPanel({ activeBook, completedCount, totalBooks }
 function AdviceRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div>
-      <span className="text-[9px] font-mono uppercase tracking-widest text-[#555] block mb-1">{label}</span>
-      <p className={`text-xs leading-relaxed ${highlight ? 'text-cat-teal' : 'text-[#888]'}`}>{value}</p>
+      <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)] block mb-1">{label}</span>
+      <p className={`text-xs leading-relaxed ${highlight ? 'text-cat-teal' : 'text-[var(--text-secondary)]'}`}>{value}</p>
     </div>
   )
 }

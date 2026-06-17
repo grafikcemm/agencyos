@@ -230,7 +230,7 @@ export function JarvisPanel({ leadsCount = 0, stats, onLeadsChanged }: JarvisPan
             title="Kopyala"
           >
             {copiedId === message.id
-              ? <Check className="w-3 h-3 text-green-400" />
+              ? <Check className="w-3 h-3 text-[var(--success)]" />
               : <Copy className="w-3 h-3" />}
           </button>
         </div>

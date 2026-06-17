@@ -23,13 +23,13 @@ export function AddNoteModal({ book, onClose, onSave }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#111] border border-[#1f1f1f] rounded-card w-full max-w-lg shadow-soft">
-        <div className="flex items-center justify-between p-4 border-b border-[#1f1f1f]">
+      <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-card w-full max-w-lg shadow-soft">
+        <div className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)]">
           <div>
-            <p className="text-[9px] font-mono uppercase tracking-widest text-[#555]">Not Ekle</p>
-            <p className="text-white text-sm font-display font-medium mt-0.5">{book.title}</p>
+            <p className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)]">Not Ekle</p>
+            <p className="text-[var(--text-primary)] text-sm font-display font-medium mt-0.5">{book.title}</p>
           </div>
-          <button onClick={onClose} className="text-[#555] hover:text-white transition-colors">
+          <button onClick={onClose} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -43,7 +43,7 @@ export function AddNoteModal({ book, onClose, onSave }: Props) {
                 className={`flex-1 py-2 text-xs rounded-card transition-colors ${
                   type === t
                     ? 'bg-cat-purple/15 border border-cat-purple/40 text-cat-purple font-bold'
-                    : 'bg-[#1a1a1a] border border-[#2a2a2a] text-[#888] hover:text-white'
+                    : 'bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
                 }`}
               >
                 {typeLabels[t]}
@@ -56,13 +56,13 @@ export function AddNoteModal({ book, onClose, onSave }: Props) {
             onChange={e => setContent(e.target.value)}
             placeholder={placeholders[type]}
             rows={4}
-            className="w-full bg-[#0f0f0f] border border-[#2a2a2a] rounded-card p-3 text-white text-sm resize-none focus:outline-none focus:border-cat-purple/40 placeholder:text-[#444]"
+            className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-card p-3 text-[var(--text-primary)] text-sm resize-none focus:outline-none focus:border-cat-purple/40 placeholder:text-[var(--text-tertiary)]"
           />
 
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="flex-1 py-2.5 border border-[#2a2a2a] text-[#888] text-xs rounded-card hover:text-white transition-colors"
+              className="flex-1 py-2.5 border border-[var(--border-subtle)] text-[var(--text-secondary)] text-xs rounded-card hover:text-[var(--text-primary)] transition-colors"
             >
               İptal
             </button>

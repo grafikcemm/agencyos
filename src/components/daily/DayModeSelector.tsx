@@ -11,9 +11,9 @@ interface DayModeSelectorProps {
 }
 
 const MODES: { value: DayMode; label: string; desc: string; color: string }[] = [
-  { value: 'normal',   label: 'Normal',   desc: '3 görev', color: '#22c55e' },
+  { value: 'normal',   label: 'Normal',   desc: '3 görev', color: 'var(--success)' },
   { value: 'yogun',    label: 'Yoğun',    desc: '2 görev', color: 'var(--warning)' },
-  { value: 'dagilmis', label: 'Dağılmış', desc: '1 görev', color: '#ef4444' },
+  { value: 'dagilmis', label: 'Dağılmış', desc: '1 görev', color: 'var(--danger)' },
 ];
 
 export function DayModeSelector({ initialMode, onModeSelected }: DayModeSelectorProps) {
@@ -44,15 +44,15 @@ export function DayModeSelector({ initialMode, onModeSelected }: DayModeSelector
         <div className="flex items-center gap-2">
           <span
             className="w-2 h-2 rounded-full shrink-0"
-            style={{ backgroundColor: currentMode?.color ?? '#22c55e' }}
+            style={{ backgroundColor: currentMode?.color ?? 'var(--success)' }}
           />
-          <span className="text-sm text-[#cccccc]">
+          <span className="text-sm text-[var(--text-secondary)]">
             Bugün: <span className="font-semibold" style={{ color: currentMode?.color }}>{currentMode?.label}</span>
           </span>
         </div>
         <button
           onClick={() => setExpanded(true)}
-          className="text-[10px] text-[#444444] hover:text-[#888888] transition-colors"
+          className="text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-muted)] transition-colors"
         >
           değiştir
         </button>
@@ -62,7 +62,7 @@ export function DayModeSelector({ initialMode, onModeSelected }: DayModeSelector
 
   return (
     <div className="flex flex-col gap-3 p-4 bg-[var(--surface)] border border-[var(--border)] rounded-card shadow-soft">
-      <p className="font-mono text-[10px] font-semibold tracking-[0.18em] uppercase text-[#555555]">
+      <p className="font-mono text-[10px] font-semibold tracking-[0.18em] uppercase text-[var(--text-tertiary)]">
         Bugün modun ne?
       </p>
       <div className="flex gap-2">
@@ -73,7 +73,7 @@ export function DayModeSelector({ initialMode, onModeSelected }: DayModeSelector
             className={`flex-1 py-2.5 px-3 rounded-card text-sm font-medium transition-all border ${
               selected === m.value
                 ? 'text-black border-transparent'
-                : 'bg-[#0a0a0a] border-[#1f1f1f] text-[#666666] hover:border-[#333333] hover:text-white'
+                : 'bg-[var(--bg-base)] border-[var(--border-subtle)] text-[var(--text-muted)] hover:border-[var(--border-strong)] hover:text-[var(--text-primary)]'
             }`}
             style={selected === m.value ? { backgroundColor: m.color, borderColor: m.color } : {}}
           >

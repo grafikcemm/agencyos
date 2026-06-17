@@ -35,7 +35,7 @@ export default function RootLayout({
   return (
     <html
       lang="tr"
-      className={`${inter.variable} ${interTight.variable} ${plexMono.variable} h-full dark`}
+      className={`${inter.variable} ${interTight.variable} ${plexMono.variable} h-full`}
       suppressHydrationWarning
     >
       <body className="min-h-full font-sans antialiased" suppressHydrationWarning>

@@ -25,8 +25,8 @@ export function ReadingLadder({ books, onActivate, canActivateNew }: Props) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-4">
-        <span className="text-[10px] font-mono uppercase tracking-widest text-[#555] font-bold">Okuma Merdiveni</span>
-        <span className="text-[#333] text-[10px]">— Sırayla ilerle</span>
+        <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-muted)] font-bold">Okuma Merdiveni</span>
+        <span className="text-[var(--text-tertiary)] text-[10px]">— Sırayla ilerle</span>
       </div>
 
       {activateWarning && (
@@ -69,7 +69,7 @@ function LadderStep({
       className={`flex items-center gap-3 p-3 rounded-card border transition-colors
         ${isActive ? 'border-cat-purple/40 border-l-2 border-l-cat-purple bg-cat-purple/5' : ''}
         ${isCompleted ? 'border-cat-teal/20 bg-cat-teal/5 opacity-60' : ''}
-        ${!isActive && !isCompleted ? 'border-[#1f1f1f] bg-[#0f0f0f]' : ''}
+        ${!isActive && !isCompleted ? 'border-[var(--border-subtle)] bg-[var(--bg-surface)]' : ''}
       `}
     >
       {/* Step indicator */}
@@ -79,7 +79,7 @@ function LadderStep({
         ) : isActive ? (
           <BookOpen size={16} className="text-cat-purple" />
         ) : (
-          <span className={`text-[10px] font-mono ${isPaused ? 'text-cat-orange' : 'text-[#444]'}`}>
+          <span className={`text-[10px] font-mono ${isPaused ? 'text-cat-orange' : 'text-[var(--text-tertiary)]'}`}>
             {stepNumber}
           </span>
         )}
@@ -88,14 +88,14 @@ function LadderStep({
       {/* Title */}
       <div className="flex-1 min-w-0">
         <p className={`text-xs font-medium truncate
-          ${isActive ? 'text-white' : ''}
+          ${isActive ? 'text-[var(--text-primary)]' : ''}
           ${isCompleted ? 'text-cat-teal line-through' : ''}
-          ${!isActive && !isCompleted ? 'text-[#666]' : ''}
+          ${!isActive && !isCompleted ? 'text-[var(--text-muted)]' : ''}
         `}>
           {book.title}
         </p>
         {book.author && (
-          <p className="text-[#444] text-[10px] truncate">{book.author}</p>
+          <p className="text-[var(--text-tertiary)] text-[10px] truncate">{book.author}</p>
         )}
       </div>
 
@@ -117,8 +117,8 @@ function LadderStep({
             onClick={onActivate}
             className={`flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded-pill transition-colors
               ${isNext
-                ? 'text-[#888] hover:text-white hover:bg-[#1a1a1a]'
-                : 'text-[#444] hover:text-[#666]'
+                ? 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
+                : 'text-[var(--text-tertiary)] hover:text-[var(--text-muted)]'
               }`}
           >
             {isNext ? 'Başlat' : <Lock size={10} />}

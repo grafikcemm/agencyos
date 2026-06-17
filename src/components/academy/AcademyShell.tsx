@@ -47,24 +47,24 @@ type UniKey = "beykent" | "anadolu";
 type TaggedExam = RawExamRow & { daysLeft: number; _uni: UniKey };
 
 const UNI_META: Record<UniKey, { label: string; full: string; color: string; slug: string }> = {
-  beykent: { label: "Beykent", full: "Görsel İletişim Tasarımı", color: "#3b82f6", slug: "beykent" },
+  beykent: { label: "Beykent", full: "Görsel İletişim Tasarımı", color: "var(--info)", slug: "beykent" },
   anadolu: { label: "Anadolu (AÖF)", full: "Halkla İlişkiler ve Reklamcılık", color: "#a855f7", slug: "aof" },
 };
 
 const STATUS_META: Record<AcademicStatus, { label: string; color: string }> = {
-  passed: { label: "GEÇTİ", color: "#22c55e" },
-  exempt: { label: "MUAF", color: "#3b82f6" },
-  failed: { label: "KALDI", color: "#ef4444" },
+  passed: { label: "GEÇTİ", color: "var(--success)" },
+  exempt: { label: "MUAF", color: "var(--info)" },
+  failed: { label: "KALDI", color: "var(--danger)" },
   in_progress: { label: "DEVAM", color: "var(--warning)" },
-  not_taken: { label: "ALINMADI", color: "#555555" },
+  not_taken: { label: "ALINMADI", color: "var(--text-muted)" },
 };
 
 const VERDICT_META: Record<TriageVerdict, { label: string; color: string }> = {
-  take: { label: "GİR", color: "#22c55e" },
+  take: { label: "GİR", color: "var(--success)" },
   hard: { label: "ZOR", color: "var(--warning)" },
-  impossible: { label: "ERTELE", color: "#ef4444" },
-  project: { label: "TESLİM", color: "#f97316" },
-  na: { label: "", color: "#555555" },
+  impossible: { label: "ERTELE", color: "var(--danger)" },
+  project: { label: "TESLİM", color: "var(--fire)" },
+  na: { label: "", color: "var(--text-muted)" },
 };
 
 const EXAM_PERIOD_LABEL: Record<string, string> = {
@@ -103,16 +103,16 @@ export function AcademyShell({ beykentData, aofData, uiMode }: AcademyShellProps
     <div className="max-w-[960px] mx-auto px-4 sm:px-6 pb-20 select-none">
       {/* Title */}
       <div className="mb-6 pt-4">
-        <span className="text-[10px] font-mono uppercase tracking-widest text-[#555] font-semibold block">
+        <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-muted)] font-semibold block">
           AKADEMİK ADIM
         </span>
-        <h1 className="text-xl font-display font-bold text-white mt-1 flex items-center gap-2">
+        <h1 className="text-xl font-display font-bold text-[var(--text-primary)] mt-1 flex items-center gap-2">
           <GraduationCap size={20} className="text-[var(--accent)]" /> Bugünkü Akademik Adım
         </h1>
       </div>
 
       {/* Sub-tabs */}
-      <div className="flex border-b border-[#1f1f1f] gap-4 mb-6 overflow-x-auto">
+      <div className="flex border-b border-[var(--border-subtle)] gap-4 mb-6 overflow-x-auto">
         <TabButton icon={<Target size={14} />} label="GENEL" active={activeTab === "genel"} onClick={() => setActiveTab("genel")} />
         <TabButton icon={<Flag size={14} />} label="BEYKENT" active={activeTab === "beykent"} onClick={() => setActiveTab("beykent")} />
         <TabButton icon={<ListChecks size={14} />} label="ANADOLU" active={activeTab === "anadolu"} onClick={() => setActiveTab("anadolu")} />
@@ -138,7 +138,7 @@ function TabButton({ icon, label, active, onClick }: { icon: React.ReactNode; la
       onClick={onClick}
       className={cn(
         "flex items-center gap-2 pb-3 px-1 text-xs font-mono font-bold uppercase tracking-wider transition-colors border-b-2 cursor-pointer whitespace-nowrap",
-        active ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[#555] hover:text-white"
+        active ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--text-muted)] hover:text-[var(--text-primary)]"
       )}
     >
       {icon} {label}
@@ -164,7 +164,7 @@ function OverviewTab({
     const items: { text: string; color: string }[] = [];
     for (const c of beykentCourses) {
       const t = triageCourse(c, FORMULAS.beykent);
-      if (t.verdict === "take") items.push({ text: `Beykent finaline gir: ${c.name} (≥${t.requiredFinal})`, color: "#22c55e" });
+      if (t.verdict === "take") items.push({ text: `Beykent finaline gir: ${c.name} (≥${t.requiredFinal})`, color: "var(--success)" });
       else if (t.verdict === "hard") items.push({ text: `Beykent finaline gir (zor, bütünleme de hesapta): ${c.name} (≥${t.requiredFinal})`, color: "var(--warning)" });
     }
     const anadoluFailed = anadoluCourses.filter((c) => c.status === "failed" && c.subsection !== "e-sertifika").length;
@@ -186,30 +186,30 @@ function OverviewTab({
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-300">
       {/* Bugünün Akademik Kilidi Kartı */}
-      <div className="bg-gradient-to-tr from-[#1a0a0b] to-[#2a0e10] border border-[var(--accent)]/30 rounded-card p-5 relative overflow-hidden shadow-soft">
+      <div className="bg-[var(--accent)]/5 border border-[var(--accent)]/30 rounded-card p-5 relative overflow-hidden shadow-soft">
         <div className="absolute top-0 right-0 w-24 h-24 bg-[var(--accent)]/5 rounded-full blur-2xl pointer-events-none" />
         <div className="flex items-center gap-2 mb-3">
           <span className="text-[10px] font-mono font-bold text-[var(--accent)] uppercase tracking-widest bg-[var(--accent)]/10 px-2 py-0.5 rounded-pill">
             BUGÜNÜN AKADEMİK ADIMI
           </span>
         </div>
-        <h3 className="text-base font-display font-bold text-white mb-1.5 flex items-center gap-2">
+        <h3 className="text-base font-display font-bold text-[var(--text-primary)] mb-1.5 flex items-center gap-2">
           🎓 {academicLock.courseName}
         </h3>
-        <p className="text-[12px] text-[#cfcfcf] leading-relaxed mb-3">
+        <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed mb-3">
           {academicLock.reason}
         </p>
         <div className="grid grid-cols-2 gap-3 pt-3 border-t border-[var(--accent)]/10">
           <div>
-            <span className="text-[9px] font-mono uppercase tracking-widest text-[#666] font-bold block">
+            <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)] font-bold block">
               25 DK MİNİMUM VERSİYON
             </span>
-            <span className="text-[11px] text-white font-medium mt-0.5 block">
+            <span className="text-[11px] text-[var(--text-primary)] font-medium mt-0.5 block">
               {academicLock.minWork}
             </span>
           </div>
           <div>
-            <span className="text-[9px] font-mono uppercase tracking-widest text-[#666] font-bold block">
+            <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)] font-bold block">
               YAKLAŞAN TARİH
             </span>
             <span className="text-[11px] text-[var(--accent)] font-mono mt-0.5 block">
@@ -220,12 +220,12 @@ function OverviewTab({
 
         {/* UI Mode Specific Notices */}
         {uiMode === "koruma" && (
-          <div className="mt-4 p-3 bg-cat-pink/12 border-l-2 border-cat-pink/50 border border-cat-pink/20 rounded-card text-xs text-[#ff9bbd] font-mono leading-relaxed">
+          <div className="mt-4 p-3 bg-cat-pink/12 border-l-2 border-cat-pink/50 border border-cat-pink/20 rounded-card text-xs text-cat-pink font-mono leading-relaxed">
             🛡️ Koruma modu devrede. Bugün sadece 25 dakikalık minimum aksiyonu tamamla ve kendini yorma.
           </div>
         )}
         {uiMode === "atak" && (
-          <div className="mt-4 p-3 bg-cat-teal/12 border-l-2 border-cat-teal/50 border border-cat-teal/20 rounded-card text-xs text-[#5eead4] font-mono leading-relaxed">
+          <div className="mt-4 p-3 bg-cat-teal/12 border-l-2 border-cat-teal/50 border border-cat-teal/20 rounded-card text-xs text-cat-teal font-mono leading-relaxed">
             ⚡ Atak modu aktif! Hedefin üzerinde ekstra 45 dakikalık derin çalışma bloğu açabilir ve vites artırabilirsin.
           </div>
         )}
@@ -233,43 +233,43 @@ function OverviewTab({
 
       {/* Mini durum cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="bg-[#111111] border border-cat-blue/20 border-l-2 border-l-cat-blue rounded-card p-3 flex items-center justify-between shadow-soft">
+        <div className="bg-[var(--bg-surface)] border border-cat-blue/20 border-l-2 border-l-cat-blue rounded-card p-3 flex items-center justify-between shadow-soft">
           <div>
             <span className="text-[9px] font-mono text-cat-blue uppercase tracking-wider block">BEYKENT DURUM</span>
-            <span className="text-xs font-display font-bold text-white mt-0.5 block">{beykentSummary.passed + beykentSummary.exempt}/{beykentSummary.total} Ders (%{beykentProgress})</span>
+            <span className="text-xs font-display font-bold text-[var(--text-primary)] mt-0.5 block">{beykentSummary.passed + beykentSummary.exempt}/{beykentSummary.total} Ders (%{beykentProgress})</span>
           </div>
-          <span className="text-[10px] font-mono text-[#666]">{beykentSummary.remaining} kalan</span>
+          <span className="text-[10px] font-mono text-[var(--text-muted)]">{beykentSummary.remaining} kalan</span>
         </div>
-        <div className="bg-[#111111] border border-cat-purple/20 border-l-2 border-l-cat-purple rounded-card p-3 flex items-center justify-between shadow-soft">
+        <div className="bg-[var(--bg-surface)] border border-cat-purple/20 border-l-2 border-l-cat-purple rounded-card p-3 flex items-center justify-between shadow-soft">
           <div>
             <span className="text-[9px] font-mono text-cat-purple uppercase tracking-wider block">ANADOLU AÖF DURUM</span>
-            <span className="text-xs font-display font-bold text-white mt-0.5 block">{anadoluSummary.passed + anadoluSummary.exempt}/{anadoluSummary.total} Ders (%{anadoluProgress})</span>
+            <span className="text-xs font-display font-bold text-[var(--text-primary)] mt-0.5 block">{anadoluSummary.passed + anadoluSummary.exempt}/{anadoluSummary.total} Ders (%{anadoluProgress})</span>
           </div>
-          <span className="text-[10px] font-mono text-[#666]">{anadoluSummary.remaining} kalan</span>
+          <span className="text-[10px] font-mono text-[var(--text-muted)]">{anadoluSummary.remaining} kalan</span>
         </div>
       </div>
 
       {/* Secondary items hidden behind a collapsible details section */}
-      <details className="group border border-[#1f1f1f] rounded-card overflow-hidden bg-[#0c0c0d]/30 shadow-soft">
-        <summary className="w-full flex items-center justify-between p-4 text-left font-mono text-xs text-[#555] hover:text-white cursor-pointer select-none">
+      <details className="group border border-[var(--border-subtle)] rounded-card overflow-hidden bg-[var(--bg-base)]/30 shadow-soft">
+        <summary className="w-full flex items-center justify-between p-4 text-left font-mono text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer select-none">
           <span>Öncelik Listesi &amp; Yaklaşan Sınavlar</span>
-          <span className="text-[#333] font-mono text-sm group-open:hidden">+</span>
-          <span className="text-[#333] font-mono text-sm hidden group-open:inline">−</span>
+          <span className="text-[var(--text-tertiary)] font-mono text-sm group-open:hidden">+</span>
+          <span className="text-[var(--text-tertiary)] font-mono text-sm hidden group-open:inline">−</span>
         </summary>
-        <div className="p-4 space-y-6 border-t border-[#1f1f1f]/30">
-          <div className="bg-[#111111] border border-[#1e1e1e] rounded-card p-4">
-            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-[#1a1a1a]">
+        <div className="p-4 space-y-6 border-t border-[var(--border-subtle)]/30">
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-card p-4">
+            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-[var(--border-subtle)]">
               <Target size={12} className="text-[var(--accent)]" />
               <span className="text-[11px] font-mono font-bold uppercase tracking-widest text-[var(--accent)]">Öncelik Listesi</span>
             </div>
             {gamePlan.length === 0 ? (
-              <p className="text-xs text-[#555] italic">Aktif aksiyon yok. Takvimi kontrol et.</p>
+              <p className="text-xs text-[var(--text-muted)] italic">Aktif aksiyon yok. Takvimi kontrol et.</p>
             ) : (
               <div className="flex flex-col gap-2">
                 {visiblePriorities.map((g, i) => (
                   <div key={i} className="flex items-start gap-2.5">
                     <span className="w-1.5 h-1.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: g.color }} />
-                    <span className="text-xs text-[#cfcfcf]">{g.text}</span>
+                    <span className="text-xs text-[var(--text-secondary)]">{g.text}</span>
                   </div>
                 ))}
                 {gamePlan.length > 3 && (
@@ -297,9 +297,9 @@ function OverviewTab({
 
 function Stat({ n, label, color }: { n: number; label: string; color: string }) {
   return (
-    <div className="bg-[#0d0d0d] rounded-card py-2 border border-[#181818] shadow-soft">
+    <div className="bg-[var(--bg-base)] rounded-card py-2 border border-[var(--border-subtle)] shadow-soft">
       <div className="text-lg font-bold font-mono" style={{ color }}>{n}</div>
-      <div className="text-[9px] font-mono tracking-widest text-[#555] uppercase mt-0.5">{label}</div>
+      <div className="text-[9px] font-mono tracking-widest text-[var(--text-muted)] uppercase mt-0.5">{label}</div>
     </div>
   );
 }
@@ -317,12 +317,12 @@ function BeykentTab({ courses, formula }: { courses: NormalizedCourse[]; formula
 
   return (
     <div className="flex flex-col gap-5 animate-in fade-in duration-300">
-      <div className="bg-[#111111] border border-[#1e1e1e] rounded-card p-4">
-        <p className="text-[12px] text-[#9a9a9a] leading-relaxed">
-          <span className="text-[#3b82f6] font-bold">Mezuniyet yol haritası.</span> Bu dönem aktif {activeCourses.length} ders.
+      <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-card p-4">
+        <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed">
+          <span className="text-[var(--info)] font-bold">Mezuniyet yol haritası.</span> Bu dönem aktif {activeCourses.length} ders.
           Geçme formülü: <span className="font-mono">%40 vize + %60 final</span>. Vize 0 (GR) olan teori derslerinde
           sadece finalle geçmek matematiksel olarak imkansız; stüdyo/proje dersleri final teslimiyle kurtarılır.
-          <span className="text-[#666] block mt-1">⚠️ Final barajı varsa hedefi ona göre ayarla — yönetmelikten teyit et.</span>
+          <span className="text-[var(--text-muted)] block mt-1">⚠️ Final barajı varsa hedefi ona göre ayarla — yönetmelikten teyit et.</span>
         </p>
       </div>
 
@@ -331,8 +331,8 @@ function BeykentTab({ courses, formula }: { courses: NormalizedCourse[]; formula
       ))}
 
       {passed.length > 0 && (
-        <div className="bg-[#0d0d0d] border border-[#181818] rounded-card p-4">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-[#555] font-semibold">Tamamlanan ({passed.length})</span>
+        <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-card p-4">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-muted)] font-semibold">Tamamlanan ({passed.length})</span>
           <div className="flex flex-wrap gap-2 mt-2">
             {passed.map((c) => (
               <span key={c.id} className="text-[11px] text-cat-teal bg-cat-teal/10 px-2 py-1 rounded-pill flex items-center gap-1">
@@ -344,13 +344,13 @@ function BeykentTab({ courses, formula }: { courses: NormalizedCourse[]; formula
       )}
 
       {deferredCourses.length > 0 && (
-        <div className="bg-[#0d0d0d] border border-[#1a1a1a] rounded-card p-4 opacity-50">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-[#555] font-semibold flex items-center gap-1.5">
+        <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-card p-4 opacity-50">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-muted)] font-semibold flex items-center gap-1.5">
             <CircleDashed size={11} /> Ertelendi — 2026-2027 Güz ({deferredCourses.length})
           </span>
           <div className="flex flex-wrap gap-2 mt-2">
             {deferredCourses.map((c) => (
-              <span key={c.id} className="text-[11px] text-[#555] bg-[#555]/10 px-2 py-1 rounded-pill">
+              <span key={c.id} className="text-[11px] text-[var(--text-muted)] bg-[var(--text-muted)]/10 px-2 py-1 rounded-pill">
                 {c.name}
               </span>
             ))}
@@ -364,11 +364,11 @@ function BeykentTab({ courses, formula }: { courses: NormalizedCourse[]; formula
 function CourseRoadmapRow({ course, verdict, message }: { course: NormalizedCourse; verdict: TriageVerdict; message: string }) {
   const vm = VERDICT_META[verdict];
   return (
-    <div className="bg-[#111111] border rounded-card p-4" style={{ borderColor: `${vm.color}22` }}>
+    <div className="bg-[var(--bg-surface)] border rounded-card p-4" style={{ borderColor: `${vm.color}22` }}>
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0">
-          <div className="text-sm font-display font-semibold text-white">{course.name}</div>
-          <div className="text-[11px] text-[#666] font-mono mt-0.5">
+          <div className="text-sm font-display font-semibold text-[var(--text-primary)]">{course.name}</div>
+          <div className="text-[11px] text-[var(--text-muted)] font-mono mt-0.5">
             {course.code ?? "—"} · vize: {course.vizeMissed ? "GR" : course.vize ?? "—"}
           </div>
         </div>
@@ -376,7 +376,7 @@ function CourseRoadmapRow({ course, verdict, message }: { course: NormalizedCour
           {vm.label}
         </span>
       </div>
-      <p className="text-[12px] text-[#9a9a9a] leading-snug">{message}</p>
+      <p className="text-[12px] text-[var(--text-secondary)] leading-snug">{message}</p>
       {course.notes && <p className="text-[11px] text-[var(--warning)]/80 italic mt-1.5">{course.notes}</p>}
     </div>
   );
@@ -396,56 +396,56 @@ function AnadoluTab({ courses }: { courses: NormalizedCourse[] }) {
 
   return (
     <div className="flex flex-col gap-5 animate-in fade-in duration-300">
-      <div className="bg-[#111111] border rounded-card p-4" style={{ borderColor: "#a855f725" }}>
-        <p className="text-[12px] text-[#9a9a9a] leading-relaxed">
+      <div className="bg-[var(--bg-surface)] border rounded-card p-4" style={{ borderColor: "#a855f725" }}>
+        <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed">
           <span className="text-[#a855f7] font-bold">AÖF mantığı:</span> devamsızlık/kayıp yok, dersler kaybolmaz.
           Vizeleri verdin ama dönem sonlarına girmedin → hepsi FF. Tek yapman gereken{" "}
-          <span className="text-white font-semibold">sınava girmek</span>. Final ağırlığı{" "}
+          <span className="text-[var(--text-primary)] font-semibold">sınava girmek</span>. Final ağırlığı{" "}
           <span className="font-mono">%70</span> — finali asla kaçırma.
         </p>
       </div>
 
       <div className="grid grid-cols-4 gap-2">
-        <Stat n={s.passed} label="GEÇTİ" color="#22c55e" />
-        <Stat n={s.exempt} label="MUAF" color="#3b82f6" />
-        <Stat n={s.failed} label="FF" color="#ef4444" />
-        <Stat n={s.notTaken} label="KALAN" color="#555555" />
+        <Stat n={s.passed} label="GEÇTİ" color="var(--success)" />
+        <Stat n={s.exempt} label="MUAF" color="var(--info)" />
+        <Stat n={s.failed} label="FF" color="var(--danger)" />
+        <Stat n={s.notTaken} label="KALAN" color="var(--text-muted)" />
       </div>
 
       {recommendedFocus && (
-        <div className="bg-gradient-to-tr from-[#120a1c] to-[#1e102e] border border-cat-purple/30 border-l-2 border-l-cat-purple rounded-card p-4 relative overflow-hidden shadow-soft animate-in fade-in duration-300">
-          <div className="absolute top-0 right-0 text-[8px] font-mono bg-cat-purple/20 text-[#d8b4fe] px-2 py-0.5 rounded-bl font-bold uppercase tracking-wider">TEK BÜTÜNLEME ODAĞI</div>
+        <div className="bg-cat-purple/5 border border-cat-purple/30 border-l-2 border-l-cat-purple rounded-card p-4 relative overflow-hidden shadow-soft animate-in fade-in duration-300">
+          <div className="absolute top-0 right-0 text-[8px] font-mono bg-cat-purple/20 text-cat-purple px-2 py-0.5 rounded-bl font-bold uppercase tracking-wider">TEK BÜTÜNLEME ODAĞI</div>
           <span className="text-[9px] font-mono uppercase tracking-widest text-cat-purple font-bold block mb-1">
             Önerilen Aksiyon Hedefi
           </span>
-          <h4 className="text-[14px] font-display font-bold text-white mb-1">
+          <h4 className="text-[14px] font-display font-bold text-[var(--text-primary)] mb-1">
             🎯 {recommendedFocus.name}
           </h4>
-          <p className="text-[11px] text-[#b0a2bf]">
+          <p className="text-[11px] text-[var(--text-secondary)]">
             AÖF bütünlemede en yüksek geçme potansiyeline sahip ilk FF dersin. 25 dakikalık okumayla başla!
           </p>
         </div>
       )}
 
-      <div className="bg-[#111111] border border-cat-pink/15 rounded-card overflow-hidden shadow-soft">
+      <div className="bg-[var(--bg-surface)] border border-cat-pink/15 rounded-card overflow-hidden shadow-soft">
         <button
           onClick={() => setIsOpenFailed(!isOpenFailed)}
-          className="w-full flex items-center justify-between p-4 text-left hover:bg-[#141414] transition-colors cursor-pointer"
+          className="w-full flex items-center justify-between p-4 text-left hover:bg-[var(--bg-card-hover)] transition-colors cursor-pointer"
         >
           <span className="text-xs font-mono font-bold uppercase tracking-widest text-cat-pink flex items-center gap-2">
             <AlertTriangle size={13} className="text-cat-pink" /> Tekrar Alınacak FF Dersler ({failed.length})
           </span>
-          <span className="text-[#555] font-mono text-[10px]">{isOpenFailed ? "GİZLE ▲" : "LİSTELE ▼"}</span>
+          <span className="text-[var(--text-muted)] font-mono text-[10px]">{isOpenFailed ? "GİZLE ▲" : "LİSTELE ▼"}</span>
         </button>
 
         {isOpenFailed && (
-          <div className="p-4 pt-0 border-t border-cat-pink/5 bg-[#0b0b0b]/40">
+          <div className="p-4 pt-0 border-t border-cat-pink/5 bg-[var(--bg-base)]/40">
             <div className="flex flex-col gap-2 mt-3">
               {visibleFailed.map((c) => (
-                <div key={c.id} className="bg-[#111111] border border-cat-pink/10 rounded-card px-4 py-2.5 flex items-center justify-between gap-3">
+                <div key={c.id} className="bg-[var(--bg-surface)] border border-cat-pink/10 rounded-card px-4 py-2.5 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-[13px] text-white truncate">{c.name}</div>
-                    <div className="text-[10px] text-[#666] font-mono">
+                    <div className="text-[13px] text-[var(--text-primary)] truncate">{c.name}</div>
+                    <div className="text-[10px] text-[var(--text-muted)] font-mono">
                       {c.code} · {c.semester ? `${c.semester}. yarıyıl` : "—"} · vize: {c.vize ?? "—"}
                     </div>
                   </div>
@@ -490,18 +490,18 @@ function ESertifikaSection({ courses }: { courses: NormalizedCourse[] }) {
         <Award size={12} /> e-Sertifika Programları ({esert.length})
       </span>
       <div className="flex flex-col gap-2">
-        <div className="bg-[#111111] border rounded-card p-4 border-cat-purple/30 border-l-2 border-l-cat-purple shadow-soft relative overflow-hidden">
-          <div className="absolute top-0 right-0 text-[8px] font-mono bg-cat-purple/20 text-purple-300 px-1.5 py-0.5 rounded-bl tracking-wider font-bold">ÖNERİLEN</div>
+        <div className="bg-[var(--bg-surface)] border rounded-card p-4 border-cat-purple/30 border-l-2 border-l-cat-purple shadow-soft relative overflow-hidden">
+          <div className="absolute top-0 right-0 text-[8px] font-mono bg-cat-purple/20 text-cat-purple px-1.5 py-0.5 rounded-bl tracking-wider font-bold">ÖNERİLEN</div>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[13px] text-white truncate font-medium">{recommended.name}</div>
-              <div className="text-[10px] text-[#666] font-mono">{recommended.code}</div>
+              <div className="text-[13px] text-[var(--text-primary)] truncate font-medium">{recommended.name}</div>
+              <div className="text-[10px] text-[var(--text-muted)] font-mono">{recommended.code}</div>
             </div>
-            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-pill bg-cat-purple/10 text-purple-300">
+            <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-pill bg-cat-purple/10 text-cat-purple">
               BAŞVURULMADI
             </span>
           </div>
-          {recommended.notes && <p className="text-[11px] mt-1.5 text-purple-300/80">{recommended.notes}</p>}
+          {recommended.notes && <p className="text-[11px] mt-1.5 text-cat-purple/80">{recommended.notes}</p>}
         </div>
 
         {others.length > 0 && (
@@ -511,14 +511,14 @@ function ESertifikaSection({ courses }: { courses: NormalizedCourse[] }) {
                 {others.map((c) => {
                   const done = c.status === "passed";
                   const active = c.status === "in_progress";
-                  const color = done ? "#22c55e" : active ? "var(--warning)" : "#a855f7";
+                  const color = done ? "var(--success)" : active ? "var(--warning)" : "#a855f7";
                   const label = done ? "TAMAMLANDI" : active ? "KAYITLI" : "BAŞVURULMADI";
                   return (
-                    <div key={c.id} className="bg-[#111111] border rounded-card px-4 py-2.5" style={{ borderColor: `${color}22` }}>
+                    <div key={c.id} className="bg-[var(--bg-surface)] border rounded-card px-4 py-2.5" style={{ borderColor: `${color}22` }}>
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-[13px] text-white truncate">{c.name}</div>
-                          <div className="text-[10px] text-[#666] font-mono">{c.code}</div>
+                          <div className="text-[13px] text-[var(--text-primary)] truncate">{c.name}</div>
+                          <div className="text-[10px] text-[var(--text-muted)] font-mono">{c.code}</div>
                         </div>
                         <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-pill shrink-0" style={{ color, backgroundColor: `${color}15` }}>
                           {label}
@@ -566,27 +566,27 @@ function CurriculumBySemester({ courses }: { courses: NormalizedCourse[] }) {
   if (bySem.length === 0) return null;
 
   return (
-    <div className="bg-[#111111] border border-[#1e1e1e] rounded-card overflow-hidden">
+    <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-card overflow-hidden">
       <button
         onClick={() => setIsOpenCurriculum(!isOpenCurriculum)}
-        className="w-full flex items-center justify-between p-4 text-left hover:bg-[#141414] transition-colors cursor-pointer"
+        className="w-full flex items-center justify-between p-4 text-left hover:bg-[var(--bg-card-hover)] transition-colors cursor-pointer"
       >
-        <span className="text-xs font-mono font-bold uppercase tracking-widest text-[#555] flex items-center gap-2">
+        <span className="text-xs font-mono font-bold uppercase tracking-widest text-[var(--text-muted)] flex items-center gap-2">
           Müfredat ve Dönem Başarısı
         </span>
-        <span className="text-[#555] font-mono text-[10px]">{isOpenCurriculum ? "GİZLE ▲" : "MÜFREDATI GÖSTER ▼"}</span>
+        <span className="text-[var(--text-muted)] font-mono text-[10px]">{isOpenCurriculum ? "GİZLE ▲" : "MÜFREDATI GÖSTER ▼"}</span>
       </button>
 
       {isOpenCurriculum && (
-        <div className="p-4 pt-0 border-t border-[#1e1e1e]/5 bg-[#0b0b0b]/40">
+        <div className="p-4 pt-0 border-t border-[var(--border-subtle)]/5 bg-[var(--bg-base)]/40">
           <div className="flex flex-col gap-2 mt-3">
             {bySem.map(([sem, list]) => {
               const done = list.filter((c) => c.status === "passed" || c.status === "exempt").length;
               return (
-                <div key={sem} className="bg-[#0d0d0d] border border-[#181818] rounded-card px-4 py-2.5">
+                <div key={sem} className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-card px-4 py-2.5">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[11px] font-mono text-[#888]">{sem}. Yarıyıl</span>
-                    <span className="text-[10px] font-mono text-[#555]">{done}/{list.length}</span>
+                    <span className="text-[11px] font-mono text-[var(--text-secondary)]">{sem}. Yarıyıl</span>
+                    <span className="text-[10px] font-mono text-[var(--text-muted)]">{done}/{list.length}</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {list.map((c) => {
@@ -622,14 +622,14 @@ function CalendarTab({ upcoming }: { upcoming: TaggedExam[] }) {
 function UpcomingList({ upcoming, title, full }: { upcoming: TaggedExam[]; title: string; full?: boolean }) {
   if (upcoming.length === 0) {
     return (
-      <div className="bg-[#111111] border border-[#1e1e1e] rounded-card p-6 text-center">
-        <span className="text-xs text-[#555] italic">Yaklaşan sınav yok — takvim güncel değilse Playwright scraper&apos;ı çalıştır.</span>
+      <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-card p-6 text-center">
+        <span className="text-xs text-[var(--text-muted)] italic">Yaklaşan sınav yok — takvim güncel değilse Playwright scraper&apos;ı çalıştır.</span>
       </div>
     );
   }
   return (
-    <div className="bg-[#111111] border border-[#1e1e1e] rounded-card p-5 shadow-soft">
-      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-[#1a1a1a]">
+    <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-card p-5 shadow-soft">
+      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-[var(--border-subtle)]">
         <CalendarClock size={14} className="text-[var(--accent)]" />
         <span className="text-xs font-mono font-bold uppercase tracking-widest text-[var(--accent)]">{title}</span>
       </div>
@@ -641,29 +641,29 @@ function UpcomingList({ upcoming, title, full }: { upcoming: TaggedExam[]; title
           return (
             <div
               key={e.id}
-              className="flex items-center justify-between gap-3 px-4 py-3 rounded-card bg-[#0d0d0d] border"
-              style={{ borderColor: urgent ? "#F472B644" : "#181818" }}
+              className="flex items-center justify-between gap-3 px-4 py-3 rounded-card bg-[var(--bg-base)] border"
+              style={{ borderColor: urgent ? "#F472B644" : "var(--border-subtle)" }}
             >
               <div className="flex items-center gap-3 min-w-0">
                 <span className="w-1.5 h-8 rounded-full shrink-0" style={{ backgroundColor: uniColor }} />
                 <div className="min-w-0">
-                  <div className="text-[13px] text-white truncate flex items-center gap-2">
+                  <div className="text-[13px] text-[var(--text-primary)] truncate flex items-center gap-2">
                     {e.courses?.name || e.title}
                     {e.confirmed === false && (
                       <span className="text-[8px] font-mono font-bold text-cat-orange bg-cat-orange/10 px-1 py-0.5 rounded-pill tracking-wider">TAHMİNİ</span>
                     )}
                   </div>
-                  <div className="text-[10px] text-[#666] font-mono mt-0.5">
+                  <div className="text-[10px] text-[var(--text-muted)] font-mono mt-0.5">
                     {EXAM_PERIOD_LABEL[period] ?? e.title} · {new Date(e.exam_date).toLocaleDateString("tr-TR", { day: "numeric", month: "long" })}
                     {full ? ` · ${UNI_META[e._uni].label}` : ""}
                   </div>
                 </div>
               </div>
               <div className="text-right shrink-0">
-                <div className="text-xl font-bold font-mono leading-none" style={{ color: urgent ? "var(--cat-pink)" : e.daysLeft <= 14 ? "var(--cat-orange)" : "#fff" }}>
+                <div className="text-xl font-bold font-mono leading-none" style={{ color: urgent ? "var(--cat-pink)" : e.daysLeft <= 14 ? "var(--cat-orange)" : "var(--text-primary)" }}>
                   {e.daysLeft}
                 </div>
-                <div className="text-[9px] font-mono uppercase tracking-widest text-[#555] mt-0.5">gün</div>
+                <div className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)] mt-0.5">gün</div>
               </div>
             </div>
           );
@@ -678,8 +678,8 @@ function MigrationHint({ beykentCourses }: { beykentCourses: NormalizedCourse[] 
   const hasNewSchema = beykentCourses.some((c) => c.code !== null);
   if (hasNewSchema) return null;
   return (
-    <div className="mt-6 bg-[#1a1400] border-l-2 border-cat-orange/50 border border-[#2a2000] rounded-card px-4 py-3 shadow-soft">
-      <span className="text-[11px] text-[#caa24a] leading-relaxed block">
+    <div className="mt-6 bg-[var(--warning)]/5 border-l-2 border-cat-orange/50 border border-[var(--warning)]/20 rounded-card px-4 py-3 shadow-soft">
+      <span className="text-[11px] text-[var(--warning)] leading-relaxed block">
         ⚠️ Zengin veriler için <span className="font-mono">supabase/migrations/20260531_academy_upgrade.sql</span> dosyasını
         Supabase&apos;de uygula. Uygulanana kadar tab eski (sınırlı) veriyle çalışır.
       </span>

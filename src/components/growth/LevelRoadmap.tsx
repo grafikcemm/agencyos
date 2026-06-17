@@ -64,7 +64,7 @@ export function LevelRoadmap({
           <div
             key={level.id}
             className="border rounded-card shadow-soft overflow-hidden"
-            style={{ borderColor: isOpen ? color + "40" : "#1f1f1f" }}
+            style={{ borderColor: isOpen ? color + "40" : "var(--border-subtle)" }}
           >
             <button
               onClick={() => {
@@ -74,8 +74,8 @@ export function LevelRoadmap({
               }}
               disabled={!isActive}
               className={cn(
-                "w-full flex items-center justify-between p-4 text-left bg-[#111111] transition-colors",
-                isActive ? "hover:bg-[#141414]" : "opacity-60 cursor-not-allowed"
+                "w-full flex items-center justify-between p-4 text-left bg-[var(--bg-surface)] transition-colors",
+                isActive ? "hover:bg-[var(--bg-card-hover)]" : "opacity-60 cursor-not-allowed"
               )}
             >
               <div className="flex items-center gap-3">
@@ -90,29 +90,29 @@ export function LevelRoadmap({
                   {level.levelNumber}
                 </div>
                 <div className="text-left">
-                  <p className="text-sm font-display font-bold text-white">{level.title}</p>
-                  <p className="text-xs text-[#555] font-sans">{level.subtitle}</p>
+                  <p className="text-sm font-display font-bold text-[var(--text-primary)]">{level.title}</p>
+                  <p className="text-xs text-[var(--text-muted)] font-sans">{level.subtitle}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 {isStrategic && (
-                  <span className="text-[9px] font-mono text-[#666] border border-[#333] px-1.5 py-0.5 rounded">
+                  <span className="text-[9px] font-mono text-[var(--text-muted)] border border-[var(--border-subtle)] px-1.5 py-0.5 rounded">
                     STRATEJİK
                   </span>
                 )}
                 {isAiNative && (
-                  <span className="text-[9px] font-mono text-[#06b6d4] border border-[#06b6d4]/30 bg-[#06b6d4]/5 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                  <span className="text-[9px] font-mono text-[var(--info)] border border-[var(--info)]/30 bg-[var(--info)]/5 px-1.5 py-0.5 rounded uppercase tracking-wider">
                     AI-NATIVE
                   </span>
                 )}
-                
+
                 {isCompletedLevel && (
-                  <span className="text-[9px] font-mono text-[#22c55e] border border-[#22c55e]/20 bg-[#22c55e]/5 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                  <span className="text-[9px] font-mono text-[var(--success)] border border-[var(--success)]/20 bg-[var(--success)]/5 px-1.5 py-0.5 rounded uppercase tracking-wider">
                     ✓ Bitti
                   </span>
                 )}
                 {isLockedLevel && (
-                  <span className="text-[9px] font-mono text-[#e53e3e] border border-[#e53e3e]/20 bg-[#e53e3e]/5 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                  <span className="text-[9px] font-mono text-[var(--danger)] border border-[var(--danger)]/20 bg-[var(--danger)]/5 px-1.5 py-0.5 rounded uppercase tracking-wider">
                     🔒 Kilitli
                   </span>
                 )}
@@ -122,11 +122,11 @@ export function LevelRoadmap({
                   </span>
                 )}
 
-                <span className="text-[10px] font-mono text-[#666]">
+                <span className="text-[10px] font-mono text-[var(--text-muted)]">
                   {completedInLevel}/{activeSkills.length}
                 </span>
                 {isActive && (
-                  <span className="text-[#444] font-mono text-sm">
+                  <span className="text-[var(--text-tertiary)] font-mono text-sm">
                     {isOpen ? "−" : "+"}
                   </span>
                 )}
@@ -134,15 +134,15 @@ export function LevelRoadmap({
             </button>
 
             {isLockedLevel && (
-              <div className="bg-[#0c0c0d] px-4 py-3 border-t border-[#1f1f1f]/50 text-[11px] text-[#555] font-mono">
+              <div className="bg-[var(--bg-base)] px-4 py-3 border-t border-[var(--border-subtle)]/50 text-[11px] text-[var(--text-muted)] font-mono">
                 🔒 Bu seviye kilitli. Önce Seviye {CAREER_ROADMAP[activeLevelIndex]?.levelNumber} ({CAREER_ROADMAP[activeLevelIndex]?.title}) hedeflerini tamamlamalısın.
               </div>
             )}
 
             {isOpen && (
-              <div className="bg-[#0d0d0d] p-3 space-y-2">
+              <div className="bg-[var(--bg-base)] p-3 space-y-2">
                 {level.description && (
-                  <p className="text-xs text-[#666] font-sans leading-relaxed pb-2 border-b border-[#1a1a1a]">
+                  <p className="text-xs text-[var(--text-muted)] font-sans leading-relaxed pb-2 border-b border-[var(--border-subtle)]">
                     {level.description}
                   </p>
                 )}

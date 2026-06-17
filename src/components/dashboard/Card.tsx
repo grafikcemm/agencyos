@@ -13,7 +13,8 @@ interface CardProps {
 const variantClasses: Record<CardVariant, string> = {
   default:
     "bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-primary)]",
-  white: "bg-white border border-white text-[#0a0a0a]",
+  // "white" artık parchment vurgu paneli (Apple beyaz⇄parchment ritmi)
+  white: "bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)]",
   red: "bg-[var(--accent)] border border-[var(--accent)] text-white",
 };
 
@@ -25,7 +26,7 @@ export function Card({
 }: CardProps) {
   return (
     <div
-      className={`rounded-xl ${variantClasses[variant]} ${noPadding ? "p-0" : "p-4"} ${className}`}
+      className={`rounded-card ${variantClasses[variant]} ${noPadding ? "p-0" : "p-4"} ${className}`}
     >
       {children}
     </div>

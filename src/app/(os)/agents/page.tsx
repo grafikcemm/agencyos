@@ -42,8 +42,8 @@ interface ChatMessage {
 
 const STATUS_VARIANT: Record<string, { dot: string; ring: string; label: string }> = {
   working: { dot: 'bg-[var(--accent)] animate-pulse', ring: 'border-[var(--accent)]/30 text-[var(--accent)]', label: 'ÇALIŞIYOR' },
-  error: { dot: 'bg-red-500', ring: 'border-red-500/30 text-red-400', label: 'HATA' },
-  done: { dot: 'bg-emerald-500', ring: 'border-emerald-500/30 text-emerald-400', label: 'TAMAM' },
+  error: { dot: 'bg-[var(--danger)]', ring: 'border-[var(--danger)]/30 text-[var(--danger)]', label: 'HATA' },
+  done: { dot: 'bg-[var(--success)]', ring: 'border-[var(--success)]/30 text-[var(--success)]', label: 'TAMAM' },
   idle: { dot: 'bg-[var(--text-muted)]', ring: 'border-[var(--border-subtle)] text-[var(--text-muted)]', label: 'BOŞTA' }
 }
 
@@ -57,7 +57,7 @@ function MiniStat({ icon: Icon, label, value, danger }: { icon: typeof Cpu; labe
       <span className="flex items-center gap-1 text-[8px] font-black tracking-wider text-[var(--text-muted)] uppercase">
         <Icon className="w-3 h-3" /> {label}
       </span>
-      <span className={`text-sm font-bold ${danger ? 'text-red-400' : 'text-[var(--text-primary)]'}`}>{value}</span>
+      <span className={`text-sm font-bold ${danger ? 'text-[var(--danger)]' : 'text-[var(--text-primary)]'}`}>{value}</span>
     </div>
   )
 }
@@ -143,7 +143,7 @@ export default function AgentsPage() {
             <span className="text-xs font-bold tracking-widest uppercase">Ajan ağı yükleniyor...</span>
           </div>
         ) : error ? (
-          <div className="flex items-center gap-2 text-red-400 text-xs font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 max-w-md">
+          <div className="flex items-center gap-2 text-[var(--danger)] text-xs font-bold bg-[var(--danger)]/10 border border-[var(--danger)]/20 rounded-xl px-4 py-3 max-w-md">
             <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
           </div>
         ) : agents.length === 0 ? (

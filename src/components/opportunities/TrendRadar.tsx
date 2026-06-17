@@ -41,7 +41,7 @@ const SOURCE_CONFIG: Record<string, { icon: typeof Activity; label: string; colo
 }
 
 function ConfidenceBar({ score }: { score: number }) {
-  const color = score >= 70 ? '#22c55e' : score >= 40 ? 'var(--warning)' : '#71717a'
+  const color = score >= 70 ? 'var(--success)' : score >= 40 ? 'var(--warning)' : 'var(--text-muted)'
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 h-1.5 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
@@ -160,7 +160,7 @@ export function TrendRadar() {
             const config = SOURCE_CONFIG[src.id] ?? { icon: Activity, label: src.name, color: '#71717a' }
             const Icon = config.icon
             const isOk = src.last_status === 'ok'
-            const statusColor = isOk ? 'text-green-500 bg-green-500/10' : 'text-[var(--warning)] bg-[var(--warning)]/10'
+            const statusColor = isOk ? 'text-[var(--success)] bg-[var(--success)]/10' : 'text-[var(--warning)] bg-[var(--warning)]/10'
             
             return (
               <div 
@@ -181,7 +181,7 @@ export function TrendRadar() {
 
       {/* Error state alert */}
       {error && (
-        <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-xs font-semibold text-red-500 flex items-center gap-2">
+        <div className="rounded-lg border border-[var(--danger)]/20 bg-[var(--danger)]/10 p-3 text-xs font-semibold text-[var(--danger)] flex items-center gap-2">
           <ShieldAlert className="w-4 h-4" />
           <span>Veri çekilirken hata oluştu: {error}</span>
         </div>
@@ -294,8 +294,8 @@ export function TrendRadar() {
                       disabled={signal.status === 'actionable'}
                       className={`flex-1 py-1.5 rounded text-[10px] font-black flex items-center justify-center gap-1 transition-all cursor-pointer ${
                         signal.status === 'actionable'
-                          ? 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/25 cursor-default'
-                          : 'bg-[var(--bg-elevated)] hover:bg-[#22c55e]/15 hover:text-[#22c55e] text-[var(--text-secondary)] border border-[var(--border-subtle)]'
+                          ? 'bg-[var(--success)]/10 text-[var(--success)] border border-[var(--success)]/25 cursor-default'
+                          : 'bg-[var(--bg-elevated)] hover:bg-[var(--success)]/15 hover:text-[var(--success)] text-[var(--text-secondary)] border border-[var(--border-subtle)]'
                       }`}
                     >
                       <CheckCircle className="w-3 h-3" />
@@ -315,7 +315,7 @@ export function TrendRadar() {
                     </button>
                     <button
                       onClick={() => handleAction(signal.id, 'dismissed')}
-                      className="px-2.5 py-1.5 rounded text-[10px] font-black bg-[var(--bg-elevated)] hover:bg-red-500/15 hover:text-red-500 text-[var(--text-muted)] border border-[var(--border-subtle)] transition-all cursor-pointer"
+                      className="px-2.5 py-1.5 rounded text-[10px] font-black bg-[var(--bg-elevated)] hover:bg-[var(--danger)]/15 hover:text-[var(--danger)] text-[var(--text-muted)] border border-[var(--border-subtle)] transition-all cursor-pointer"
                       title="Reddet / Yoksay"
                     >
                       <XCircle className="w-3.5 h-3.5" />

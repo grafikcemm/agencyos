@@ -27,16 +27,16 @@ export function GrowthLadderHero({ activeLevelId, completedSkillIds }: Props) {
     <div className="bg-dark-card border border-dark-border rounded-card shadow-soft p-5 mb-4">
       <div className="flex items-start justify-between mb-4">
         <div>
-          <h1 className="text-lg font-display font-bold text-white tracking-wide">
+          <h1 className="text-lg font-display font-bold text-[var(--text-primary)] tracking-wide">
             GELİŞİM MERDİVENİ
           </h1>
-          <p className="text-xs text-[#666] font-mono mt-0.5">
+          <p className="text-xs text-[var(--text-muted)] font-mono mt-0.5">
             Aranan adam ol — öğrenme kataloğu değil, aksiyon aynası
           </p>
         </div>
         <div className="text-right">
           <span className="text-2xl font-mono font-bold text-[var(--accent)]">{overallPct}%</span>
-          <p className="text-xs text-[#666] font-mono">{completedCount}/{totalSkills} skill</p>
+          <p className="text-xs text-[var(--text-muted)] font-mono">{completedCount}/{totalSkills} skill</p>
         </div>
       </div>
 
@@ -59,8 +59,8 @@ export function GrowthLadderHero({ activeLevelId, completedSkillIds }: Props) {
                 className="w-full rounded-[4px] relative overflow-hidden transition-all duration-300"
                 style={{
                   height: stepHeight,
-                  backgroundColor: isActive ? color + "20" : "#1a1a1a",
-                  border: `1px solid ${isActive ? color : "#2a2a2a"}`,
+                  backgroundColor: isActive ? color + "20" : "var(--bg-elevated)",
+                  border: `1px solid ${isActive ? color : "var(--border-subtle)"}`,
                 }}
               >
                 <div
@@ -73,7 +73,7 @@ export function GrowthLadderHero({ activeLevelId, completedSkillIds }: Props) {
                   </div>
                 )}
               </div>
-              <span className="text-[10px] font-mono" style={{ color: isActive ? color : "#444" }}>
+              <span className="text-[10px] font-mono" style={{ color: isActive ? color : "var(--text-tertiary)" }}>
                 S{level.levelNumber}
               </span>
             </div>
@@ -81,7 +81,7 @@ export function GrowthLadderHero({ activeLevelId, completedSkillIds }: Props) {
         })}
       </div>
 
-      <div className="mt-4 h-1 bg-[#1a1a1a] rounded-full overflow-hidden">
+      <div className="mt-4 h-1 bg-[var(--bg-elevated)] rounded-full overflow-hidden">
         <div
           className="h-full bg-[var(--accent)] rounded-full transition-all duration-700"
           style={{ width: `${overallPct}%` }}
@@ -89,7 +89,7 @@ export function GrowthLadderHero({ activeLevelId, completedSkillIds }: Props) {
       </div>
 
       {activeLevel && (
-        <p className="text-xs font-mono text-[#666] mt-2">
+        <p className="text-xs font-mono text-[var(--text-muted)] mt-2">
           Aktif seviye: <span className="text-[var(--accent)]">{activeLevel.title}</span>
         </p>
       )}

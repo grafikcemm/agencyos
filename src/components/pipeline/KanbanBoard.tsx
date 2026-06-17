@@ -7,12 +7,12 @@ import { Badge } from '@/components/ui/badge'
 import type { EnrichedLead } from '@/lib/enrichLead'
 
 const COLUMNS = [
-  { id: 'new', title: 'YENİ LEAD', color: '#378ADD' },
-  { id: 'contacted', title: 'İLETİŞİM', color: '#BA7517' },
+  { id: 'new', title: 'YENİ LEAD', color: 'var(--info)' },
+  { id: 'contacted', title: 'İLETİŞİM', color: 'var(--warning)' },
   { id: 'responded', title: 'YANIT', color: '#8B5CF6' },
-  { id: 'meeting', title: 'TOPLANTI', color: '#3B82F6' },
-  { id: 'proposal', title: 'TEKLİF', color: '#E8440A' },
-  { id: 'converted', title: 'KAZANILDI', color: '#1D9E75' },
+  { id: 'meeting', title: 'TOPLANTI', color: 'var(--info)' },
+  { id: 'proposal', title: 'TEKLİF', color: 'var(--fire)' },
+  { id: 'converted', title: 'KAZANILDI', color: 'var(--success)' },
 ]
 
 const STATUS_MAP: Record<string, string> = {

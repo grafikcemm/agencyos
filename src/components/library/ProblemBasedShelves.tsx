@@ -60,7 +60,7 @@ export function ProblemBasedShelves({
     <>
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <span className="text-[10px] font-mono uppercase tracking-widest text-[#555] font-bold">Problem Bazlı Raflar</span>
+          <span className="text-[10px] font-mono uppercase tracking-widest text-[var(--text-muted)] font-bold">Problem Bazlı Raflar</span>
         </div>
 
         <div className="space-y-2">
@@ -109,15 +109,15 @@ function Shelf({
   const activeCount = books.filter(b => b.status === 'active').length
 
   return (
-    <div className="border border-[#1f1f1f] rounded-card overflow-hidden">
+    <div className="border border-[var(--border-subtle)] rounded-card overflow-hidden">
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between p-3 bg-[#0f0f0f] hover:bg-[#111] transition-colors"
+        className="w-full flex items-center justify-between p-3 bg-[var(--bg-surface)] hover:bg-[var(--bg-card-hover)] transition-colors"
       >
         <div className="flex items-center gap-3">
-          <span className="text-xs text-white font-display font-medium">{CATEGORY_LABELS[category]}</span>
+          <span className="text-xs text-[var(--text-primary)] font-display font-medium">{CATEGORY_LABELS[category]}</span>
           <div className="flex items-center gap-2 font-mono">
-            <span className="text-[10px] text-[#555]">{books.length} kitap</span>
+            <span className="text-[10px] text-[var(--text-muted)]">{books.length} kitap</span>
             {completedCount > 0 && (
               <span className="text-[10px] text-cat-teal">{completedCount} tamamlandı</span>
             )}
@@ -126,11 +126,11 @@ function Shelf({
             )}
           </div>
         </div>
-        {isOpen ? <ChevronUp size={12} className="text-[#555]" /> : <ChevronDown size={12} className="text-[#555]" />}
+        {isOpen ? <ChevronUp size={12} className="text-[var(--text-muted)]" /> : <ChevronDown size={12} className="text-[var(--text-muted)]" />}
       </button>
 
       {isOpen && (
-        <div className="border-t border-[#1f1f1f] divide-y divide-[#1a1a1a]">
+        <div className="border-t border-[var(--border-subtle)] divide-y divide-[var(--border-subtle)]">
           {books.map(book => (
             <BookRow key={book.id} book={book} onClick={() => onSelect(book)} />
           ))}
@@ -144,11 +144,11 @@ function BookRow({ book, onClick }: { book: LibraryBook; onClick: () => void }) 
   const statusColors: Record<string, string> = {
     active: 'text-cat-purple',
     completed: 'text-cat-teal',
-    not_started: 'text-[#444]',
+    not_started: 'text-[var(--text-tertiary)]',
     reference: 'text-cat-blue',
     evening: 'text-cat-purple',
     paused: 'text-cat-orange',
-    archived: 'text-[#333]',
+    archived: 'text-[var(--text-tertiary)]',
   }
 
   const isCompleted = book.status === 'completed'
@@ -156,21 +156,21 @@ function BookRow({ book, onClick }: { book: LibraryBook; onClick: () => void }) 
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center justify-between px-4 py-3 hover:bg-[#111] transition-colors group ${isCompleted ? 'opacity-60' : ''}`}
+      className={`w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--bg-card-hover)] transition-colors group ${isCompleted ? 'opacity-60' : ''}`}
     >
       <div className="flex items-start gap-3 flex-1 min-w-0">
         <BookOpen
           size={12}
-          className={`shrink-0 mt-0.5 ${statusColors[book.status] ?? 'text-[#444]'}`}
+          className={`shrink-0 mt-0.5 ${statusColors[book.status] ?? 'text-[var(--text-tertiary)]'}`}
         />
         <div className="flex-1 min-w-0 text-left">
-          <p className={`text-xs truncate ${isCompleted ? 'line-through text-[#555]' : 'text-[#888] group-hover:text-white transition-colors'}`}>
+          <p className={`text-xs truncate ${isCompleted ? 'line-through text-[var(--text-muted)]' : 'text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors'}`}>
             {book.title}
           </p>
-          <p className="text-[10px] text-[#444] truncate mt-0.5">{book.problemItSolves}</p>
+          <p className="text-[10px] text-[var(--text-tertiary)] truncate mt-0.5">{book.problemItSolves}</p>
         </div>
       </div>
-      <span className={`text-[9px] font-mono uppercase tracking-widest shrink-0 ml-3 ${statusColors[book.status] ?? 'text-[#444]'}`}>
+      <span className={`text-[9px] font-mono uppercase tracking-widest shrink-0 ml-3 ${statusColors[book.status] ?? 'text-[var(--text-tertiary)]'}`}>
         {STATUS_LABELS[book.status]}
       </span>
     </button>

@@ -34,23 +34,23 @@ export function BookDetailDrawer({
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-start justify-end z-50">
-      <div className="h-full w-full max-w-md bg-[#0f0f0f] border-l border-[#1f1f1f] overflow-y-auto">
+      <div className="h-full w-full max-w-md bg-[var(--bg-surface)] border-l border-[var(--border-subtle)] overflow-y-auto">
         {/* Header */}
-        <div className="sticky top-0 bg-[#0f0f0f] border-b border-[#1f1f1f] p-4 flex items-start justify-between gap-3">
+        <div className="sticky top-0 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] p-4 flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 font-mono">
-              <span className="text-[9px] uppercase tracking-widest text-[#555]">
+              <span className="text-[9px] uppercase tracking-widest text-[var(--text-muted)]">
                 {CATEGORY_LABELS[book.category]}
               </span>
-              <span className="text-[#333]">•</span>
-              <span className="text-[9px] uppercase tracking-widest text-[#555]">
+              <span className="text-[var(--text-tertiary)]">•</span>
+              <span className="text-[9px] uppercase tracking-widest text-[var(--text-muted)]">
                 {READING_MODE_LABELS[book.readingMode]}
               </span>
             </div>
-            <h2 className="text-white font-display font-bold text-base leading-tight">{book.title}</h2>
-            {book.author && <p className="text-[#555] text-xs mt-0.5">{book.author}</p>}
+            <h2 className="text-[var(--text-primary)] font-display font-bold text-base leading-tight">{book.title}</h2>
+            {book.author && <p className="text-[var(--text-muted)] text-xs mt-0.5">{book.author}</p>}
           </div>
-          <button onClick={onClose} className="text-[#555] hover:text-white transition-colors shrink-0 mt-1">
+          <button onClick={onClose} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors shrink-0 mt-1">
             <X size={16} />
           </button>
         </div>
@@ -58,11 +58,11 @@ export function BookDetailDrawer({
         <div className="p-4 space-y-5">
           {/* Status badge */}
           <div className="flex items-center gap-2">
-            <span className="text-[9px] font-mono uppercase tracking-widest text-[#555]">Durum:</span>
+            <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)]">Durum:</span>
             <span className={`text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded-pill
               ${book.status === 'active' ? 'bg-cat-purple/10 text-cat-purple' : ''}
               ${book.status === 'completed' ? 'bg-cat-teal/10 text-cat-teal' : ''}
-              ${book.status === 'not_started' || book.status === 'paused' ? 'bg-[#1a1a1a] text-[#666]' : ''}
+              ${book.status === 'not_started' || book.status === 'paused' ? 'bg-[var(--bg-elevated)] text-[var(--text-muted)]' : ''}
               ${book.status === 'reference' ? 'bg-cat-blue/10 text-cat-blue' : ''}
               ${book.status === 'evening' ? 'bg-cat-purple/10 text-cat-purple' : ''}
             `}>
@@ -81,14 +81,14 @@ export function BookDetailDrawer({
               onClick={() => setShowHowTo(!showHowTo)}
               className="flex items-center justify-between w-full"
             >
-              <span className="text-[9px] font-mono uppercase tracking-widest text-[#555]">Nasıl Okuyacağım?</span>
-              {showHowTo ? <ChevronUp size={12} className="text-[#555]" /> : <ChevronDown size={12} className="text-[#555]" />}
+              <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)]">Nasıl Okuyacağım?</span>
+              {showHowTo ? <ChevronUp size={12} className="text-[var(--text-muted)]" /> : <ChevronDown size={12} className="text-[var(--text-muted)]" />}
             </button>
             {showHowTo && (
               <ul className="mt-2 space-y-1">
                 {book.howToRead.map((step, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-[#888]">
-                    <span className="text-[#555] shrink-0">{i + 1}.</span>
+                  <li key={i} className="flex items-start gap-2 text-xs text-[var(--text-secondary)]">
+                    <span className="text-[var(--text-muted)] shrink-0">{i + 1}.</span>
                     {step}
                   </li>
                 ))}
@@ -99,11 +99,11 @@ export function BookDetailDrawer({
           {/* Completion criteria */}
           {book.completionCriteria.length > 0 && (
             <div>
-              <span className="text-[9px] font-mono uppercase tracking-widest text-[#555] block mb-2">Tamamlanma Kriterleri</span>
+              <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)] block mb-2">Tamamlanma Kriterleri</span>
               <ul className="space-y-1">
                 {book.completionCriteria.map((c, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-[#888]">
-                    <span className="text-[#333] shrink-0">—</span>
+                  <li key={i} className="flex items-start gap-2 text-xs text-[var(--text-secondary)]">
+                    <span className="text-[var(--text-tertiary)] shrink-0">—</span>
                     {c}
                   </li>
                 ))}
@@ -115,7 +115,7 @@ export function BookDetailDrawer({
           {book.tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {book.tags.map(tag => (
-                <span key={tag} className="text-[10px] font-mono px-2 py-0.5 bg-[#1a1a1a] border border-[#2a2a2a] text-[#666] rounded-pill">
+                <span key={tag} className="text-[10px] font-mono px-2 py-0.5 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-muted)] rounded-pill">
                   {tag}
                 </span>
               ))}
@@ -125,10 +125,10 @@ export function BookDetailDrawer({
           {/* Notes */}
           {notes.length > 0 && (
             <div>
-              <span className="text-[9px] font-mono uppercase tracking-widest text-[#555] block mb-3">Notlar ({notes.length})</span>
+              <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)] block mb-3">Notlar ({notes.length})</span>
               <div className="space-y-2">
                 {bookNotes.map(note => (
-                  <NoteCard key={note.id} note={note} icon={<StickyNote size={10} />} color="text-[#888]" />
+                  <NoteCard key={note.id} note={note} icon={<StickyNote size={10} />} color="text-[var(--text-secondary)]" />
                 ))}
                 {quotes.map(note => (
                   <NoteCard key={note.id} note={note} icon={<Quote size={10} />} color="text-cat-purple" />
@@ -144,7 +144,7 @@ export function BookDetailDrawer({
           <div className="flex flex-col gap-2 pt-2">
             <button
               onClick={() => setShowNote(true)}
-              className="flex items-center justify-center gap-2 py-2.5 bg-[#1a1a1a] border border-[#2a2a2a] text-white text-xs rounded-card hover:border-cat-purple/30 transition-colors"
+              className="flex items-center justify-center gap-2 py-2.5 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-xs rounded-card hover:border-cat-purple/30 transition-colors"
             >
               <BookOpen size={12} />
               Not / Aksiyon / Alıntı Ekle
@@ -163,7 +163,7 @@ export function BookDetailDrawer({
             {book.status !== 'archived' && book.status !== 'completed' && (
               <button
                 onClick={() => { onArchive(book.id); onClose() }}
-                className="flex items-center justify-center gap-2 py-2.5 border border-[#2a2a2a] text-[#666] text-xs rounded-card hover:text-white transition-colors"
+                className="flex items-center justify-center gap-2 py-2.5 border border-[var(--border-subtle)] text-[var(--text-muted)] text-xs rounded-card hover:text-[var(--text-primary)] transition-colors"
               >
                 <Archive size={12} />
                 Arşivle
@@ -190,22 +190,22 @@ export function BookDetailDrawer({
 function Section({ title, content, highlight }: { title: string; content: string; highlight?: boolean }) {
   return (
     <div>
-      <span className="text-[9px] font-mono uppercase tracking-widest text-[#555] block mb-1">{title}</span>
-      <p className={`text-xs leading-relaxed ${highlight ? 'text-cat-teal' : 'text-[#888]'}`}>{content}</p>
+      <span className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)] block mb-1">{title}</span>
+      <p className={`text-xs leading-relaxed ${highlight ? 'text-cat-teal' : 'text-[var(--text-secondary)]'}`}>{content}</p>
     </div>
   )
 }
 
 function NoteCard({ note, icon, color }: { note: BookNote; icon: React.ReactNode; color: string }) {
   return (
-    <div className="bg-[#111] border border-[#1a1a1a] rounded-card p-3">
+    <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-card p-3">
       <div className={`flex items-center gap-1.5 mb-1 ${color}`}>
         {icon}
         <span className="text-[9px] font-mono uppercase tracking-widest">
           {note.type === 'note' ? 'Not' : note.type === 'quote' ? 'Alıntı' : 'Aksiyon'}
         </span>
       </div>
-      <p className="text-[#888] text-xs leading-relaxed">{note.content}</p>
+      <p className="text-[var(--text-secondary)] text-xs leading-relaxed">{note.content}</p>
     </div>
   )
 }

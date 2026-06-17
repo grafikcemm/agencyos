@@ -25,10 +25,10 @@ export function ActiveBookCard({ book, notes, onAddNote, onComplete }: Props) {
 
   if (!book) {
     return (
-      <div className="bg-[#0f0f0f] border border-[#1f1f1f] rounded-card p-6 text-center shadow-soft">
-        <Lock size={24} className="text-[#333] mx-auto mb-3" />
-        <p className="text-[#555] text-sm">Aktif kitap yok</p>
-        <p className="text-[#333] text-xs mt-1">Okuma Merdiveni&apos;nden bir kitap başlat</p>
+      <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-card p-6 text-center shadow-soft">
+        <Lock size={24} className="text-[var(--text-tertiary)] mx-auto mb-3" />
+        <p className="text-[var(--text-muted)] text-sm">Aktif kitap yok</p>
+        <p className="text-[var(--text-tertiary)] text-xs mt-1">Okuma Merdiveni&apos;nden bir kitap başlat</p>
       </div>
     )
   }
@@ -38,7 +38,7 @@ export function ActiveBookCard({ book, notes, onAddNote, onComplete }: Props) {
 
   return (
     <>
-      <div className="bg-[#0f0f0f] border border-cat-purple/30 border-l-2 border-l-cat-purple rounded-card p-5 space-y-4 shadow-soft">
+      <div className="bg-[var(--bg-surface)] border border-cat-purple/30 border-l-2 border-l-cat-purple rounded-card p-5 space-y-4 shadow-soft">
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
@@ -47,8 +47,8 @@ export function ActiveBookCard({ book, notes, onAddNote, onComplete }: Props) {
               </span>
               <span className="text-[9px] font-mono uppercase tracking-widest text-cat-purple">Aktif Kitap</span>
             </div>
-            <h2 className="text-white font-display font-bold text-lg leading-tight">{book.title}</h2>
-            {book.author && <p className="text-[#555] text-xs mt-0.5">{book.author}</p>}
+            <h2 className="text-[var(--text-primary)] font-display font-bold text-lg leading-tight">{book.title}</h2>
+            {book.author && <p className="text-[var(--text-muted)] text-xs mt-0.5">{book.author}</p>}
           </div>
         </div>
 
@@ -58,16 +58,16 @@ export function ActiveBookCard({ book, notes, onAddNote, onComplete }: Props) {
         </div>
 
         {/* Hafif ilerleme — baskı yok, sadece sayaç */}
-        <div className="flex items-center gap-3 text-xs text-[#555] font-mono">
+        <div className="flex items-center gap-3 text-xs text-[var(--text-muted)] font-mono">
           <span>{noteCount} not</span>
-          <span className="text-[#333]">•</span>
+          <span className="text-[var(--text-tertiary)]">•</span>
           <span>{actionCount} aksiyon</span>
         </div>
 
         <div className="flex flex-wrap gap-2 pt-1">
           <button
             onClick={() => setShowNote(true)}
-            className="flex items-center gap-1.5 px-3 py-2 bg-[#1a1a1a] border border-[#2a2a2a] text-white text-xs rounded-card hover:border-cat-purple/40 transition-colors min-h-[36px]"
+            className="flex items-center gap-1.5 px-3 py-2 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] text-xs rounded-card hover:border-cat-purple/40 transition-colors min-h-[36px]"
           >
             <Plus size={12} />
             Not / aksiyon ekle
@@ -111,8 +111,8 @@ export function ActiveBookCard({ book, notes, onAddNote, onComplete }: Props) {
 function InfoRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
     <div>
-      <span className="text-[9px] uppercase tracking-widest text-[#444] block mb-0.5">{label}</span>
-      <p className={`text-xs leading-relaxed ${highlight ? 'text-[var(--accent)]' : 'text-[#888]'}`}>{value}</p>
+      <span className="text-[9px] uppercase tracking-widest text-[var(--text-tertiary)] block mb-0.5">{label}</span>
+      <p className={`text-xs leading-relaxed ${highlight ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'}`}>{value}</p>
     </div>
   )
 }

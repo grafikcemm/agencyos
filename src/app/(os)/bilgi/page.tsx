@@ -191,7 +191,7 @@ export default function BilgiPage() {
                       <p className="text-[9px] text-[var(--text-muted)] font-mono truncate mt-0.5">{d.key}</p>
                     </div>
                     {d.status === 'error' && (
-                      <span className="text-[8px] font-black text-red-400 uppercase shrink-0 mt-0.5">hata</span>
+                      <span className="text-[8px] font-black text-[var(--danger)] uppercase shrink-0 mt-0.5">hata</span>
                     )}
                     {d.status === 'empty' && (
                       <span className="text-[8px] font-black text-[var(--text-muted)] uppercase shrink-0 mt-0.5">boş</span>
@@ -213,7 +213,7 @@ export default function BilgiPage() {
         <div className="flex-1 overflow-hidden flex flex-col bg-[var(--bg-base)]">
           {error ? (
             <div className="flex-1 flex items-center justify-center p-6">
-              <div className="flex items-center gap-2 text-red-400 text-xs font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2 text-[var(--danger)] text-xs font-bold bg-[var(--danger)]/10 border border-[var(--danger)]/20 rounded-xl px-4 py-3">
                 <AlertTriangle className="w-4 h-4 shrink-0" /> {error}
               </div>
             </div>
@@ -255,7 +255,7 @@ export default function BilgiPage() {
               {/* Doc content */}
               <div className="flex-1 overflow-y-auto p-6 scrollbar-thin">
                 {selectedDoc.status === 'error' ? (
-                  <div className="flex items-center gap-2 text-red-400 text-xs font-bold bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 max-w-md">
+                  <div className="flex items-center gap-2 text-[var(--danger)] text-xs font-bold bg-[var(--danger)]/10 border border-[var(--danger)]/20 rounded-xl px-4 py-3 max-w-md">
                     <AlertTriangle className="w-4 h-4 shrink-0" /> Bu belge yüklenemedi.
                   </div>
                 ) : selectedDoc.status === 'empty' ? (

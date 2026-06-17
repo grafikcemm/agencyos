@@ -3,18 +3,18 @@ import type { ComponentType } from 'react'
 import { ACTION_TIER_LABELS, CATEGORY_LABELS, Opportunity } from '@/lib/opportunities'
 
 const tierStyles: Record<Opportunity['actionTier'], string> = {
-  launch_now: 'border-[#22c55e]/35 bg-[#102016] text-[#86efac]',
-  next_bet: 'border-[#f97316]/35 bg-[#24150d] text-[#fdba74]',
-  incubate: 'border-[#3b82f6]/30 bg-[#0f1a2b] text-[#93c5fd]',
-  park: 'border-[#71717a]/30 bg-[#18181b] text-[#d4d4d8]'
+  launch_now: 'border-[var(--success)]/35 bg-[var(--success)]/10 text-[var(--success)]',
+  next_bet: 'border-[var(--fire)]/35 bg-[var(--fire)]/10 text-[var(--fire)]',
+  incubate: 'border-[var(--info)]/30 bg-[var(--info)]/10 text-[var(--info)]',
+  park: 'border-[var(--border-subtle)] bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
 }
 
 export function OpportunityCard({ opp, onClick }: { opp: Opportunity, onClick: () => void }) {
   const scoreTone = opp.score.total >= 86
-    ? 'text-[#86efac]'
+    ? 'text-[var(--success)]'
     : opp.score.total >= 76
-      ? 'text-[#fdba74]'
-      : 'text-[#d4d4d8]'
+      ? 'text-[var(--fire)]'
+      : 'text-[var(--text-secondary)]'
 
   return (
     <button

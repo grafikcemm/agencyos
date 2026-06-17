@@ -56,10 +56,13 @@ const config: Config = {
         'pill': 'var(--radius-pill)',
       },
       boxShadow: {
-        'card': '0 4px 20px rgba(0, 0, 0, 0.4)',
-        'elevated': '0 8px 32px rgba(0, 0, 0, 0.5)',
+        // Apple disiplini: kart = hairline; "elevated" = hafif yumuşak gölge;
+        // güçlü drop yalnızca product imgesi için (--shadow-product, inline).
+        'card': '0 0 0 1px rgba(0, 0, 0, 0.05)',
+        'elevated': '0 4px 24px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04)',
         'soft': 'var(--shadow-soft)',
         'hairline': 'var(--shadow-hairline)',
+        'product': 'var(--shadow-product)',
       }
     },
   },

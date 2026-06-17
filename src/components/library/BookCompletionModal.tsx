@@ -27,8 +27,8 @@ export function BookCompletionModal({ book, onClose, onComplete }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-[#111] border border-[#1f1f1f] rounded-card w-full max-w-md my-8 shadow-soft">
-        <div className="flex items-center justify-between p-4 border-b border-[#1f1f1f]">
+      <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-card w-full max-w-md my-8 shadow-soft">
+        <div className="flex items-center justify-between p-4 border-b border-[var(--border-subtle)]">
           <div>
             <div className="flex items-center gap-2">
               <span className="w-6 h-6 rounded-pill bg-cat-teal/15 border border-cat-teal/30 flex items-center justify-center shrink-0">
@@ -36,9 +36,9 @@ export function BookCompletionModal({ book, onClose, onComplete }: Props) {
               </span>
               <p className="text-[9px] font-mono uppercase tracking-widest text-cat-teal">Kitabı Bitir</p>
             </div>
-            <p className="text-white text-sm font-display font-medium mt-1.5">{book.title}</p>
+            <p className="text-[var(--text-primary)] text-sm font-display font-medium mt-1.5">{book.title}</p>
           </div>
-          <button onClick={onClose} className="text-[#555] hover:text-white transition-colors">
+          <button onClick={onClose} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
             <X size={16} />
           </button>
         </div>
@@ -46,7 +46,7 @@ export function BookCompletionModal({ book, onClose, onComplete }: Props) {
         <div className="p-4 space-y-5">
           {/* Tek çıkarım */}
           <div>
-            <label className="text-[9px] font-mono uppercase tracking-widest text-[#555] block mb-2">
+            <label className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)] block mb-2">
               En büyük çıkarımın ne?
             </label>
             <textarea
@@ -54,26 +54,26 @@ export function BookCompletionModal({ book, onClose, onComplete }: Props) {
               onChange={e => setTakeaway(e.target.value)}
               placeholder="Bu kitaptan aklında kalan tek şey..."
               rows={2}
-              className="w-full bg-[#0f0f0f] border border-[#2a2a2a] rounded-card px-3 py-2 text-white text-xs resize-none focus:outline-none focus:border-cat-teal/40 placeholder:text-[#444]"
+              className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-card px-3 py-2 text-[var(--text-primary)] text-xs resize-none focus:outline-none focus:border-cat-teal/40 placeholder:text-[var(--text-tertiary)]"
             />
           </div>
 
           {/* FTG aksiyon */}
           <div>
-            <label className="text-[9px] font-mono uppercase tracking-widest text-[#555] block mb-2">
+            <label className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)] block mb-2">
               Feed The Goat&apos;a bağlanacak 1 aksiyon
             </label>
             <input
               value={feedTheGoatAction}
               onChange={e => setFeedTheGoatAction(e.target.value)}
               placeholder="Sisteme eklenecek somut aksiyon..."
-              className="w-full bg-[#0f0f0f] border border-[#2a2a2a] rounded-card px-3 py-2 text-white text-xs focus:outline-none focus:border-cat-teal/40 placeholder:text-[#444]"
+              className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-card px-3 py-2 text-[var(--text-primary)] text-xs focus:outline-none focus:border-cat-teal/40 placeholder:text-[var(--text-tertiary)]"
             />
           </div>
 
           {/* Sıradaki kitap? */}
           <div>
-            <label className="text-[9px] font-mono uppercase tracking-widest text-[#555] block mb-2">
+            <label className="text-[9px] font-mono uppercase tracking-widest text-[var(--text-muted)] block mb-2">
               Sıradaki kitap?
             </label>
             <div className="flex gap-2">
@@ -86,7 +86,7 @@ export function BookCompletionModal({ book, onClose, onComplete }: Props) {
                       ? val
                         ? 'bg-cat-teal/15 border border-cat-teal/40 text-cat-teal'
                         : 'bg-cat-orange/10 border border-cat-orange/30 text-cat-orange'
-                      : 'bg-[#1a1a1a] border border-[#2a2a2a] text-[#888]'
+                      : 'bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-secondary)]'
                   }`}
                 >
                   {val ? 'Evet, sıradakine geç' : 'Biraz daha zaman lazım'}
@@ -98,7 +98,7 @@ export function BookCompletionModal({ book, onClose, onComplete }: Props) {
           <div className="flex gap-2 pt-1">
             <button
               onClick={onClose}
-              className="flex-1 py-2.5 border border-[#2a2a2a] text-[#888] text-xs rounded-card hover:text-white transition-colors"
+              className="flex-1 py-2.5 border border-[var(--border-subtle)] text-[var(--text-secondary)] text-xs rounded-card hover:text-[var(--text-primary)] transition-colors"
             >
               İptal
             </button>

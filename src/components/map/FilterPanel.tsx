@@ -3,7 +3,7 @@ import { Check } from "lucide-react"
 export function FilterPanel() {
   return (
     <div className="absolute top-16 left-6 z-[400] w-64">
-      <div className="os-card bg-[#050810]/90 backdrop-blur-md p-4 space-y-5">
+      <div className="os-card bg-[var(--bg-surface)]/90 backdrop-blur-md p-4 space-y-5">
         
         <h3 className="text-[10px] text-[var(--os-cyan)] font-bold tracking-widest uppercase">{"// FİLTRE"}</h3>
         
@@ -59,7 +59,7 @@ export function FilterPanel() {
             </label>
             
             <label className="flex items-center gap-3 cursor-pointer group">
-              <div className="w-3.5 h-3.5 border border-[var(--os-red)] bg-[#050810] rounded-sm flex items-center justify-center">
+              <div className="w-3.5 h-3.5 border border-[var(--os-red)] bg-[var(--bg-base)] rounded-sm flex items-center justify-center">
                 {/* Unchecked */}
               </div>
               <span className="text-[11px] font-bold tracking-wider text-[var(--text-secondary)]">LOST</span>

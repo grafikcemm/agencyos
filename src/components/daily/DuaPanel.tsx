@@ -28,48 +28,48 @@ Ey her şeyi işiten ve dua edenlerin duasını karşılıksız bırakmayan Alla
     <div className="w-full">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full flex items-center justify-between px-4 py-4 bg-[#0b0c10] border border-[#1f2430] shadow-soft hover:bg-[#11131a] transition-all group ${
+        className={`w-full flex items-center justify-between px-4 py-4 bg-[var(--bg-surface)] border border-[var(--border-subtle)] shadow-soft hover:bg-[var(--bg-card-hover)] transition-all group ${
           isOpen ? 'rounded-t-[14px] border-b-0' : 'rounded-card'
         }`}
       >
         <div className="flex items-center gap-3">
           <span className="text-xl text-[var(--accent)]">🤲</span>
           <div className="text-left">
-            <p className="text-sm font-semibold text-white font-display">
+            <p className="text-sm font-semibold text-[var(--text-primary)] font-display">
               Gün Sonu Duası
             </p>
-            <p className="font-mono text-[10px] uppercase tracking-wider text-[#4f5b66] mt-0.5">
+            <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)] mt-0.5">
               Günü bitirmeden önce oku
             </p>
           </div>
         </div>
         {isOpen ? (
-          <ChevronUp className="w-5 h-5 text-[#4f5b66]" />
+          <ChevronUp className="w-5 h-5 text-[var(--text-muted)]" />
         ) : (
-          <ChevronDown className="w-5 h-5 text-[#4f5b66]" />
+          <ChevronDown className="w-5 h-5 text-[var(--text-muted)]" />
         )}
       </button>
 
       {isOpen && (
-        <div className="bg-[#0b0c10] border-x border-b border-[#1f2430] rounded-b-[14px] shadow-soft animate-in fade-in duration-300 overflow-hidden">
+        <div className="bg-[var(--bg-surface)] border-x border-b border-[var(--border-subtle)] rounded-b-[14px] shadow-soft animate-in fade-in duration-300 overflow-hidden">
           <div className="px-4 py-6 font-sans">
 
             {/* GÜNLÜK SÖZ */}
             <div className="mb-6">
-              <p className="text-[#888888] text-sm italic">
+              <p className="text-[var(--text-muted)] text-sm italic">
                 &quot;{quote || defaultQuote}&quot;
               </p>
               <div className="mt-2 flex items-center gap-2">
-                <div className="h-px w-6 bg-[#1f2430]" />
-                <span className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-[#4f5b66]">
+                <div className="h-px w-6 bg-[var(--border-subtle)]" />
+                <span className="font-mono text-[10px] font-medium uppercase tracking-[0.2em] text-[var(--text-muted)]">
                   {author || defaultAuthor}
                 </span>
               </div>
             </div>
 
-            <div className="h-px w-full bg-[#1f2430] mb-6" />
+            <div className="h-px w-full bg-[var(--border-subtle)] mb-6" />
 
-            <p className="text-[#888888] text-sm leading-relaxed whitespace-pre-line opacity-90">
+            <p className="text-[var(--text-muted)] text-sm leading-relaxed whitespace-pre-line opacity-90">
               {duaMetni}
             </p>
           </div>

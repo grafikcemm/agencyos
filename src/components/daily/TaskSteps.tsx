@@ -100,10 +100,10 @@ export function TaskSteps({ taskId, steps, encourageNextStep = false }: TaskStep
       {/* İlerleme başlığı + ince bar */}
       {total > 0 && (
         <div className="flex items-center gap-2.5 mb-2.5">
-          <span className="font-mono text-[10px] text-[#777] tabular-nums shrink-0">
+          <span className="font-mono text-[10px] text-[var(--text-muted)] tabular-nums shrink-0">
             {doneCount}/{total} adım
           </span>
-          <div className="h-1 flex-1 rounded-full bg-[#1a1a1a] overflow-hidden">
+          <div className="h-1 flex-1 rounded-full bg-[var(--bg-elevated)] overflow-hidden">
             <div
               className={cn(
                 "h-full rounded-full transition-all duration-500",
@@ -136,7 +136,7 @@ export function TaskSteps({ taskId, steps, encourageNextStep = false }: TaskStep
                       ? "bg-[var(--accent-green)] border-[var(--accent-green)] text-black"
                       : isNext
                       ? "border-[var(--cat-blue)] hover:bg-[var(--cat-blue)]/20"
-                      : "border-[#3a3a3a] hover:border-[var(--cat-blue)]"
+                      : "border-[var(--border-strong)] hover:border-[var(--cat-blue)]"
                   )}
                   title="Adımı tamamla"
                 >
@@ -152,10 +152,10 @@ export function TaskSteps({ taskId, steps, encourageNextStep = false }: TaskStep
                   className={cn(
                     "flex-1 text-left text-[13px] leading-snug transition-colors whitespace-normal break-words",
                     step.is_done
-                      ? "text-[#555] line-through"
+                      ? "text-[var(--text-tertiary)] line-through"
                       : isNext
-                      ? "text-white font-medium"
-                      : "text-[#cfcfcf] hover:text-white"
+                      ? "text-[var(--text-primary)] font-medium"
+                      : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                   )}
                 >
                   {step.title}
@@ -169,7 +169,7 @@ export function TaskSteps({ taskId, steps, encourageNextStep = false }: TaskStep
 
                 <button
                   onClick={() => handleDelete(step.id)}
-                  className="opacity-0 group-hover/step:opacity-100 text-[#444] hover:text-[var(--danger)] transition-all shrink-0 mt-0.5"
+                  className="opacity-0 group-hover/step:opacity-100 text-[var(--text-tertiary)] hover:text-[var(--danger)] transition-all shrink-0 mt-0.5"
                   title="Adımı sil"
                 >
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -199,7 +199,7 @@ export function TaskSteps({ taskId, steps, encourageNextStep = false }: TaskStep
           }}
           disabled={isAdding}
           placeholder={total === 0 ? "İlk adımı yaz…" : "Adım ekle…"}
-          className="flex-1 bg-transparent border-b border-[#1f1f1f] px-1 py-1.5 text-[12px] font-mono text-[#aaa] placeholder-[#3a3a3a] focus:border-[var(--cat-blue)] focus:outline-none transition-colors disabled:opacity-50"
+          className="flex-1 bg-transparent border-b border-[var(--border-subtle)] px-1 py-1.5 text-[12px] font-mono text-[var(--text-secondary)] placeholder-[var(--border-strong)] focus:border-[var(--cat-blue)] focus:outline-none transition-colors disabled:opacity-50"
         />
         <button
           onClick={handleAdd}

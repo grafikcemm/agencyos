@@ -39,8 +39,8 @@ const CATEGORY_LABEL: Record<OfferCategory, string> = {
 }
 
 const CATEGORY_COLOR: Record<OfferCategory, string> = {
-  revenue: '#5ee6b0',
-  operations: '#5ac8fa',
+  revenue: 'var(--success)',
+  operations: 'var(--info)',
   creative: '#8b5cf6',
 }
 
@@ -120,9 +120,9 @@ export default function ServicesPage() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <SummaryStat icon={Package} label="Toplam hizmet" value={String(summary.total)} color="#5ac8fa" />
-          <SummaryStat icon={TrendingUp} label="Para kazandıran" value={String(summary.revenueOffers)} color="#5ee6b0" />
-          <SummaryStat icon={Wallet} label="Toplam aylık potansiyel" value={formatTL(summary.totalMonthly)} color="#e5b567" accent />
+          <SummaryStat icon={Package} label="Toplam hizmet" value={String(summary.total)} color="var(--info)" />
+          <SummaryStat icon={TrendingUp} label="Para kazandıran" value={String(summary.revenueOffers)} color="var(--success)" />
+          <SummaryStat icon={Wallet} label="Toplam aylık potansiyel" value={formatTL(summary.totalMonthly)} color="var(--warning)" accent />
           <SummaryStat icon={Target} label="Ortalama yıllık" value={formatTL(summary.avgAnnual)} color="#8b5cf6" />
         </div>
 
@@ -179,7 +179,7 @@ export default function ServicesPage() {
             const isOpen = expanded === offer.id
             const color = CATEGORY_COLOR[offer.category]
             return (
-              <div key={offer.id} className="group/card bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-black/20 hover:border-[var(--accent)]/40">
+              <div key={offer.id} className="group/card bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl overflow-hidden flex flex-col transition-all duration-200 hover:-translate-y-0.5 shadow-soft hover:border-[var(--accent)]/40">
                 <div className="p-4 border-b border-[var(--border-subtle)] space-y-2 relative">
                   <div className="absolute left-0 top-0 bottom-0 w-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity" style={{ background: color }} />
                   <div className="flex items-start justify-between gap-2">

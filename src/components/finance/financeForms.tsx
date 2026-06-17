@@ -8,8 +8,8 @@ import React, { useState } from "react";
 import { Check, X } from "lucide-react";
 
 export const inputClass =
-  "w-full bg-[#0a0a0a] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-white placeholder:text-[#333] focus:outline-none focus:border-[var(--cat-blue)]/40 transition-colors";
-export const labelClass = "text-[9px] uppercase tracking-wider text-[#555] font-bold block mb-1";
+  "w-full bg-[var(--bg-base)] border border-[var(--border)] rounded-lg px-3 py-2 text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus:border-[var(--cat-blue)]/40 transition-colors";
+export const labelClass = "text-[9px] uppercase tracking-wider text-[var(--text-muted)] font-bold block mb-1";
 
 export type FieldType = "text" | "number" | "select" | "date" | "checkbox" | "textarea";
 export interface FormField {
@@ -165,10 +165,10 @@ export function RecordForm({
   };
 
   return (
-    <form onSubmit={submit} className="bg-[#0d0d0d] border border-[var(--border)] rounded-xl p-4 space-y-3">
+    <form onSubmit={submit} className="bg-[var(--bg-base)] border border-[var(--border)] rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-[11px] text-white font-medium">{title}</span>
-        <button type="button" onClick={onCancel} className="text-[#555] hover:text-white transition-colors"><X size={14} /></button>
+        <span className="text-[11px] text-[var(--text-primary)] font-medium">{title}</span>
+        <button type="button" onClick={onCancel} className="text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"><X size={14} /></button>
       </div>
       <div className="grid grid-cols-2 gap-2">
         {fields.map((f) => (
@@ -194,7 +194,7 @@ export function RecordForm({
             {f.type === "checkbox" && (
               <label className="flex items-center gap-2 mt-5 cursor-pointer">
                 <input type="checkbox" checked={!!form[f.key]} onChange={(e) => set(f.key, e.target.checked)} className="accent-[var(--cat-blue)]" />
-                <span className="text-[11px] text-[#aaa]">{f.label}</span>
+                <span className="text-[11px] text-[var(--text-secondary)]">{f.label}</span>
               </label>
             )}
           </div>
@@ -204,7 +204,7 @@ export function RecordForm({
         <button type="submit" className="flex-1 flex items-center justify-center gap-1.5 bg-[var(--accent-green)]/10 border border-[var(--accent-green)]/25 text-[var(--accent-green)] text-[11px] font-medium py-2 rounded-lg hover:bg-[var(--accent-green)]/15 transition-all">
           <Check size={12} />Kaydet
         </button>
-        <button type="button" onClick={onCancel} className="flex-1 text-[#555] text-[11px] border border-[var(--border)] py-2 rounded-lg hover:text-[#888] transition-colors">İptal</button>
+        <button type="button" onClick={onCancel} className="flex-1 text-[var(--text-muted)] text-[11px] border border-[var(--border)] py-2 rounded-lg hover:text-[var(--text-secondary)] transition-colors">İptal</button>
       </div>
     </form>
   );

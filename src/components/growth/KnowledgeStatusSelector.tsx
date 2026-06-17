@@ -3,11 +3,11 @@
 import type { CareerSkillStatus } from "@/data/careerRoadmap"
 
 const OPTIONS: { value: CareerSkillStatus; label: string; color: string }[] = [
-  { value: "known", label: "Biliyorum", color: "text-green-400 border-green-400/40 bg-green-400/10" },
+  { value: "known", label: "Biliyorum", color: "text-[var(--success)] border-[var(--success)]/40 bg-[var(--success)]/10" },
   { value: "needs_practice", label: "Tekrar Lazım", color: "text-[var(--warning)] border-[var(--warning)]/40 bg-[var(--warning)]/10" },
-  { value: "in_progress", label: "Uygulama Lazım", color: "text-orange-400 border-orange-400/40 bg-orange-400/10" },
-  { value: "not_started", label: "Eksik Var", color: "text-red-400 border-red-400/40 bg-red-400/10" },
-  { value: "active", label: "Sıfırdan Öğrenilecek", color: "text-blue-400 border-blue-400/40 bg-blue-400/10" },
+  { value: "in_progress", label: "Uygulama Lazım", color: "text-[var(--fire)] border-[var(--fire)]/40 bg-[var(--fire)]/10" },
+  { value: "not_started", label: "Eksik Var", color: "text-[var(--danger)] border-[var(--danger)]/40 bg-[var(--danger)]/10" },
+  { value: "active", label: "Sıfırdan Öğrenilecek", color: "text-[var(--info)] border-[var(--info)]/40 bg-[var(--info)]/10" },
 ]
 
 interface Props {
@@ -26,7 +26,7 @@ export function KnowledgeStatusSelector({ skillId, current, onChange }: Props) {
           className={`px-3 py-1.5 text-xs font-mono border rounded transition-all ${
             current === opt.value
               ? opt.color + " opacity-100"
-              : "text-[#666] border-[#1f1f1f] bg-transparent hover:border-[#333] hover:text-[#999]"
+              : "text-[var(--text-muted)] border-[var(--border-subtle)] bg-transparent hover:border-[var(--border-strong)] hover:text-[var(--text-secondary)]"
           }`}
         >
           {opt.label}

@@ -95,7 +95,7 @@ export function TaskDetailModal({ task, onClose }: TaskDetailModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg max-h-[88vh] overflow-y-auto bg-[#0f0f0f] border border-[var(--border)] rounded-card shadow-soft">
+      <div className="relative w-full max-w-lg max-h-[88vh] overflow-y-auto bg-[var(--bg-base)] border border-[var(--border)] rounded-card shadow-soft">
         {/* Header: düzenlenebilir başlık + öncelik + kapat */}
         <div className="flex items-start gap-3 p-5 border-b border-[var(--border)]">
           <button
@@ -103,7 +103,7 @@ export function TaskDetailModal({ task, onClose }: TaskDetailModalProps) {
             title={priority ? "Önceliği kaldır" : "Öncelikli işaretle"}
             className={cn(
               "mt-1 shrink-0 font-bold text-lg leading-none transition-colors",
-              priority ? "text-[var(--danger)] scale-110" : "text-[#444] hover:text-[#888]",
+              priority ? "text-[var(--danger)] scale-110" : "text-[var(--text-tertiary)] hover:text-[var(--text-muted)]",
             )}
           >
             !
@@ -112,10 +112,10 @@ export function TaskDetailModal({ task, onClose }: TaskDetailModalProps) {
             value={title}
             onChange={(e) => { setTitle(e.target.value); setSaveState("idle"); }}
             rows={1}
-            className="flex-1 bg-transparent text-white text-lg font-display font-medium resize-none focus:outline-none leading-snug"
+            className="flex-1 bg-transparent text-[var(--text-primary)] text-lg font-display font-medium resize-none focus:outline-none leading-snug"
             placeholder="Görev başlığı"
           />
-          <button onClick={onClose} className="shrink-0 text-[#555] hover:text-white transition-colors mt-1" title="Kapat">
+          <button onClick={onClose} className="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors mt-1" title="Kapat">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
@@ -130,7 +130,7 @@ export function TaskDetailModal({ task, onClose }: TaskDetailModalProps) {
                 <span className="font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--cat-blue)] block mb-1">
                   Sıradaki somut adım
                 </span>
-                <p className="text-sm text-white leading-snug truncate">
+                <p className="text-sm text-[var(--text-primary)] leading-snug truncate">
                   {nextStep ? nextStep.title : "Aşağıdan ilk adımı ekle — büyük hedefi parçala."}
                 </p>
               </div>
@@ -144,7 +144,7 @@ export function TaskDetailModal({ task, onClose }: TaskDetailModalProps) {
               ) : timer > 0 ? (
                 <div className="shrink-0 text-center">
                   <span className="font-mono text-2xl text-[var(--cat-blue)] tabular-nums block leading-none">{fmt(timer)}</span>
-                  <button onClick={() => setTimer(null)} className="text-[9px] text-[#555] hover:text-[#888] mt-1">durdur</button>
+                  <button onClick={() => setTimer(null)} className="text-[9px] text-[var(--text-tertiary)] hover:text-[var(--text-muted)] mt-1">durdur</button>
                 </div>
               ) : (
                 <span className="shrink-0 text-xs text-[var(--accent-green)] font-medium text-right max-w-[40%]">
@@ -156,27 +156,27 @@ export function TaskDetailModal({ task, onClose }: TaskDetailModalProps) {
 
           {/* Açıklama */}
           <div>
-            <label className="font-mono text-[9px] uppercase tracking-[0.14em] text-[#555] block mb-1.5">Açıklama</label>
+            <label className="font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] block mb-1.5">Açıklama</label>
             <textarea
               value={description}
               onChange={(e) => { setDescription(e.target.value); setSaveState("idle"); }}
               rows={3}
               placeholder="Bu görev tam olarak ne? Tamamlanmış sayılması için ne olmalı?"
-              className="w-full bg-[#0a0a0a] border border-[var(--border)] rounded-lg px-3 py-2 text-[13px] text-[#cfcfcf] placeholder-[#333] focus:outline-none focus:border-[var(--cat-blue)]/40 transition-colors resize-none leading-relaxed"
+              className="w-full bg-[var(--bg-base)] border border-[var(--border)] rounded-lg px-3 py-2 text-[13px] text-[var(--text-secondary)] placeholder-[var(--border-strong)] focus:outline-none focus:border-[var(--cat-blue)]/40 transition-colors resize-none leading-relaxed"
             />
           </div>
 
           {/* Son tarih */}
           <div className="flex items-center gap-3">
-            <label className="font-mono text-[9px] uppercase tracking-[0.14em] text-[#555] shrink-0">Son tarih</label>
+            <label className="font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] shrink-0">Son tarih</label>
             <input
               type="date"
               value={dueDate}
               onChange={(e) => { setDueDate(e.target.value); setSaveState("idle"); }}
-              className="bg-[#0a0a0a] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[13px] text-[#cfcfcf] focus:outline-none focus:border-[var(--cat-blue)]/40 transition-colors"
+              className="bg-[var(--bg-base)] border border-[var(--border)] rounded-lg px-3 py-1.5 text-[13px] text-[var(--text-secondary)] focus:outline-none focus:border-[var(--cat-blue)]/40 transition-colors"
             />
             {dueDate && (
-              <button onClick={() => { setDueDate(""); setSaveState("idle"); }} className="text-[10px] text-[#555] hover:text-[#888]">temizle</button>
+              <button onClick={() => { setDueDate(""); setSaveState("idle"); }} className="text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-muted)]">temizle</button>
             )}
           </div>
 
@@ -187,22 +187,22 @@ export function TaskDetailModal({ task, onClose }: TaskDetailModalProps) {
 
           {/* Kendime not */}
           <div>
-            <label className="font-mono text-[9px] uppercase tracking-[0.14em] text-[#555] block mb-1.5">Kendime not</label>
+            <label className="font-mono text-[9px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] block mb-1.5">Kendime not</label>
             <input
               type="text"
               value={note}
               onChange={(e) => { setNote(e.target.value); setSaveState("idle"); }}
               placeholder="Kısa hatırlatma…"
-              className="w-full bg-[#0a0a0a] border border-[var(--border)] rounded-lg px-3 py-2 text-[13px] text-[#cfcfcf] placeholder-[#333] focus:outline-none focus:border-[var(--cat-blue)]/40 transition-colors"
+              className="w-full bg-[var(--bg-base)] border border-[var(--border)] rounded-lg px-3 py-2 text-[13px] text-[var(--text-secondary)] placeholder-[var(--border-strong)] focus:outline-none focus:border-[var(--cat-blue)]/40 transition-colors"
             />
           </div>
         </div>
 
         {/* Footer: kaydet + sil */}
-        <div className="flex items-center justify-between gap-3 p-5 border-t border-[var(--border)] sticky bottom-0 bg-[#0f0f0f]">
+        <div className="flex items-center justify-between gap-3 p-5 border-t border-[var(--border)] sticky bottom-0 bg-[var(--bg-base)]">
           <button
             onClick={handleDelete}
-            className="text-xs text-[#555] hover:text-[var(--danger)] transition-colors"
+            className="text-xs text-[var(--text-tertiary)] hover:text-[var(--danger)] transition-colors"
           >
             Görevi sil
           </button>

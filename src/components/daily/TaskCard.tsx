@@ -114,16 +114,16 @@ export function TaskCard({
         onClick={handleClick}
         className={cn(
           "flex items-center gap-4 px-3 py-3 rounded-xl border transition-colors relative group",
-          isPassive ? "opacity-40 grayscale cursor-not-allowed bg-transparent border-[#1E1E1E]" : 
-          isBonus ? "border-dashed border-[#1E1E1E] bg-transparent hover:bg-[#1A1A1A]" :
-          "bg-[#111111] border-[#1E1E1E] hover:border-[#333333] cursor-pointer"
+          isPassive ? "opacity-40 grayscale cursor-not-allowed bg-transparent border-[var(--border-subtle)]" :
+          isBonus ? "border-dashed border-[var(--border-subtle)] bg-transparent hover:bg-[var(--bg-elevated)]" :
+          "bg-[var(--bg-surface)] border-[var(--border-subtle)] hover:border-[var(--border-strong)] cursor-pointer"
         )}
       >
         {/* Icon (Status Dot) */}
         <div
           className={cn(
             "w-4 h-4 rounded-full flex items-center justify-center shrink-0 transition-all text-white",
-            isDone ? "bg-[#22C55E] border border-[#22C55E]" : isPassive ? "border border-[#1E1E1E] bg-transparent" : "border border-[#444444]"
+            isDone ? "bg-[var(--success)] border border-[var(--success)]" : isPassive ? "border border-[var(--border-subtle)] bg-transparent" : "border border-[var(--border-strong)]"
           )}
         >
           {isDone && (
@@ -137,12 +137,12 @@ export function TaskCard({
         <span
           className={cn(
             "flex-1 text-sm font-medium transition-all w-full truncate",
-            isDone ? "text-[#444444] line-through" : isPassive ? "text-[#666666]" : "text-white"
+            isDone ? "text-[var(--text-tertiary)] line-through" : isPassive ? "text-[var(--text-muted)]" : "text-[var(--text-primary)]"
           )}
         >
           {title}
           {isPassive && (
-            <span className="ml-3 text-[10px] bg-[#141414] text-[#6366f1] px-2 py-0.5 rounded-full font-medium">
+            <span className="ml-3 text-[10px] bg-[var(--bg-surface)] text-[var(--info)] px-2 py-0.5 rounded-full font-medium">
               {getPassiveLabel()}
             </span>
           )}
@@ -153,9 +153,9 @@ export function TaskCard({
           <span
             className={cn(
               "px-2 py-0.5 rounded text-[10px] tracking-wider font-bold",
-              priority === "P1" && "bg-[#ff453a] text-[#ff453a]",
+              priority === "P1" && "bg-[var(--danger)]/15 text-[var(--danger)]",
               priority === "P2" && "bg-[var(--warning)]/15 text-[var(--warning)]",
-              priority === "P3" && "bg-[#1c1c1c] text-[#ababab]"
+              priority === "P3" && "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
             )}
           >
             {priority}
@@ -164,14 +164,14 @@ export function TaskCard({
 
         {/* Points */}
         {!isProduction && (
-          <span className={cn("px-2 py-0.5 rounded-full text-xs font-bold transition-colors", isDone ? "bg-[#22C55E]/10 text-[#22C55E]" : "bg-[var(--accent)]/10 text-[var(--accent)]")}>
+          <span className={cn("px-2 py-0.5 rounded-full text-xs font-bold transition-colors", isDone ? "bg-[var(--success)]/10 text-[var(--success)]" : "bg-[var(--accent)]/10 text-[var(--accent)]")}>
             +{points}P
           </span>
         )}
 
         {/* XP Animation */}
         {isFlying && !isProduction && (
-          <span className="absolute right-16 top-1/2 -translate-y-1/2 text-xs font-bold text-[#6366f1] pointer-events-none animate-fly-up">
+          <span className="absolute right-16 top-1/2 -translate-y-1/2 text-xs font-bold text-[var(--info)] pointer-events-none animate-fly-up">
             +{points}P
           </span>
         )}
@@ -180,7 +180,7 @@ export function TaskCard({
           className={cn(
             "shrink-0 flex items-center justify-center transition-all duration-300",
             (isVitamin || isSkincare) && !isPassive && !isDone
-               ? "w-7 h-7 rounded-lg bg-[#222222] border border-[#333333] text-[#666666] hover:border-[#6366f1] hover:text-[#6366f1]"
+               ? "w-7 h-7 rounded-lg bg-[var(--bg-card-hover)] border border-[var(--border-strong)] text-[var(--text-muted)] hover:border-[var(--info)] hover:text-[var(--info)]"
                : "hidden"
           )}
         >

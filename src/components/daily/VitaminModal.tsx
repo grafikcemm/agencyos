@@ -108,22 +108,22 @@ export function VitaminModal({
       onClick={onClose}
     >
       <div 
-        className="bg-[#0f0f10] border border-[#1e1e20] rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-y-auto"
+        className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-2xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-[#1e1e20] bg-[#070708] rounded-t-2xl">
+        <div className="flex items-center justify-between p-5 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] rounded-t-2xl">
           <div>
-            <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
+            <h2 className="text-base font-bold text-[var(--text-primary)] tracking-tight flex items-center gap-2">
               <Sparkles size={16} className="text-[var(--accent)]" /> BUGÜNÜN TAKVİYELERİ
             </h2>
-            <p className="text-[10px] font-bold tracking-widest uppercase text-[#555] mt-1">
+            <p className="text-[10px] font-bold tracking-widest uppercase text-[var(--text-tertiary)] mt-1">
               {isWorkoutDay ? "💪 ANTRENMAN GÜNÜ REÇETESİ" : "💤 DİNLENME GÜNÜ REÇETESİ"}
             </p>
           </div>
           <button 
             onClick={onClose}
-            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/5 text-[#555] hover:text-white transition-all text-lg font-medium"
+            className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-[var(--bg-card-hover)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-all text-lg font-medium"
           >
             ×
           </button>
@@ -132,7 +132,7 @@ export function VitaminModal({
         {/* Success Alert */}
         {allTaken && (
           <div className="px-5 pt-5 animate-in slide-in-from-top-3 duration-500">
-            <div className="bg-[#30d158]/10 border border-[#30d158]/20 rounded-xl py-2.5 px-3.5 text-[#30d158] text-xs font-semibold text-center flex items-center justify-center gap-2">
+            <div className="bg-[var(--success)]/10 border border-[var(--success)]/20 rounded-xl py-2.5 px-3.5 text-[var(--success)] text-xs font-semibold text-center flex items-center justify-center gap-2">
               <Check size={12} strokeWidth={4} />
               <span>TÜM SUPPLEMENTLER ALINDI & ONAYLANDI</span>
             </div>
@@ -147,25 +147,25 @@ export function VitaminModal({
               <div 
                 key={pkg.key}
                 className={cn(
-                  "border rounded-xl px-4 py-3 bg-[#0a0a0a] transition-all duration-300 flex items-center justify-between gap-4",
-                  isTaken ? "border-[#30d158]/25 opacity-70" : "border-[#1e1e20]"
+                  "border rounded-xl px-4 py-3 bg-[var(--bg-base)] transition-all duration-300 flex items-center justify-between gap-4",
+                  isTaken ? "border-[var(--success)]/25 opacity-70" : "border-[var(--border-subtle)]"
                 )}
               >
                 <div className="flex-1 min-w-0">
                   <h3 className={cn(
                     "text-xs font-semibold tracking-tight transition-colors",
-                    isTaken ? "text-[#555] line-through" : "text-white"
+                    isTaken ? "text-[var(--text-tertiary)] line-through" : "text-[var(--text-primary)]"
                   )}>
                     {pkg.label}
-                    {pkg.optional && <span className="text-[9px] text-[#444] ml-1">(opsiyonel)</span>}
+                    {pkg.optional && <span className="text-[9px] text-[var(--text-tertiary)] ml-1">(opsiyonel)</span>}
                   </h3>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-[9px] text-[#444] font-mono">{pkg.time}</span>
+                  <span className="text-[9px] text-[var(--text-tertiary)] font-mono">{pkg.time}</span>
                   <div
                     className={cn(
                       "w-4 h-4 rounded-full flex items-center justify-center border transition-all duration-300",
-                      isTaken ? "bg-[#30d158] border-[#30d158] text-black" : "border-[#333]"
+                      isTaken ? "bg-[var(--success)] border-[var(--success)] text-black" : "border-[var(--border-strong)]"
                     )}
                   >
                     {isTaken && <Check size={10} strokeWidth={4} />}
@@ -177,7 +177,7 @@ export function VitaminModal({
         </div>
 
         {/* Action Footer */}
-        <div className="p-5 pt-2 border-t border-[#1e1e20] bg-[#070708] rounded-b-2xl">
+        <div className="p-5 pt-2 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] rounded-b-2xl">
           {!allTaken ? (
             <button
               onClick={handleTakeAllClick}
@@ -188,7 +188,7 @@ export function VitaminModal({
           ) : (
             <button
               onClick={onClose}
-              className="w-full py-3 bg-[#161618] border border-[#222] text-[#888] text-xs font-semibold rounded-xl hover:text-white transition-all"
+              className="w-full py-3 bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-muted)] text-xs font-semibold rounded-xl hover:text-[var(--text-primary)] transition-all"
             >
               KAPAT
             </button>

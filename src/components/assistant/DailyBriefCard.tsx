@@ -73,12 +73,12 @@ export function DailyBriefCard({ energyInput, today }: DailyBriefCardProps) {
   }
 
   return (
-    <div className="bg-[#111111] rounded-xl border border-[#1f1f1f] overflow-hidden">
+    <div className="bg-[var(--bg-surface)] rounded-card border border-[var(--border-subtle)] overflow-hidden">
       <div className="px-5 pt-4 pb-4">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <Zap size={13} className="text-[var(--accent)]" strokeWidth={2} />
-            <span className="text-[10px] uppercase tracking-widest text-[#888888] font-medium">
+            <span className="text-[10px] uppercase tracking-widest text-[var(--text-secondary)] font-medium">
               Günlük Brief
             </span>
           </div>
@@ -86,7 +86,7 @@ export function DailyBriefCard({ energyInput, today }: DailyBriefCardProps) {
             <button
               onClick={fetchBrief}
               disabled={loading}
-              className="text-[11px] text-[#888888] hover:text-[var(--accent)] transition-colors disabled:opacity-50"
+              className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--accent)] transition-colors disabled:opacity-50"
             >
               {loading ? "Üretiyor..." : "Oluştur"}
             </button>
@@ -94,7 +94,7 @@ export function DailyBriefCard({ energyInput, today }: DailyBriefCardProps) {
         </div>
 
         {!brief && !loading && (
-          <p className="text-[12px] text-[#666666]">
+          <p className="text-[12px] text-[var(--text-muted)]">
             Bugünün alışkanlıkları ve aranacak müşteriler için &quot;Oluştur&quot; butonuna bas.
           </p>
         )}
@@ -102,14 +102,14 @@ export function DailyBriefCard({ energyInput, today }: DailyBriefCardProps) {
         {loading && (
           <div className="space-y-2">
             {[40, 60, 50].map((w, i) => (
-              <div key={i} className="h-3 rounded animate-pulse bg-[#1a1a1a]" style={{ width: `${w}%` }} />
+              <div key={i} className="h-3 rounded animate-pulse bg-[var(--bg-elevated)]" style={{ width: `${w}%` }} />
             ))}
           </div>
         )}
 
         {brief && (
           <div className="space-y-3">
-            <p className="text-xs text-[#999999]">{brief.energySummary}</p>
+            <p className="text-xs text-[var(--text-secondary)]">{brief.energySummary}</p>
 
             <ul className="space-y-1.5">
               {brief.criticalActions.map((action, i) => {
@@ -121,8 +121,8 @@ export function DailyBriefCard({ energyInput, today }: DailyBriefCardProps) {
                     key={i}
                     className={`flex items-start gap-2 text-[13px] leading-relaxed rounded-lg px-3 py-2 ${
                       isCall
-                        ? "bg-[#161200] border border-[#2a2000] text-[#e8e8e8]"
-                        : "text-[#cccccc]"
+                        ? "bg-[var(--warning)]/10 border border-[var(--warning)]/20 text-[var(--text-primary)]"
+                        : "text-[var(--text-secondary)]"
                     }`}
                   >
                     {Icon ? (
@@ -136,8 +136,8 @@ export function DailyBriefCard({ energyInput, today }: DailyBriefCardProps) {
               })}
             </ul>
 
-            <div className="h-px bg-[#1a1a1a]" />
-            <p className="text-[11px] text-[#777777] italic">{brief.mentorNote}</p>
+            <div className="h-px bg-[var(--border-subtle)]" />
+            <p className="text-[11px] text-[var(--text-muted)] italic">{brief.mentorNote}</p>
 
             <button
               onClick={() => {
@@ -148,7 +148,7 @@ export function DailyBriefCard({ energyInput, today }: DailyBriefCardProps) {
                   /* ignore */
                 }
               }}
-              className="text-[10px] text-[#444444] hover:text-[#888888] transition-colors"
+              className="text-[10px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors"
             >
               Yenile
             </button>

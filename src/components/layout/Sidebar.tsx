@@ -84,14 +84,14 @@ export function Sidebar({ isCollapsed, onToggle, onNavigate }: SidebarProps) {
         {!isCollapsed && (
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-[var(--accent)] flex items-center justify-center">
-              <Zap className="w-4 h-4 text-black" />
+              <Zap className="w-4 h-4 text-white" />
             </div>
             <span className="font-display text-base font-semibold text-[var(--text-primary)] tracking-tight">Grafikcem</span>
           </div>
         )}
         {isCollapsed && (
           <div className="w-8 h-8 rounded-lg bg-[var(--accent)] flex items-center justify-center">
-            <Zap className="w-4 h-4 text-black" />
+            <Zap className="w-4 h-4 text-white" />
           </div>
         )}
       </div>
@@ -110,7 +110,7 @@ export function Sidebar({ isCollapsed, onToggle, onNavigate }: SidebarProps) {
       {/* Nav Groups */}
       <nav className="flex-1 flex flex-col gap-5 px-2 overflow-y-auto">
         {/* EN TEPE: Alışkanlık Takibi (en kritik yüzey) */}
-        <div className="flex flex-col gap-0.5 pb-1 mb-1 border-b border-white/5">
+        <div className="flex flex-col gap-0.5 pb-1 mb-1 border-b border-[var(--border-subtle)]">
           {(() => {
             const isActive = pathname === TOP_ITEM.href || pathname.startsWith(TOP_ITEM.href + '/')
             const Icon = TOP_ITEM.icon
@@ -124,7 +124,7 @@ export function Sidebar({ isCollapsed, onToggle, onNavigate }: SidebarProps) {
                 } ${
                   isActive
                     ? 'text-[var(--text-primary)] bg-[var(--accent-muted)] font-bold ring-1 ring-inset ring-[var(--accent)]/30'
-                    : 'text-[#c9c8d3] hover:text-white hover:bg-white/5'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
                 }`}
               >
                 <Icon className={`w-[18px] h-[18px] shrink-0 transition-transform duration-200 ${isActive ? 'text-[var(--accent)] scale-110' : 'text-[var(--accent)]/70'}`} />
@@ -154,10 +154,10 @@ export function Sidebar({ isCollapsed, onToggle, onNavigate }: SidebarProps) {
                     } ${
                       isActive
                         ? 'text-[var(--text-primary)] bg-[var(--accent-muted)] font-semibold ring-1 ring-inset ring-[var(--accent)]/25'
-                        : 'text-[#8e8d99] hover:text-white hover:bg-white/5'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
                     }`}
                   >
-                    <item.icon className={`w-[18px] h-[18px] shrink-0 transition-transform duration-200 ${isActive ? 'text-[var(--accent)] scale-105' : 'text-[#5f5f69]'}`} />
+                    <item.icon className={`w-[18px] h-[18px] shrink-0 transition-transform duration-200 ${isActive ? 'text-[var(--accent)] scale-105' : 'text-[var(--text-tertiary)]'}`} />
                     {!isCollapsed && <span className="text-[13px] font-semibold truncate tracking-wide">{item.label}</span>}
                   </Link>
                 )
@@ -188,29 +188,29 @@ export function Sidebar({ isCollapsed, onToggle, onNavigate }: SidebarProps) {
                 isCollapsed ? 'justify-center' : ''
               } ${
                 isActive
-                  ? 'text-[#f5f5f7] bg-[var(--accent-muted)] border-l-2 border-[var(--accent)] font-bold'
-                  : 'text-[#8e8d99] hover:text-white hover:bg-white/5'
+                  ? 'text-[var(--text-primary)] bg-[var(--accent-muted)] border-l-2 border-[var(--accent)] font-bold'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)]'
               }`}
             >
-              <item.icon className={`w-[18px] h-[18px] shrink-0 transition-transform duration-200 ${isActive ? 'text-[var(--accent)] scale-105' : 'text-[#5f5f69]'}`} />
+              <item.icon className={`w-[18px] h-[18px] shrink-0 transition-transform duration-200 ${isActive ? 'text-[var(--accent)] scale-105' : 'text-[var(--text-tertiary)]'}`} />
               {!isCollapsed && <span className="text-[13px] font-semibold truncate tracking-wide">{item.label}</span>}
             </Link>
           )
         })}
 
         {!isCollapsed && (
-          <div className="mt-4 pt-4 border-t border-white/5 px-2.5 flex items-center gap-3">
+          <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] px-2.5 flex items-center gap-3">
             <div className="relative">
               <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-[var(--accent)] to-[var(--accent-2)] flex items-center justify-center text-xs font-black text-white shadow-md shadow-[var(--accent)]/25">
                 GC
               </div>
-              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[#22c55e] border-2 border-[#08080a]" />
+              <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[var(--success)] border-2 border-[var(--bg-sidebar)]" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-xs font-bold text-[#f5f5f7] truncate">
+              <div className="text-xs font-bold text-[var(--text-primary)] truncate">
                 Cem Grafik
               </div>
-              <div className="text-[9px] text-[#5f5f69] font-black uppercase tracking-wider truncate">
+              <div className="text-[9px] text-[var(--text-tertiary)] font-black uppercase tracking-wider truncate">
                 Kurucu & CEO
               </div>
             </div>

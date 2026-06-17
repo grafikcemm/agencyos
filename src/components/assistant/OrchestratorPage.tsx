@@ -28,9 +28,9 @@ interface ReminderRow {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const MODE_ICONS: Record<PlanMode, React.ReactNode> = {
-  koruma: <Shield size={14} className="text-[#ef4444]" />,
+  koruma: <Shield size={14} className="text-[var(--danger)]" />,
   denge: <Scale size={14} className="text-[var(--warning)]" />,
-  atak: <Rocket size={14} className="text-[#22c55e]" />,
+  atak: <Rocket size={14} className="text-[var(--success)]" />,
 };
 const MODE_LABELS: Record<PlanMode, string> = {
   koruma: 'Koruma',
@@ -38,9 +38,9 @@ const MODE_LABELS: Record<PlanMode, string> = {
   atak: 'Atak',
 };
 const MODE_COLORS: Record<PlanMode, string> = {
-  koruma: '#ef4444',
+  koruma: 'var(--danger)',
   denge: 'var(--warning)',
-  atak: '#22c55e',
+  atak: 'var(--success)',
 };
 const AGENCY_LABELS: Record<AgencyLoad, string> = { low: 'Rahat', normal: 'Normal', high: 'Yoğun' };
 const ENERGY_LABELS: Record<EnergyLevel, string> = { low: 'Düşük', medium: 'Orta', high: 'Yüksek' };
@@ -53,7 +53,7 @@ const REMINDER_LABELS: Record<ReminderType, string> = {
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={`bg-[#111111] border border-[#1f1f1f] rounded-xl p-5 ${className}`}>
+    <div className={`bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-5 ${className}`}>
       {children}
     </div>
   );
@@ -61,7 +61,7 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-[10px] uppercase tracking-widest text-[#444444] font-medium block mb-3">
+    <span className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-medium block mb-3">
       {children}
     </span>
   );
@@ -81,7 +81,7 @@ function TodayPlanCard({ state, onRefresh }: { state: DailyState | null; onRefre
         <Label>Günlük Plan</Label>
         <button
           onClick={onRefresh}
-          className="text-[#333333] hover:text-[#666666] transition-colors"
+          className="text-[var(--text-tertiary)] hover:text-[var(--text-muted)] transition-colors"
           title="Yenile"
         >
           <RefreshCw size={12} />
@@ -98,48 +98,48 @@ function TodayPlanCard({ state, onRefresh }: { state: DailyState | null; onRefre
             {MODE_LABELS[mode]}
           </span>
         </div>
-        <span className="text-[11px] text-[#444444]">Ajans: {AGENCY_LABELS[agencyLoad]}</span>
-        <span className="text-[11px] text-[#444444]">Enerji: {ENERGY_LABELS[energy]}</span>
+        <span className="text-[11px] text-[var(--text-tertiary)]">Ajans: {AGENCY_LABELS[agencyLoad]}</span>
+        <span className="text-[11px] text-[var(--text-tertiary)]">Enerji: {ENERGY_LABELS[energy]}</span>
       </div>
 
       {plan ? (
         <>
-          <div className="bg-[#161200] border border-[#2a2000] rounded-lg px-3 py-2.5 mb-4">
+          <div className="bg-[var(--accent-muted)] border border-[var(--accent)]/20 rounded-lg px-3 py-2.5 mb-4">
             <span className="text-[10px] uppercase tracking-widest text-[var(--accent)] font-medium block mb-1">
               Kilit
             </span>
-            <p className="text-sm text-[#cccccc]">{plan.todayLock}</p>
+            <p className="text-sm text-[var(--text-secondary)]">{plan.todayLock}</p>
           </div>
 
           <div className="mb-3">
-            <span className="text-[10px] text-[#444444] block mb-2">
+            <span className="text-[10px] text-[var(--text-tertiary)] block mb-2">
               Maks {plan.maxActiveTasks} aktif iş
             </span>
             {plan.priorityTasks.map((t, i) => (
               <div key={i} className="flex items-start gap-2 mb-1.5">
-                <span className="text-[10px] text-[#555555] mt-0.5 shrink-0">{i + 1}.</span>
-                <span className="text-xs text-[#888888]">{t.title}</span>
+                <span className="text-[10px] text-[var(--text-tertiary)] mt-0.5 shrink-0">{i + 1}.</span>
+                <span className="text-xs text-[var(--text-muted)]">{t.title}</span>
               </div>
             ))}
           </div>
 
-          <div className="h-px bg-[#1a1a1a] mb-3" />
+          <div className="h-px bg-[var(--border-subtle)] mb-3" />
 
-          <div className="grid grid-cols-2 gap-2 text-xs text-[#555555]">
+          <div className="grid grid-cols-2 gap-2 text-xs text-[var(--text-tertiary)]">
             <div>
-              <span className="text-[10px] text-[#3b3b3b] block">Sağlık</span>
+              <span className="text-[10px] text-[var(--text-tertiary)] block">Sağlık</span>
               {plan.health.todaySummary}
             </div>
             {plan.readingTarget && (
               <div>
-                <span className="text-[10px] text-[#3b3b3b] block">Okuma</span>
+                <span className="text-[10px] text-[var(--text-tertiary)] block">Okuma</span>
                 {plan.readingTarget}
               </div>
             )}
           </div>
         </>
       ) : (
-        <p className="text-xs text-[#444444]">
+        <p className="text-xs text-[var(--text-tertiary)]">
           Plan henüz oluşturulmadı. Sabah check-in sonrasında Telegram&apos;dan /plan yaz.
         </p>
       )}
@@ -149,11 +149,11 @@ function TodayPlanCard({ state, onRefresh }: { state: DailyState | null; onRefre
 
 function ConnectedSystemsCard({ plan }: { plan: UnifiedTodayPlan | null }) {
   const systems = [
-    { label: 'Ritimler', value: plan ? `${plan.rhythms.length} aktif` : '—', color: '#3b82f6' },
-    { label: 'Sağlık', value: plan ? `Gün ${plan.health.day}/30` : '—', color: '#22c55e' },
+    { label: 'Ritimler', value: plan ? `${plan.rhythms.length} aktif` : '—', color: 'var(--info)' },
+    { label: 'Sağlık', value: plan ? `Gün ${plan.health.day}/30` : '—', color: 'var(--success)' },
     { label: 'Finans', value: plan ? 'Bağlı' : '—', color: 'var(--warning)' },
     { label: 'Kütüphane', value: plan?.readingTarget ? 'Aktif kitap' : 'Seçili değil', color: '#8b5cf6' },
-    { label: 'Gelişim', value: plan ? 'Bağlı' : '—', color: '#f97316' },
+    { label: 'Gelişim', value: plan ? 'Bağlı' : '—', color: 'var(--fire)' },
   ];
 
   return (
@@ -164,10 +164,10 @@ function ConnectedSystemsCard({ plan }: { plan: UnifiedTodayPlan | null }) {
           <div key={s.label} className="text-center">
             <div
               className="w-2 h-2 rounded-full mx-auto mb-1.5"
-              style={{ backgroundColor: plan ? s.color : '#2a2a2a' }}
+              style={{ backgroundColor: plan ? s.color : 'var(--border-subtle)' }}
             />
-            <div className="text-[10px] text-[#333333] font-medium">{s.label}</div>
-            <div className="text-[10px] text-[#555555] mt-0.5">{s.value}</div>
+            <div className="text-[10px] text-[var(--text-tertiary)] font-medium">{s.label}</div>
+            <div className="text-[10px] text-[var(--text-tertiary)] mt-0.5">{s.value}</div>
           </div>
         ))}
       </div>
@@ -185,20 +185,20 @@ function TelegramStatusCard({ reminders }: { reminders: ReminderRow[] }) {
     <Card>
       <Label>Telegram</Label>
       <div className="flex items-center gap-2 mb-4">
-        <div className="w-2 h-2 rounded-full bg-[#22c55e]" />
-        <span className="text-xs text-[#666666]">
+        <div className="w-2 h-2 rounded-full bg-[var(--success)]" />
+        <span className="text-xs text-[var(--text-muted)]">
           Feed The Goat Asistanı
         </span>
       </div>
 
       <div className="space-y-2">
         {lastSent ? (
-          <div className="text-xs text-[#444444]">
+          <div className="text-xs text-[var(--text-tertiary)]">
             Son gönderim: {REMINDER_LABELS[lastSent.reminder_type]} —{' '}
             {new Date(lastSent.sent_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
           </div>
         ) : (
-          <div className="text-xs text-[#333333]">Bugün henüz mesaj gönderilmedi.</div>
+          <div className="text-xs text-[var(--text-tertiary)]">Bugün henüz mesaj gönderilmedi.</div>
         )}
 
         <div className="space-y-1 mt-3">
@@ -206,13 +206,13 @@ function TelegramStatusCard({ reminders }: { reminders: ReminderRow[] }) {
             const sent = todayReminders.find(r => r.reminder_type === type);
             return (
               <div key={type} className="flex items-center justify-between">
-                <span className="text-[11px] text-[#444444]">{label}</span>
+                <span className="text-[11px] text-[var(--text-tertiary)]">{label}</span>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] text-[#333333]">{REMINDER_SCHEDULE[type]}</span>
+                  <span className="text-[10px] text-[var(--text-tertiary)]">{REMINDER_SCHEDULE[type]}</span>
                   {sent ? (
-                    <CheckCircle size={11} className="text-[#22c55e]" />
+                    <CheckCircle size={11} className="text-[var(--success)]" />
                   ) : (
-                    <Clock size={11} className="text-[#333333]" />
+                    <Clock size={11} className="text-[var(--text-tertiary)]" />
                   )}
                 </div>
               </div>
@@ -222,7 +222,7 @@ function TelegramStatusCard({ reminders }: { reminders: ReminderRow[] }) {
       </div>
 
       {!isConnected && (
-        <p className="text-[10px] text-[#333333] mt-3">
+        <p className="text-[10px] text-[var(--text-tertiary)] mt-3">
           Env: TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID gerekli
         </p>
       )}
@@ -239,12 +239,12 @@ function ReminderSettingsCard() {
       <div className="space-y-2">
         {order.map(type => (
           <div key={type} className="flex items-center justify-between">
-            <span className="text-xs text-[#555555]">{REMINDER_LABELS[type]}</span>
-            <span className="text-xs text-[#333333] font-mono">{REMINDER_SCHEDULE[type]}</span>
+            <span className="text-xs text-[var(--text-tertiary)]">{REMINDER_LABELS[type]}</span>
+            <span className="text-xs text-[var(--text-tertiary)] font-mono">{REMINDER_SCHEDULE[type]}</span>
           </div>
         ))}
       </div>
-      <p className="text-[10px] text-[#444444] mt-3">
+      <p className="text-[10px] text-[var(--text-tertiary)] mt-3">
         Hatırlatma saatleri sistem ayarlarından yönetilir.
       </p>
     </Card>
@@ -263,17 +263,17 @@ function AssistantLog({ plan, reminders }: { plan: UnifiedTodayPlan | null; remi
 
       {plan && (
         <div className="mb-4">
-          <span className="text-[10px] text-[#3b3b3b] block mb-2">Bugünkü Telegram Mesajları</span>
+          <span className="text-[10px] text-[var(--text-tertiary)] block mb-2">Bugünkü Telegram Mesajları</span>
           {[
             { key: 'morningCheckIn', label: 'Sabah' },
             { key: 'eveningRhythm', label: 'Akşam' },
             { key: 'nightShutdown', label: 'Gece' },
           ].map(({ key, label }) => (
             <details key={key} className="mb-1.5">
-              <summary className="text-[11px] text-[#444444] cursor-pointer hover:text-[#666666] transition-colors">
+              <summary className="text-[11px] text-[var(--text-tertiary)] cursor-pointer hover:text-[var(--text-muted)] transition-colors">
                 {label} mesajı
               </summary>
-              <pre className="mt-1 text-[10px] text-[#333333] whitespace-pre-wrap leading-relaxed pl-2 border-l border-[#1e1e1e]">
+              <pre className="mt-1 text-[10px] text-[var(--text-tertiary)] whitespace-pre-wrap leading-relaxed pl-2 border-l border-[var(--border-subtle)]">
                 {plan.telegramMessages[key as keyof typeof plan.telegramMessages]}
               </pre>
             </details>
@@ -283,15 +283,15 @@ function AssistantLog({ plan, reminders }: { plan: UnifiedTodayPlan | null; remi
 
       {todayReminders.length > 0 && (
         <div>
-          <span className="text-[10px] text-[#3b3b3b] block mb-2">Gönderilen Hatırlatmalar</span>
+          <span className="text-[10px] text-[var(--text-tertiary)] block mb-2">Gönderilen Hatırlatmalar</span>
           {todayReminders.map((r, i) => (
             <div key={i} className="flex items-center justify-between mb-1">
-              <span className="text-[11px] text-[#555555]">{REMINDER_LABELS[r.reminder_type]}</span>
+              <span className="text-[11px] text-[var(--text-tertiary)]">{REMINDER_LABELS[r.reminder_type]}</span>
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] text-[#333333]">
+                <span className="text-[10px] text-[var(--text-tertiary)]">
                   {new Date(r.sent_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                 </span>
-                <CheckCircle size={10} className="text-[#22c55e]" />
+                <CheckCircle size={10} className="text-[var(--success)]" />
               </div>
             </div>
           ))}
@@ -299,7 +299,7 @@ function AssistantLog({ plan, reminders }: { plan: UnifiedTodayPlan | null; remi
       )}
 
       {!plan && todayReminders.length === 0 && (
-        <p className="text-xs text-[#333333]">
+        <p className="text-xs text-[var(--text-tertiary)]">
           Bugün henüz log yok. Sistem {process.env.NEXT_PUBLIC_ORCHESTRATOR_START ?? '1 Haziran 2026'}&apos;dan itibaren aktif.
         </p>
       )}
@@ -341,8 +341,8 @@ function QuickSendPanel() {
             key={cmd}
             onClick={() => sendTelegramCommand(cmd)}
             disabled={loading}
-            className="px-2.5 py-1 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a]
-                       text-[11px] text-[#555555] hover:text-[#888888] hover:border-[#333333]
+            className="px-2.5 py-1 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)]
+                       text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-muted)] hover:border-[var(--border-strong)]
                        transition-colors disabled:opacity-40 font-mono"
           >
             {cmd}
@@ -351,7 +351,7 @@ function QuickSendPanel() {
       </div>
 
       {status && (
-        <p className="text-[11px] text-[#444444] mt-2 flex items-center gap-1.5">
+        <p className="text-[11px] text-[var(--text-tertiary)] mt-2 flex items-center gap-1.5">
           <Zap size={10} />
           {status}
         </p>
@@ -365,16 +365,16 @@ function QuickSendPanel() {
 // ─── Source health rozeti ─────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, string> = {
-  ok: '#22c55e',
+  ok: 'var(--success)',
   degraded: 'var(--warning)',
   stale: 'var(--warning)',
-  down: '#404040',
-  empty: '#404040',
+  down: 'var(--border-strong)',
+  empty: 'var(--border-strong)',
 };
 
 function SourceBadge({ label, health }: { label: string; health: SourceHealth | undefined }) {
   const status = health?.status ?? 'down';
-  const color = STATUS_COLORS[status] ?? '#404040';
+  const color = STATUS_COLORS[status] ?? 'var(--border-strong)';
   const tip = health?.staleSince ? `Stale: ${health.staleSince}` : health?.warnings?.[0] ?? status;
   return (
     <span
@@ -408,7 +408,7 @@ function KomutaCard({ plan, loading, onRefresh, onAction }: KomutaCardProps) {
     return (
       <Card>
         <div className="h-28 flex items-center justify-center">
-          <span className="text-[11px] text-[#333333] animate-pulse">Komuta planı yükleniyor…</span>
+          <span className="text-[11px] text-[var(--text-tertiary)] animate-pulse">Komuta planı yükleniyor…</span>
         </div>
       </Card>
     );
@@ -419,11 +419,11 @@ function KomutaCard({ plan, loading, onRefresh, onAction }: KomutaCardProps) {
       <Card>
         <div className="flex items-center justify-between mb-3">
           <Label>Ana Komuta</Label>
-          <button onClick={onRefresh} className="text-[#333333] hover:text-[#555555] transition-colors" title="Plan üret">
+          <button onClick={onRefresh} className="text-[var(--text-tertiary)] hover:text-[var(--text-muted)] transition-colors" title="Plan üret">
             <RefreshCw size={12} />
           </button>
         </div>
-        <p className="text-[11px] text-[#404040]">Bugün henüz komuta planı yok. Üretmek için yenile.</p>
+        <p className="text-[11px] text-[var(--text-tertiary)]">Bugün henüz komuta planı yok. Üretmek için yenile.</p>
       </Card>
     );
   }
@@ -439,19 +439,19 @@ function KomutaCard({ plan, loading, onRefresh, onAction }: KomutaCardProps) {
           <SourceBadge label="AOS" health={plan.sourceHealth?.agencyos} />
           <SourceBadge label="NAI" health={plan.sourceHealth?.newsAi} />
           <SourceBadge label="XAG" health={plan.sourceHealth?.xagent} />
-          <button onClick={onRefresh} className="text-[#333333] hover:text-[#555555] ml-1 transition-colors" title="Planı yenile">
+          <button onClick={onRefresh} className="text-[var(--text-tertiary)] hover:text-[var(--text-muted)] ml-1 transition-colors" title="Planı yenile">
             <RefreshCw size={12} />
           </button>
         </div>
       </div>
 
       {/* Kilit */}
-      <div className="mb-4 p-3 rounded-lg border border-[#1f1f1f] bg-[#0e0e0e]">
+      <div className="mb-4 p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-elevated)]">
         <div className="flex items-start gap-2">
           <span className="text-[13px] shrink-0">🔒</span>
           <div>
-            <p className="text-[12px] font-medium text-white leading-snug">{plan.lock.title}</p>
-            <p className="text-[10px] text-[#555555] mt-0.5">{plan.lock.why}</p>
+            <p className="text-[12px] font-medium text-[var(--text-primary)] leading-snug">{plan.lock.title}</p>
+            <p className="text-[10px] text-[var(--text-tertiary)] mt-0.5">{plan.lock.why}</p>
           </div>
         </div>
       </div>
@@ -460,8 +460,8 @@ function KomutaCard({ plan, loading, onRefresh, onAction }: KomutaCardProps) {
       {plan.support.length > 0 && (
         <div className="mb-4 space-y-1.5">
           {plan.support.map((s, i) => (
-            <div key={i} className="flex items-center gap-2 text-[11px] text-[#777777]">
-              <span className="text-[10px] text-[#333333]">›</span>
+            <div key={i} className="flex items-center gap-2 text-[11px] text-[var(--text-muted)]">
+              <span className="text-[10px] text-[var(--text-tertiary)]">›</span>
               {s.title}
             </div>
           ))}
@@ -469,9 +469,9 @@ function KomutaCard({ plan, loading, onRefresh, onAction }: KomutaCardProps) {
       )}
 
       {/* Minimum gün */}
-      <div className="mb-5 px-2.5 py-1.5 rounded bg-[#0a0a0a] border border-[#1a1a1a]">
-        <span className="text-[9px] text-[#444444] uppercase tracking-widest mr-2">Min. gün</span>
-        <span className="text-[11px] text-[#888888]">{plan.minimumDay}</span>
+      <div className="mb-5 px-2.5 py-1.5 rounded bg-[var(--bg-base)] border border-[var(--border-subtle)]">
+        <span className="text-[9px] text-[var(--text-tertiary)] uppercase tracking-widest mr-2">Min. gün</span>
+        <span className="text-[11px] text-[var(--text-muted)]">{plan.minimumDay}</span>
       </div>
 
       {/* Aksiyon butonları */}
@@ -481,7 +481,7 @@ function KomutaCard({ plan, loading, onRefresh, onAction }: KomutaCardProps) {
           return (
             <div key={key} className="flex items-center gap-1">
               <span
-                className="text-[9px] text-[#444444] uppercase tracking-widest mr-1"
+                className="text-[9px] text-[var(--text-tertiary)] uppercase tracking-widest mr-1"
               >
                 {ACTION_LABELS[key]}
               </span>
@@ -489,19 +489,19 @@ function KomutaCard({ plan, loading, onRefresh, onAction }: KomutaCardProps) {
                 <>
                   <button
                     onClick={() => onAction(key, 'done')}
-                    className="px-2 py-0.5 rounded text-[9px] border border-[#22c55e44] text-[#22c55e] hover:bg-[#22c55e14] transition-colors"
+                    className="px-2 py-0.5 rounded text-[9px] border border-[var(--success)]/30 text-[var(--success)] hover:bg-[var(--success)]/10 transition-colors"
                   >
                     Yaptım
                   </button>
                   <button
                     onClick={() => onAction(key, 'skipped')}
-                    className="px-2 py-0.5 rounded text-[9px] border border-[#33333344] text-[#555555] hover:bg-[#1a1a1a] transition-colors"
+                    className="px-2 py-0.5 rounded text-[9px] border border-[var(--border-subtle)] text-[var(--text-tertiary)] hover:bg-[var(--bg-card-hover)] transition-colors"
                   >
                     Atla
                   </button>
                 </>
               ) : (
-                <span className={`text-[9px] ${state === 'done' ? 'text-[#22c55e]' : 'text-[#444444]'}`}>
+                <span className={`text-[9px] ${state === 'done' ? 'text-[var(--success)]' : 'text-[var(--text-tertiary)]'}`}>
                   {state === 'done' ? '✓ tamam' : '— atlandı'}
                 </span>
               )}
@@ -587,12 +587,12 @@ function OrchestratorPageInner() {
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-1">
-          <Bot size={14} className="text-[#444444]" strokeWidth={1.5} />
-          <span className="text-[10px] uppercase tracking-widest text-[#444444] font-medium">
+          <Bot size={14} className="text-[var(--text-tertiary)]" strokeWidth={1.5} />
+          <span className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-medium">
             Asistan — Günlük Orkestra
           </span>
         </div>
-        <p className="text-[12px] text-[#333333]">
+        <p className="text-[12px] text-[var(--text-tertiary)]">
           Tüm tabları birbirine bağlayan günlük planlama sistemi. Başlangıç: 1 Haziran 2026.
         </p>
       </div>
@@ -600,7 +600,7 @@ function OrchestratorPageInner() {
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map(i => (
-            <div key={i} className="h-32 bg-[#111111] border border-[#1a1a1a] rounded-xl animate-pulse" />
+            <div key={i} className="h-32 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl animate-pulse" />
           ))}
         </div>
       ) : (
@@ -633,7 +633,7 @@ function OrchestratorPageInner() {
 
           {/* Row 4: Original AssistantChat (kept) */}
           <div className="mt-2">
-            <span className="text-[10px] uppercase tracking-widest text-[#2a2a2a] font-medium block mb-3">
+            <span className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-medium block mb-3">
               AI Sohbet
             </span>
             <div id="assistant-chat-slot" />

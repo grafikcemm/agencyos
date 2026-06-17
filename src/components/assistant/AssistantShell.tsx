@@ -18,10 +18,10 @@ export function AssistantShell({ energyInput, today }: AssistantShellProps) {
   return (
     <div className="max-w-[860px] mx-auto px-4 sm:px-6 pb-16">
       <div className="mb-8">
-        <span className="text-[10px] uppercase tracking-widest text-[#444444] font-medium block">
+        <span className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-medium block">
           ASİSTAN
         </span>
-        <p className="text-[13px] text-[#555555] mt-1">
+        <p className="text-[13px] text-[var(--text-tertiary)] mt-1">
           Cem&apos;i tanıyan kişisel planlama ve disiplin asistanı.
         </p>
       </div>

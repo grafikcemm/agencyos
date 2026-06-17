@@ -5,11 +5,12 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ─────────────────────────────────────────────────────────────────────
-   FEED THE GOAT teması — birleşik token sistemi
-   FTG palet değerleri kazanır. AgencyOS token İSİMLERİ FTG değerlerine
-   remap edilir (mevcut iş sayfaları otomatik reskin), FTG isimleri ALIAS
-   olarak eklenir (portlanan hayat bileşenleri değişmeden çalışır).
-   Koyu kırmızı (#A4161A) marka accent'i; koyu (#0A0A0A) zemin. Swift Glow editöryel.
+   APPLE "CALM" AÇIK TEMA — birleşik token sistemi
+   Apple'ın sakin, fotoğraf-öncelikli dili (bkz. DESIGN-apple.md), AÇIK
+   zeminde. Tek aksan: marka koyu kırmızısı (#A4161A) — Apple'ın mavisinin
+   yerini alır. Beyaz/parchment yüzey ritmi, hairline border, tek ürün
+   gölgesi. AgencyOS token İSİMLERİ değişmedi (sayfalar otomatik reskin);
+   --accent-yellow hâlâ kırmızı alias'ı (FTG geriye-dönük uyumluluk).
    ───────────────────────────────────────────────────────────────────── */
 
 @theme inline {
@@ -32,89 +33,90 @@
   --color-border: var(--border-subtle);
   --color-input: var(--border-subtle);
   --color-ring: var(--accent);
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  /* Swift Glow editöryel sistem: Helvetica Neue (self-host .woff2 gelince
-     layout.tsx'te next/font/local ile bağlanacak). O zamana kadar macOS'ta
-     gerçek Helvetica Neue, Windows'ta Inter Tight fallback render eder. */
-  --font-sans: "Helvetica Neue", Helvetica, var(--font-inter-tight), Arial, sans-serif;
-  --font-heading: "Helvetica Neue", Helvetica, var(--font-inter-tight), Arial, sans-serif;
+  --radius-sm: 8px;
+  --radius-md: 11px;
+  --radius-lg: 18px;
+  /* Apple sistem yazıtipi yığını: macOS/iOS'ta gerçek SF Pro, Windows'ta
+     Segoe UI, sonra Inter Tight (Arial'a düşmez). Apple tight tracking. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", var(--font-inter-tight), system-ui, sans-serif;
+  --font-heading: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", var(--font-inter-tight), system-ui, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 :root {
-  /* ─ Zemin: AgencyOS isimleri (FTG değerleri) + FTG alias ─ */
-  --bg-base: #0a0a0a;
-  --bg-surface: #111111;
-  --bg-elevated: #1a1a1a;
-  --bg-sidebar: #0a0a0a;
-  --bg: #0a0a0a;
-  --surface: #111111;
-  --border: #1e1e1e;
+  /* ─ Zemin: Apple beyaz/parchment/pearl ─ */
+  --bg-base: #ffffff;          /* canvas */
+  --bg-surface: #ffffff;
+  --bg-elevated: #f5f5f7;      /* parchment */
+  --bg-sidebar: #f5f5f7;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --border: #e5e5e7;
 
   /* FTG enerji-tema varsayılanları (theme-mid mirror; wrapper'sız da çözülür) */
-  --bg-primary: #0a0a0b;
-  --bg-card: #141416;
-  --bg-card-elevated: #1c1c20;
-  --bg-card-hover: #222228;
-  --border-strong: #404040;
+  --bg-primary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-elevated: #fafafc; /* pearl */
+  --bg-card-hover: #f5f5f7;
+  --border-strong: #c7c7cc;
 
-  /* ─ Accent: marka koyu kırmızısı (Dark Red #A4161A). Sarı kaldırıldı.
-       --accent-yellow ARTIK kırmızı alias'ı (geriye-dönük uyumluluk:
-       MoneyRulesPanel + HabitTracker hâlâ bu ismi okuyor). on-red metin = beyaz. ─ */
+  /* ─ Accent: marka koyu kırmızısı (Dark Red #A4161A) = TEK evrensel aksan.
+       Apple'ın mavisinin yerini alır. --accent-yellow ARTIK kırmızı alias'ı
+       (geriye-dönük: MoneyRulesPanel + HabitTracker bu ismi okuyor).
+       on-red metin = beyaz. ─ */
   --accent: #a4161a;
   --accent-yellow: var(--accent);
-  --accent-green: #22c55e;
+  --accent-green: #1a8a3a;
   --accent-2: #7a1115;
   --accent-hover: #c21f23;
-  --accent-muted: rgba(164, 22, 26, 0.1);
-  --accent-glow: rgba(164, 22, 26, 0.2);
+  --accent-muted: rgba(164, 22, 26, 0.08);
+  --accent-glow: rgba(164, 22, 26, 0.18);
 
-  /* ─ Metin ─ */
-  --text-primary: #ffffff;
-  --text-secondary: #888888;
-  --text-muted: #444444;
-  --text-tertiary: #52525b;
-  --text-quaternary: #3a3a40;
+  /* ─ Metin: Apple ink (saf siyah değil) ─ */
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-muted: #86868b;
+  --text-tertiary: #a1a1a6;
+  --text-quaternary: #c7c7cc;
 
-  /* ─ Border ─ */
-  --border-subtle: #1e1e1e;
-  --border-highlight: #2a2a2a;
-  --border-color: #1e1e1e;
+  /* ─ Border: Apple hairline ─ */
+  --border-subtle: #e5e5e7;
+  --border-highlight: #d2d2d7;
+  --border-color: #e5e5e7;
 
-  /* ─ Semantik ─ */
-  --success: #22c55e;
-  --warning: #e5b567;
-  --danger: #ef4444;
-  --info: #5ac8fa;
-  --fire: #fb923c;
+  /* ─ Semantik (açık zemin için koyulaştırıldı: beyaz üstünde AA) ─ */
+  --success: #1a8a3a;
+  --warning: #b25e00;
+  --danger: #d11507;
+  --info: #0071a8;
+  --fire: #c2410c;
 
-  /* ─ FTG kategori aksanları (timeline ikon/şerit) ─ */
-  --cat-blue: #6aa2f0;
-  --cat-teal: #2dd4bf;
-  --cat-pink: #f472b6;
-  --cat-purple: #a78bfa;
-  --cat-orange: #fb923c;
-  --cat-cyan: #38bdf8;
+  /* ─ FTG kategori aksanları (açık zemin için koyu/doygun) ─ */
+  --cat-blue: #1d6fd6;
+  --cat-teal: #0d9488;
+  --cat-pink: #be185d;
+  --cat-purple: #6d28d9;
+  --cat-orange: #c2410c;
+  --cat-cyan: #0e7490;
   --cat-gray: #6b7280;
 
   /* ─ Shadow / radius / timeline ─ */
-  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 30px rgba(0, 0, 0, 0.28);
-  --shadow-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  --radius-card: 14px;
+  --shadow-soft: 0 0 0 1px rgba(0, 0, 0, 0.04);              /* kart = hairline */
+  --shadow-product: rgba(0, 0, 0, 0.22) 0 3px 30px;          /* yalnızca hero/ürün imgesi */
+  --shadow-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --radius-card: 18px;
   --radius-pill: 9999px;
-  --timeline-line: #242428;
+  --timeline-line: #e5e5e7;
 
   /* ─ Depth — koyu kırmızı çok hafif wash (editöryel: neredeyse düz) ─ */
   --glow-radial: radial-gradient(
     55% 50% at 50% 0%,
-    rgba(164, 22, 26, 0.05),
-    rgba(164, 22, 26, 0.025) 40%,
+    rgba(164, 22, 26, 0.04),
+    rgba(164, 22, 26, 0.02) 40%,
     transparent 70%
   );
-  --glass-bg: rgba(17, 17, 17, 0.72);
-  --glass-blur: 10px;
+  --glass-bg: rgba(245, 245, 247, 0.8);
+  --glass-blur: 20px;
 }
 
 @layer base {
@@ -124,13 +126,16 @@
   }
 
   html {
-    color-scheme: dark;
+    color-scheme: light;
   }
 
   body {
     background: var(--bg-base);
     color: var(--text-primary);
-    font-family: var(--font-sans), system-ui, -apple-system, sans-serif;
+    font-family: var(--font-sans);
+    font-size: 17px;
+    line-height: 1.47;
+    letter-spacing: -0.01em;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
@@ -143,17 +148,17 @@
     letter-spacing: -0.01em;
   }
 
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: var(--bg-base); }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
     background: var(--border-highlight);
     border-radius: 10px;
   }
-  ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
 
   ::selection {
-    background: rgba(164, 22, 26, 0.32);
-    color: #ffffff;
+    background: rgba(164, 22, 26, 0.18);
+    color: var(--accent-2);
   }
 }
 
@@ -218,32 +223,32 @@
     font-family: var(--font-heading);
     letter-spacing: -0.03em;
   }
-  /* Tek, en büyük sayfa başlığı (hero kelime) — landing-page ölçeği */
+  /* Tek, en büyük sayfa başlığı (hero kelime) — Apple display ölçeği */
   .display-xl {
     font-family: var(--font-heading);
-    font-weight: 800;
-    font-size: clamp(40px, 7vw, 120px);
-    line-height: 0.96;
-    letter-spacing: -0.035em;
+    font-weight: 600;
+    font-size: clamp(40px, 6vw, 88px);
+    line-height: 1.04;
+    letter-spacing: -0.03em;
   }
   .display-title {
     font-family: var(--font-heading);
-    font-weight: 800;
+    font-weight: 600;
     font-size: clamp(28px, 4vw, 48px);
-    line-height: 1.02;
-    letter-spacing: -0.03em;
+    line-height: 1.07;
+    letter-spacing: -0.022em;
   }
   .display-accent {
-    font-weight: 800;
+    font-weight: 600;
     color: var(--accent);
     font-style: normal;
   }
   .hero-title {
     font-family: var(--font-heading);
     font-size: clamp(22px, 2.6vw, 30px);
-    font-weight: 700;
+    font-weight: 600;
     line-height: 1.1;
-    letter-spacing: -0.025em;
+    letter-spacing: -0.02em;
   }
   /* Büyük istatistik sayıları (60 / 1000 / 100 000 motifi) */
   .stat-number {
@@ -287,21 +292,21 @@
   }
   .glass-card {
     position: relative;
-    background: var(--bg-surface);
-    -webkit-backdrop-filter: blur(var(--glass-blur));
-    backdrop-filter: blur(var(--glass-blur));
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: saturate(180%) blur(var(--glass-blur));
+    backdrop-filter: saturate(180%) blur(var(--glass-blur));
     border: 1px solid var(--border-subtle);
-    box-shadow: 0 1px 0 0 rgba(255, 255, 255, 0.02) inset;
+    box-shadow: var(--shadow-soft);
   }
   .glass-card::before { content: none; }
   .glass-glow {
     border-color: rgba(164, 22, 26, 0.2);
-    box-shadow: 0 0 0 1px rgba(164, 22, 26, 0.1);
+    box-shadow: 0 0 0 1px rgba(164, 22, 26, 0.12);
   }
   .glass-pill {
-    background: var(--bg-elevated);
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+    backdrop-filter: saturate(180%) blur(12px);
     border: 1px solid var(--border-subtle);
     border-radius: 9999px;
   }
@@ -319,35 +324,37 @@
 /* Bu sınıflar life layout wrapper'ına uygulanır; --accent'i FTG emphasis
    değerine override eder, böylece FTG bileşenleri orijinal görünür. */
 
+/* Açık enerji varyantları: low = parchment/soluk ink, mid = beyaz (varsayılan),
+   high = saf beyaz/güçlü kontrast. Her biri kendi kırmızı adımıyla. */
 .theme-low {
-  --bg-primary: #111113;
-  --bg-card: #181818;
-  --bg-card-elevated: #1f1f1f;
-  --border-subtle: #2a2a2a;
-  --text-primary: rgba(250, 250, 250, 0.55);
-  --text-secondary: rgba(161, 161, 170, 0.5);
-  --text-tertiary: rgba(82, 82, 91, 0.6);
+  --bg-primary: #f5f5f7;
+  --bg-card: #fafafc;
+  --bg-card-elevated: #ffffff;
+  --border-subtle: #e5e5e7;
+  --text-primary: #57575b;
+  --text-secondary: #86868b;
+  --text-tertiary: #a1a1a6;
   --accent: #7a1115;
 }
 .theme-mid {
-  --bg-primary: #0a0a0b;
-  --bg-card: #141416;
-  --bg-card-elevated: #1c1c20;
-  --border-subtle: #242428;
-  --text-primary: #fafafa;
-  --text-secondary: #a1a1aa;
-  --text-tertiary: #52525b;
+  --bg-primary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-elevated: #fafafc;
+  --border-subtle: #e5e5e7;
+  --text-primary: #1d1d1f;
+  --text-secondary: #6e6e73;
+  --text-tertiary: #a1a1a6;
   --accent: #a4161a;
 }
 .theme-high {
-  --bg-primary: #000000;
-  --bg-card: #0f0f0f;
-  --bg-card-elevated: #171717;
-  --border-subtle: #2a2a2a;
-  --border-strong: #404040;
-  --text-primary: #ffffff;
-  --text-secondary: #c4c4c4;
-  --text-tertiary: #6b6b6b;
+  --bg-primary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-elevated: #f5f5f7;
+  --border-subtle: #d2d2d7;
+  --border-strong: #c7c7cc;
+  --text-primary: #000000;
+  --text-secondary: #515154;
+  --text-tertiary: #86868b;
   --accent: #c21f23;
 }
 

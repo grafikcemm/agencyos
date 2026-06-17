@@ -163,10 +163,10 @@ export function DailyAiBriefCard({
   // Color helper based on energy level
   const energyBadgeColor =
     energyLevel === "LOW"
-      ? "text-[#ff453a] bg-[#ff453a]/10 border-[#ff453a]/20"
+      ? "text-[var(--danger)] bg-[var(--danger)]/10 border-[var(--danger)]/20"
       : energyLevel === "HIGH"
-      ? "text-[#ff9f0a] bg-[#ff9f0a]/10 border-[#ff9f0a]/20"
-      : "text-[#34c759] bg-[#34c759]/10 border-[#34c759]/20";
+      ? "text-[var(--warning)] bg-[var(--warning)]/10 border-[var(--warning)]/20"
+      : "text-[var(--success)] bg-[var(--success)]/10 border-[var(--success)]/20";
 
   const energyIcon =
     energyLevel === "LOW" ? (
@@ -185,11 +185,11 @@ export function DailyAiBriefCard({
       : "Dengeli Gün (Ritim)";
 
   return (
-    <div className="w-full bg-[#0D0D0D] border border-[#1A1A1A] rounded-2xl overflow-hidden p-5 transition-all duration-300 hover:border-[#222]">
+    <div className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-2xl overflow-hidden p-5 transition-all duration-300 hover:border-[var(--border-strong)]">
       <div className="flex items-center justify-between mb-3.5">
         <div className="flex items-center gap-2">
           <Sparkles size={14} className="text-[var(--accent)] animate-pulse" />
-          <h2 className="text-xs uppercase tracking-widest text-[#777] font-semibold">
+          <h2 className="text-xs uppercase tracking-widest text-[var(--text-muted)] font-semibold">
             Bugün Cem İçin
           </h2>
         </div>
@@ -201,7 +201,7 @@ export function DailyAiBriefCard({
           <button
             onClick={() => generateBrief()}
             disabled={loading}
-            className="text-[#555] hover:text-white transition-colors p-1 rounded-lg disabled:opacity-40 cursor-pointer"
+            className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors p-1 rounded-lg disabled:opacity-40 cursor-pointer"
             title="AI Planını Yenile"
           >
             <RefreshCw size={11} className={loading ? "animate-spin" : ""} />
@@ -211,19 +211,19 @@ export function DailyAiBriefCard({
 
       {loading && !brief && (
         <div className="space-y-3 py-2">
-          <div className="h-4 w-3/4 rounded bg-[#151515] animate-pulse" />
+          <div className="h-4 w-3/4 rounded bg-[var(--bg-elevated)] animate-pulse" />
           <div className="space-y-2">
-            <div className="h-3 w-5/6 rounded bg-[#151515] animate-pulse" />
-            <div className="h-3 w-2/3 rounded bg-[#151515] animate-pulse" />
+            <div className="h-3 w-5/6 rounded bg-[var(--bg-elevated)] animate-pulse" />
+            <div className="h-3 w-2/3 rounded bg-[var(--bg-elevated)] animate-pulse" />
           </div>
-          <div className="h-3.5 w-1/2 rounded bg-[#151515] animate-pulse mt-4" />
+          <div className="h-3.5 w-1/2 rounded bg-[var(--bg-elevated)] animate-pulse mt-4" />
         </div>
       )}
 
       {brief && (
         <div className="space-y-3.5 animate-in fade-in duration-300">
           {/* Energy Summary */}
-          <p className="text-xs text-[#888] font-medium leading-relaxed">
+          <p className="text-xs text-[var(--text-muted)] font-medium leading-relaxed">
             {brief.energySummary}
           </p>
 
@@ -231,8 +231,8 @@ export function DailyAiBriefCard({
           {brief.criticalActions && brief.criticalActions.length > 0 && (
             <ul className="space-y-2">
               {brief.criticalActions.slice(0, 3).map((action, idx) => (
-                <li key={idx} className="flex items-start gap-2.5 text-[13px] text-[#CCC] leading-relaxed">
-                  <span className="flex items-center justify-center w-4 h-4 rounded-full bg-[#1A1A1A] text-[9px] text-[var(--accent)] font-bold border border-[#252525] mt-px">
+                <li key={idx} className="flex items-start gap-2.5 text-[13px] text-[var(--text-secondary)] leading-relaxed">
+                  <span className="flex items-center justify-center w-4 h-4 rounded-full bg-[var(--bg-elevated)] text-[9px] text-[var(--accent)] font-bold border border-[var(--border-subtle)] mt-px">
                     {idx + 1}
                   </span>
                   <span>{action}</span>
@@ -242,14 +242,14 @@ export function DailyAiBriefCard({
           )}
 
           {/* Separator */}
-          <div className="h-px bg-[#161616] my-1" />
+          <div className="h-px bg-[var(--border-subtle)] my-1" />
 
           {/* Mentor Note */}
-          <div className="bg-[#12110A] border border-[#221D0E]/60 rounded-xl px-3 py-2.5">
+          <div className="bg-[var(--accent-muted)] border border-[var(--accent)]/20 rounded-xl px-3 py-2.5">
             <span className="text-[9px] uppercase tracking-wider text-[var(--accent)] font-semibold block mb-0.5">
               Mentor Notu
             </span>
-            <p className="text-xs text-[#A1A19D] leading-relaxed italic">
+            <p className="text-xs text-[var(--text-secondary)] leading-relaxed italic">
               &quot;{brief.mentorNote}&quot;
             </p>
           </div>

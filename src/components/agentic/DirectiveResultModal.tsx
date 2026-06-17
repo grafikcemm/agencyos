@@ -66,11 +66,11 @@ export function DirectiveResultModal({ running, result, error, label, onClose }:
 
           {!running && error && (
             <div className="space-y-3">
-              <div className="flex items-center gap-2 text-red-400">
+              <div className="flex items-center gap-2 text-[var(--danger)]">
                 <AlertTriangle className="w-5 h-5 shrink-0" />
                 <span className="text-sm font-bold">Direktif başarısız</span>
               </div>
-              <p className="text-xs text-[var(--text-secondary)] leading-relaxed bg-red-500/5 border border-red-500/15 rounded-lg p-3">
+              <p className="text-xs text-[var(--text-secondary)] leading-relaxed bg-[var(--danger)]/5 border border-[var(--danger)]/15 rounded-lg p-3">
                 {error}
               </p>
             </div>
@@ -79,7 +79,7 @@ export function DirectiveResultModal({ running, result, error, label, onClose }:
           {!running && result && (
             <div className="space-y-4">
               <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-emerald-400">
+                <div className="flex items-center gap-2 text-[var(--success)]">
                   <CheckCircle2 className="w-5 h-5 shrink-0" />
                   <span className="text-sm font-bold">İcraata döküldü</span>
                 </div>

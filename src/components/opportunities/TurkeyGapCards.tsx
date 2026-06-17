@@ -4,15 +4,15 @@ import { AlertTriangle, Globe2, Zap } from 'lucide-react'
 import { TURKEY_GAP_ANALYSIS, type TurkeyGapItem } from '@/lib/opportunityIntelligenceEngine'
 
 const POTENTIAL_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  high: { bg: 'bg-[#22c55e]/10', text: 'text-[#22c55e]', label: 'Yüksek' },
+  high: { bg: 'bg-[var(--success)]/10', text: 'text-[var(--success)]', label: 'Yüksek' },
   medium: { bg: 'bg-[var(--warning)]/10', text: 'text-[var(--warning)]', label: 'Orta' },
-  low: { bg: 'bg-[#71717a]/10', text: 'text-[#a1a1aa]', label: 'Düşük' }
+  low: { bg: 'bg-[var(--bg-elevated)]', text: 'text-[var(--text-secondary)]', label: 'Düşük' }
 }
 
 const DIFFICULTY_STYLES: Record<string, { label: string; color: string }> = {
-  high: { label: 'Zor', color: '#ef4444' },
+  high: { label: 'Zor', color: 'var(--danger)' },
   medium: { label: 'Orta', color: 'var(--warning)' },
-  low: { label: 'Kolay', color: '#22c55e' }
+  low: { label: 'Kolay', color: 'var(--success)' }
 }
 
 function GapCard({ gap }: { gap: TurkeyGapItem }) {
@@ -57,7 +57,7 @@ export function TurkeyGapCards() {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <Globe2 className="w-4 h-4 text-[#e11d48]" />
+        <Globe2 className="w-4 h-4 text-[var(--accent)]" />
         <h2 className="text-sm font-black uppercase tracking-wider text-[var(--text-primary)]">
           Türkiye Fırsat Açığı Haritası
         </h2>

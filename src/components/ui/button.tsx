@@ -5,21 +5,27 @@ import { Slot } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  // Apple pill grammar: tam-pill yarıçap, sıkı tracking, scale(0.95) bas-durumu,
+  // kırmızı focus halkası. Tek aksan = marka kırmızısı.
+  "group/button inline-flex shrink-0 items-center justify-center rounded-pill border border-transparent bg-clip-padding text-sm font-medium tracking-[-0.01em] whitespace-nowrap transition-all duration-150 outline-none select-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1 active:scale-[0.96] disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/30 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
+        // Birincil aksiyon — düz kırmızı pill (gradient yok), beyaz metin.
         default:
-          "bg-gradient-to-b from-[var(--accent)] to-[var(--accent-2)] text-white shadow-[0_2px_14px_-4px_var(--accent-glow)] hover:brightness-110 [a]:hover:brightness-110",
+          "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] [a]:hover:bg-[var(--accent-hover)]",
+        // İkincil — ghost kırmızı pill (Apple "ghost pill").
         outline:
-          "border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+          "border-[var(--accent)] bg-transparent text-[var(--accent)] hover:bg-[var(--accent-muted)] aria-expanded:bg-[var(--accent-muted)]",
+        // Pearl kapsül — nötr yüzey aksiyonu.
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80 aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+          "bg-[var(--bg-card-elevated)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] aria-expanded:bg-[var(--bg-card-hover)]",
+        // Sessiz aksiyon — şeffaf, hover'da hafif yüzey.
         ghost:
-          "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+          "text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] aria-expanded:bg-[var(--bg-card-hover)] aria-expanded:text-[var(--text-primary)]",
         destructive:
-          "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+          "bg-[var(--danger)]/10 text-[var(--danger)] hover:bg-[var(--danger)]/20 focus-visible:ring-[var(--danger)]/30",
+        link: "text-[var(--accent)] rounded-none underline-offset-4 hover:underline",
       },
       size: {
         default:

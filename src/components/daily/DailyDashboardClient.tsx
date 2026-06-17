@@ -273,8 +273,8 @@ export function DailyDashboardClient({
     <TimelineRow
       icon={<span className="text-xs">🔒</span>}
       accent={accent}
-      title={<span className="text-[#777]">{title} — bugün kapalı</span>}
-      detail={<p className="px-4 py-3 text-xs text-[#666]">{reasonStr}</p>}
+      title={<span className="text-[var(--text-muted)]">{title} — bugün kapalı</span>}
+      detail={<p className="px-4 py-3 text-xs text-[var(--text-muted)]">{reasonStr}</p>}
     />
   );
 
@@ -307,9 +307,9 @@ export function DailyDashboardClient({
 
       {/* Asistan analizi — sessiz banner */}
       {assistantReason && (
-        <div className="rounded-card border border-[#1f2430] bg-[#0b0c10] p-4">
-          <p className="font-mono text-[10px] uppercase tracking-wider text-[#4f5b66] mb-1">Asistan analizi</p>
-          <p className="text-[13px] text-white font-sans font-medium leading-relaxed">{assistantReason}</p>
+        <div className="rounded-card border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
+          <p className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)] mb-1">Asistan analizi</p>
+          <p className="text-[13px] text-[var(--text-primary)] font-sans font-medium leading-relaxed">{assistantReason}</p>
         </div>
       )}
 
@@ -367,9 +367,9 @@ export function DailyDashboardClient({
       {/* ── Aktif görevler — zengin kartlar (alt-adım UI burada) ── */}
       {isTasksLocked ? (
         <div className="rounded-card border border-[var(--border)] bg-[var(--surface)] p-6 text-center opacity-60">
-          <p className="font-mono text-[10px] uppercase tracking-widest text-[#555] mb-1.5">Aktif görevler</p>
-          <p className="text-sm font-semibold text-white mb-1">🔒 Bugün kapalı</p>
-          <p className="text-xs text-[#666]">Zihinsel koruma amacıyla bugün aktif görev planlanmadı.</p>
+          <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] mb-1.5">Aktif görevler</p>
+          <p className="text-sm font-semibold text-[var(--text-primary)] mb-1">🔒 Bugün kapalı</p>
+          <p className="text-xs text-[var(--text-muted)]">Zihinsel koruma amacıyla bugün aktif görev planlanmadı.</p>
         </div>
       ) : (
         <div className="mt-1 min-w-0">
@@ -380,9 +380,9 @@ export function DailyDashboardClient({
       {/* Bonuslar */}
       {isBonusesLocked ? (
         <div className="rounded-card border border-[var(--border)] bg-[var(--surface)] p-6 text-center opacity-60">
-          <p className="font-mono text-[10px] uppercase tracking-widest text-[#555] mb-1.5">Bonuslar & gelişim</p>
-          <p className="text-sm font-semibold text-white mb-1">🔒 Bugün kapalı</p>
-          <p className="text-xs text-[#666]">Koruma modu devrede. Bonus aksiyonlar bugün kapalı.</p>
+          <p className="font-mono text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] mb-1.5">Bonuslar & gelişim</p>
+          <p className="text-sm font-semibold text-[var(--text-primary)] mb-1">🔒 Bugün kapalı</p>
+          <p className="text-xs text-[var(--text-muted)]">Koruma modu devrede. Bonus aksiyonlar bugün kapalı.</p>
         </div>
       ) : (
         <BonusesSection initialEnglishDone={englishDoneInitial} />

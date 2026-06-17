@@ -269,13 +269,13 @@ function HabitWatchCard({
           />
         )}
         <svg viewBox="0 0 80 80" className="absolute inset-0 w-full h-full -rotate-90">
-          <circle cx="40" cy="40" r={RING_R} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="6" />
+          <circle cx="40" cy="40" r={RING_R} fill="none" stroke="var(--border-subtle)" strokeWidth="6" />
           <motion.circle
             cx="40"
             cy="40"
             r={RING_R}
             fill="none"
-            stroke={notDue ? 'rgba(255,255,255,0.18)' : 'var(--accent-yellow)'}
+            stroke={notDue ? 'var(--border-strong)' : 'var(--accent-yellow)'}
             strokeWidth="6"
             strokeLinecap="round"
             strokeDasharray={RING_C}
@@ -348,7 +348,7 @@ function HabitWatchCard({
         <div className="flex items-center gap-1.5">
           {last7.map((c) => {
             const isToday = c.date === today
-            let cls = 'bg-white/[0.06] border border-transparent'
+            let cls = 'bg-[var(--bg-card-hover)] border border-transparent'
             if (c.due && c.done) cls = 'bg-[var(--accent-yellow)] border border-transparent'
             else if (isToday) cls = 'bg-transparent border-2 border-[var(--accent-yellow)]/70'
             else if (c.due && !c.done) cls = 'bg-[var(--danger)]/25 border border-transparent'
@@ -396,10 +396,10 @@ function HabitWatchCard({
               <div className="flex items-end gap-[3px] pt-1">
                 {habit.cells.map((c) => {
                   const isToday = c.date === today
-                  let cls = 'bg-white/5'
+                  let cls = 'bg-[var(--bg-card-hover)]'
                   if (c.due && c.done) cls = 'bg-[var(--accent-yellow)]'
                   else if (c.due && !c.done) cls = isToday ? 'bg-[var(--warning)]/40' : 'bg-[var(--danger)]/25'
-                  else if (!c.due) cls = 'bg-white/[0.03]'
+                  else if (!c.due) cls = 'bg-[var(--bg-elevated)]'
                   return (
                     <div
                       key={c.date}

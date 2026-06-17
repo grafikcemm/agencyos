@@ -210,7 +210,7 @@ export default async function GunlukPage({
         />
 
         {process.env.NODE_ENV !== 'production' && activeTasksResult.source === 'fallback' && (
-          <div className="fixed bottom-4 right-4 z-50 px-3 py-1.5 rounded-full bg-[#1c0000] border border-[#2a0000] text-[10px] font-medium text-[#ff453a] opacity-80 hover:opacity-100 transition-opacity animate-in fade-in duration-300">
+          <div className="fixed bottom-4 right-4 z-50 px-3 py-1.5 rounded-full bg-[var(--danger)]/10 border border-[var(--danger)]/20 text-[10px] font-medium text-[var(--danger)] opacity-80 hover:opacity-100 transition-opacity animate-in fade-in duration-300">
             ⚡ Offline görev şablonu
           </div>
         )}

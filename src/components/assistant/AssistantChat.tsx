@@ -95,19 +95,19 @@ export function AssistantChat() {
   }
 
   return (
-    <div className="bg-[#111111] rounded-xl border border-[#1f1f1f] overflow-hidden flex flex-col">
+    <div className="bg-[var(--bg-surface)] rounded-xl border border-[var(--border-subtle)] overflow-hidden flex flex-col">
       {/* Header */}
-      <div className="px-5 pt-4 pb-3 border-b border-[#1a1a1a]">
+      <div className="px-5 pt-4 pb-3 border-b border-[var(--border-subtle)]">
         <div className="flex items-center gap-2">
-          <Bot size={13} className="text-[#555555]" strokeWidth={1.8} />
-          <span className="text-[10px] uppercase tracking-widest text-[#444444] font-medium">
+          <Bot size={13} className="text-[var(--text-tertiary)]" strokeWidth={1.8} />
+          <span className="text-[10px] uppercase tracking-widest text-[var(--text-tertiary)] font-medium">
             Asistan
           </span>
         </div>
       </div>
 
       {/* Quick actions */}
-      <div className="px-5 py-3 border-b border-[#1a1a1a]">
+      <div className="px-5 py-3 border-b border-[var(--border-subtle)]">
         <QuickActions onAction={handleQuickAction} loading={loading} />
       </div>
 
@@ -122,12 +122,12 @@ export function AssistantChat() {
               <div
                 className={`max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed ${
                   m.role === "user"
-                    ? "bg-[#1a1a1a] text-[#cccccc]"
-                    : "bg-[#0f0f0f] border border-[#1a1a1a] text-[#888888]"
+                    ? "bg-[var(--bg-elevated)] text-[var(--text-secondary)]"
+                    : "bg-[var(--bg-base)] border border-[var(--border-subtle)] text-[var(--text-muted)]"
                 }`}
               >
                 {m.role === "assistant" && m.agent && (
-                  <span className="text-[9px] uppercase tracking-widest text-[#444444] font-medium block mb-1">
+                  <span className="text-[9px] uppercase tracking-widest text-[var(--text-tertiary)] font-medium block mb-1">
                     {AGENT_LABELS[m.agent] ?? m.agent}
                   </span>
                 )}
@@ -137,12 +137,12 @@ export function AssistantChat() {
           ))}
           {loading && (
             <div className="flex justify-start">
-              <div className="bg-[#0f0f0f] border border-[#1a1a1a] rounded-xl px-3 py-2">
+              <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-xl px-3 py-2">
                 <div className="flex gap-1">
                   {[0, 1, 2].map((i) => (
                     <div
                       key={i}
-                      className="w-1.5 h-1.5 rounded-full bg-[#333333] animate-bounce"
+                      className="w-1.5 h-1.5 rounded-full bg-[var(--text-tertiary)] animate-bounce"
                       style={{ animationDelay: `${i * 0.15}s` }}
                     />
                   ))}
@@ -155,7 +155,7 @@ export function AssistantChat() {
       )}
 
       {/* Input */}
-      <div className="px-5 py-3 flex items-center gap-2 border-t border-[#1a1a1a]">
+      <div className="px-5 py-3 flex items-center gap-2 border-t border-[var(--border-subtle)]">
         <input
           type="text"
           value={input}
@@ -163,16 +163,16 @@ export function AssistantChat() {
           onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage(input)}
           placeholder="Görev yaz veya sor..."
           disabled={loading}
-          className="flex-1 bg-[#0a0a0a] border border-[#1f1f1f] rounded-lg px-3 py-2 text-xs text-[#888888]
-                     placeholder:text-[#333333] outline-none focus:border-[#2a2a2a] disabled:opacity-50"
+          className="flex-1 bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-xs text-[var(--text-muted)]
+                     placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--border-strong)] disabled:opacity-50"
         />
         <button
           onClick={() => sendMessage(input)}
           disabled={!input.trim() || loading}
-          className="w-8 h-8 rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center
-                     hover:border-[#333333] disabled:opacity-40 transition-colors"
+          className="w-8 h-8 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-subtle)] flex items-center justify-center
+                     hover:border-[var(--border-strong)] disabled:opacity-40 transition-colors"
         >
-          <Send size={13} className="text-[#555555]" />
+          <Send size={13} className="text-[var(--text-tertiary)]" />
         </button>
       </div>
     </div>

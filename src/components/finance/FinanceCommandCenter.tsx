@@ -61,24 +61,24 @@ function Row({
 }) {
   const [confirm, setConfirm] = useState(false);
   return (
-    <div className={`flex items-center gap-3 bg-[#0d0d0d] border border-[var(--border)] rounded-lg px-3 py-2.5 ${muted ? "opacity-50" : ""}`}>
+    <div className={`flex items-center gap-3 bg-[var(--bg-base)] border border-[var(--border)] rounded-lg px-3 py-2.5 ${muted ? "opacity-50" : ""}`}>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[13px] text-white font-medium truncate">{label}</span>
+          <span className="text-[13px] text-[var(--text-primary)] font-medium truncate">{label}</span>
           {extra}
         </div>
-        {sub && <span className="text-[10px] text-[#555] block mt-0.5">{sub}</span>}
+        {sub && <span className="text-[10px] text-[var(--text-muted)] block mt-0.5">{sub}</span>}
       </div>
       <span className="text-[13px] font-mono shrink-0" style={{ color: accent }}>{TRY(amount)}</span>
       <div className="flex items-center gap-1 shrink-0">
-        <button onClick={onEdit} className="w-6 h-6 flex items-center justify-center text-[#3a3a3a] hover:text-[#888] transition-colors" title="Düzenle"><Pencil size={11} /></button>
+        <button onClick={onEdit} className="w-6 h-6 flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors" title="Düzenle"><Pencil size={11} /></button>
         {confirm ? (
           <div className="flex items-center gap-1">
             <button onClick={onDelete} className="text-[10px] text-[var(--danger)] border border-[var(--danger)]/30 px-1.5 py-px rounded">Sil</button>
-            <button onClick={() => setConfirm(false)} className="text-[10px] text-[#555] border border-[var(--border)] px-1.5 py-px rounded">İptal</button>
+            <button onClick={() => setConfirm(false)} className="text-[10px] text-[var(--text-muted)] border border-[var(--border)] px-1.5 py-px rounded">İptal</button>
           </div>
         ) : (
-          <button onClick={() => setConfirm(true)} className="w-6 h-6 flex items-center justify-center text-[#3a3a3a] hover:text-[var(--danger)] transition-colors" title="Sil"><Trash2 size={11} /></button>
+          <button onClick={() => setConfirm(true)} className="w-6 h-6 flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--danger)] transition-colors" title="Sil"><Trash2 size={11} /></button>
         )}
       </div>
     </div>
@@ -93,16 +93,16 @@ function SectionCard({
   adding: boolean; onToggleAdd: () => void; children: React.ReactNode;
 }) {
   return (
-    <div className="bg-[#0f0f0f] border border-[var(--border)] rounded-card overflow-hidden">
+    <div className="bg-[var(--bg-surface)] border border-[var(--border)] rounded-card overflow-hidden">
       <div className="flex items-center justify-between p-3 border-b border-[var(--border)]">
         <div>
-          <span className="text-[10px] uppercase tracking-widest text-[#555] font-bold block">{title}</span>
+          <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold block">{title}</span>
           <span className="text-sm font-mono mt-0.5 block" style={{ color: accent }}>{TRY(total)}</span>
-          {hint && <span className="text-[9px] text-[#444]">{hint}</span>}
+          {hint && <span className="text-[9px] text-[var(--text-tertiary)]">{hint}</span>}
         </div>
         <button
           onClick={onToggleAdd}
-          className="flex items-center gap-1.5 text-[10px] text-[#666] hover:text-white border border-[var(--border)] hover:border-[#2a2a2a] px-2.5 py-1.5 rounded-lg transition-all"
+          className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-[var(--border)] hover:border-[var(--border-subtle)] px-2.5 py-1.5 rounded-lg transition-all"
         >
           <Plus size={11} />{adding ? "Kapat" : "Ekle"}
         </button>
@@ -141,25 +141,25 @@ export function FinanceCommandCenter({ data, month }: { data: FinanceMonthData; 
       {/* ── Ay seçici + net ── */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
-          <button onClick={() => go(shiftMonth(month, -1))} className="w-9 h-9 flex items-center justify-center rounded-lg border border-[var(--border)] text-[#888] hover:text-white hover:border-[#2a2a2a] transition-all"><ChevronLeft size={16} /></button>
+          <button onClick={() => go(shiftMonth(month, -1))} className="w-9 h-9 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-subtle)] transition-all"><ChevronLeft size={16} /></button>
           <div className="text-center">
-            <span className="text-[10px] uppercase tracking-widest text-[#555] font-bold block">Finans · Ay</span>
-            <span className="text-lg font-display font-medium text-white">{formatMonthLabel(month)}</span>
+            <span className="text-[10px] uppercase tracking-widest text-[var(--text-muted)] font-bold block">Finans · Ay</span>
+            <span className="text-lg font-display font-medium text-[var(--text-primary)]">{formatMonthLabel(month)}</span>
           </div>
-          <button onClick={() => go(shiftMonth(month, 1))} className="w-9 h-9 flex items-center justify-center rounded-lg border border-[var(--border)] text-[#888] hover:text-white hover:border-[#2a2a2a] transition-all"><ChevronRight size={16} /></button>
+          <button onClick={() => go(shiftMonth(month, 1))} className="w-9 h-9 flex items-center justify-center rounded-lg border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--border-subtle)] transition-all"><ChevronRight size={16} /></button>
         </div>
 
         <div className="text-center mb-4">
           <span className="text-4xl font-mono font-bold" style={{ color: netColor }}>
             {totals.net > 0 ? "+" : ""}{TRY(totals.net)}
           </span>
-          <span className="text-[10px] text-[#555] block mt-1">Net Bakiye (gelir − sabit − değişken − abonelik)</span>
+          <span className="text-[10px] text-[var(--text-muted)] block mt-1">Net Bakiye (gelir − sabit − değişken − abonelik)</span>
         </div>
 
         <div className="grid grid-cols-4 gap-2">
           {metrics.map((m) => (
-            <div key={m.label} className="bg-[#0d0d0d] border border-[var(--border)] rounded-lg px-2 py-2 text-center">
-              <span className="text-[9px] text-[#444] uppercase tracking-wider block">{m.label}</span>
+            <div key={m.label} className="bg-[var(--bg-base)] border border-[var(--border)] rounded-lg px-2 py-2 text-center">
+              <span className="text-[9px] text-[var(--text-tertiary)] uppercase tracking-wider block">{m.label}</span>
               <span className="text-[11px] font-mono font-bold mt-0.5 block" style={{ color: m.color }}>{TRY(m.value)}</span>
             </div>
           ))}
@@ -186,7 +186,7 @@ export function FinanceCommandCenter({ data, month }: { data: FinanceMonthData; 
               onEdit={() => { closeForms(); setEdit({ section: "income", id: t.id }); }}
               onDelete={() => run(() => deleteFinanceTx(t.id))} />
           ))}
-          {data.income.length === 0 && addOpen !== "income" && <p className="text-[11px] text-[#444] italic text-center py-2">Gelir yok.</p>}
+          {data.income.length === 0 && addOpen !== "income" && <p className="text-[11px] text-[var(--text-tertiary)] italic text-center py-2">Gelir yok.</p>}
         </SectionCard>
 
         {/* ── Sabit Giderler ── */}
@@ -206,7 +206,7 @@ export function FinanceCommandCenter({ data, month }: { data: FinanceMonthData; 
               onEdit={() => { closeForms(); setEdit({ section: "fixed", id: f.id }); }}
               onDelete={() => run(() => deleteFixedExpense(f.id))} />
           ))}
-          {data.fixed.length === 0 && addOpen !== "fixed" && <p className="text-[11px] text-[#444] italic text-center py-2">Sabit gider yok. Kira, spor salonu, kurs ekle.</p>}
+          {data.fixed.length === 0 && addOpen !== "fixed" && <p className="text-[11px] text-[var(--text-tertiary)] italic text-center py-2">Sabit gider yok. Kira, spor salonu, kurs ekle.</p>}
         </SectionCard>
 
         {/* ── Değişken Giderler ── */}
@@ -228,7 +228,7 @@ export function FinanceCommandCenter({ data, month }: { data: FinanceMonthData; 
               onEdit={() => { closeForms(); setEdit({ section: "expense", id: t.id }); }}
               onDelete={() => run(() => deleteFinanceTx(t.id))} />
           ))}
-          {data.expenses.length === 0 && addOpen !== "expense" && <p className="text-[11px] text-[#444] italic text-center py-2">Bu ay değişken gider yok.</p>}
+          {data.expenses.length === 0 && addOpen !== "expense" && <p className="text-[11px] text-[var(--text-tertiary)] italic text-center py-2">Bu ay değişken gider yok.</p>}
         </SectionCard>
 
         {/* ── Abonelikler ── */}
@@ -242,7 +242,7 @@ export function FinanceCommandCenter({ data, month }: { data: FinanceMonthData; 
               initial={{ title: s.title, amount: s.amount, currency: s.currency ?? "TRY", category: s.category ?? "other", billing_cycle: s.billing_cycle ?? "monthly", revenue_impact: s.revenue_impact ?? "unknown", ai_recommendation: s.ai_recommendation ?? "keep", is_essential: !!s.is_essential, purpose: s.purpose ?? "" }}
               onSubmit={(v) => run(async () => { await updateFinanceSubscription(s.id, { title: String(v.title), amount: num(v.amount), currency: str(v.currency), category: str(v.category) ?? null, billing_cycle: str(v.billing_cycle) ?? null, revenue_impact: str(v.revenue_impact) ?? null, ai_recommendation: str(v.ai_recommendation) ?? null, is_essential: !!v.is_essential, purpose: str(v.purpose) ?? null }); closeForms(); })} />
           ) : (
-            <Row key={s.id} label={s.title} amount={s.amount} accent={s.is_active ? "var(--cat-blue)" : "#555"} muted={!s.is_active}
+            <Row key={s.id} label={s.title} amount={s.amount} accent={s.is_active ? "var(--cat-blue)" : "var(--text-muted)"} muted={!s.is_active}
               sub={[s.purpose, s.is_essential ? "Zorunlu" : null].filter(Boolean).join(" · ") || undefined}
               extra={s.ai_recommendation && s.ai_recommendation !== "keep" ? (
                 <span className="text-[8px] uppercase tracking-wide text-[var(--warning)] border border-[var(--warning)]/25 px-1 rounded">{s.ai_recommendation === "cancel" ? "iptal?" : s.ai_recommendation === "pause" ? "dondur?" : "gözden geçir"}</span>
@@ -250,7 +250,7 @@ export function FinanceCommandCenter({ data, month }: { data: FinanceMonthData; 
               onEdit={() => { closeForms(); setEdit({ section: "sub", id: s.id }); }}
               onDelete={() => run(() => deleteFinanceSubscription(s.id))} />
           ))}
-          {data.subscriptions.length === 0 && addOpen !== "sub" && <p className="text-[11px] text-[#444] italic text-center py-2">Abonelik yok.</p>}
+          {data.subscriptions.length === 0 && addOpen !== "sub" && <p className="text-[11px] text-[var(--text-tertiary)] italic text-center py-2">Abonelik yok.</p>}
         </SectionCard>
       </div>
     </div>

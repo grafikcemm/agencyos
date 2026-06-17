@@ -7,12 +7,12 @@ import { LeadDrawer } from '@/components/map/LeadDrawer'
 import { enrichLead, EnrichedLead } from '@/lib/enrichLead'
 
 const COLUMNS = [
-  { id: 'new', title: 'YENİ', color: '#5ac8fa', icon: Star },
-  { id: 'contacted', title: 'İLETİŞİM', color: '#e5b567', icon: Phone },
+  { id: 'new', title: 'YENİ', color: 'var(--info)', icon: Star },
+  { id: 'contacted', title: 'İLETİŞİM', color: 'var(--warning)', icon: Phone },
   { id: 'responded', title: 'YANIT', color: '#8B5CF6', icon: Mail },
-  { id: 'meeting', title: 'TOPLANTI', color: '#5ac8fa', icon: Calendar },
-  { id: 'proposal', title: 'TEKLİF', color: '#5ee6b0', icon: ChevronRight },
-  { id: 'converted', title: 'KAZANILDI', color: '#5ee6b0', icon: TrendingUp },
+  { id: 'meeting', title: 'TOPLANTI', color: 'var(--info)', icon: Calendar },
+  { id: 'proposal', title: 'TEKLİF', color: 'var(--success)', icon: ChevronRight },
+  { id: 'converted', title: 'KAZANILDI', color: 'var(--success)', icon: TrendingUp },
 ]
 
 function formatTL(n: number): string {
@@ -93,12 +93,12 @@ export default function PipelinePage() {
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       <div className="px-4 py-3 border-b border-[var(--border-subtle)] shrink-0 bg-[var(--bg-base)]">
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
-          <SummaryCard icon={Flame} label="Bugün takip" value={summary.today} color="#5ee6b0" />
-          <SummaryCard icon={Star} label="A-Tier Müşteri" value={summary.hot} color="#5ee6b0" />
+          <SummaryCard icon={Flame} label="Bugün takip" value={summary.today} color="var(--success)" />
+          <SummaryCard icon={Star} label="A-Tier Müşteri" value={summary.hot} color="var(--success)" />
           <SummaryCard icon={FileText} label="Teklifte" value={summary.proposals} color="#8B5CF6" />
-          <SummaryCard icon={AlertTriangle} label="Geciken" value={summary.overdue} color="#f2555a" />
-          <SummaryCard icon={Wallet} label="Potansiyel MRR" value={formatTL(summary.potentialMRR)} color="#e5b567" />
-          <SummaryCard icon={TrendingUp} label="Kazanılan MRR" value={formatTL(summary.wonMRR)} color="#5ee6b0" />
+          <SummaryCard icon={AlertTriangle} label="Geciken" value={summary.overdue} color="var(--danger)" />
+          <SummaryCard icon={Wallet} label="Potansiyel MRR" value={formatTL(summary.potentialMRR)} color="var(--warning)" />
+          <SummaryCard icon={TrendingUp} label="Kazanılan MRR" value={formatTL(summary.wonMRR)} color="var(--success)" />
         </div>
       </div>
 
@@ -167,20 +167,20 @@ export default function PipelinePage() {
                                 <div className="flex items-center justify-between mb-2">
                                   <div className="flex items-center gap-1.5">
                                     <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${
-                                      lead.lead_tier === 'A' 
-                                        ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' 
+                                      lead.lead_tier === 'A'
+                                        ? 'bg-[var(--success)]/15 text-[var(--success)] border-[var(--success)]/30'
                                         : lead.lead_tier === 'B'
                                           ? 'bg-[var(--warning)]/10 text-[var(--warning)] border-[var(--warning)]/20'
                                           : lead.lead_tier === 'C'
                                             ? 'bg-[var(--warning)]/10 text-[var(--warning)] border-[var(--warning)]/20'
-                                            : 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20'
+                                            : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] border-[var(--border-subtle)]'
                                     }`}>
                                       {lead.lead_tier}-TIER
                                     </span>
                                     <span className="text-[9px] font-bold text-[var(--text-primary)]">Skor: <span className="num">{lead.quality_score || 0}</span></span>
                                   </div>
                                   {lead.conversion_probability !== undefined && (
-                                    <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                                    <span className="text-[9px] font-bold text-[var(--success)] bg-[var(--success)]/10 px-1.5 py-0.5 rounded">
                                       <span className="num">% {lead.conversion_probability}</span> İkna
                                     </span>
                                   )}

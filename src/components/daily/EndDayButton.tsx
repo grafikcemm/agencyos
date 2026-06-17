@@ -38,7 +38,7 @@ export function EndDayButton({ score, totalPossible = 80, isAlreadyFinalized }: 
   if (isDone && result?.streakBroken) {
     return (
       <div className="w-full h-14 bg-[var(--bg-card)] border border-[var(--border-strong)] rounded-[16px] flex flex-col items-center justify-center animate-in fade-in duration-500">
-        <p className="text-white/60 text-xs font-semibold uppercase tracking-widest">⚠️ Seri kırıldı</p>
+        <p className="text-[var(--text-primary)]/60 text-xs font-semibold uppercase tracking-widest">⚠️ Seri kırıldı</p>
         <p className="text-[var(--text-tertiary)] text-[10px] font-bold tracking-widest uppercase mt-0.5">YENİ SERİ BAŞLIYOR. YARIN DEVAM ET.</p>
       </div>
     )

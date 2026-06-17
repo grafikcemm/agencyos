@@ -77,7 +77,7 @@ export default function LoginPage() {
         <button
           type="submit"
           disabled={loading || password.length === 0}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-b from-[var(--accent)] to-[var(--accent-2)] py-2.5 text-sm font-bold text-white shadow-[0_2px_14px_-4px_var(--accent-glow)] transition-all hover:brightness-110 disabled:opacity-50"
+          className="flex w-full items-center justify-center gap-2 rounded-pill bg-[var(--accent)] py-2.5 text-sm font-semibold text-white transition-all hover:bg-[var(--accent-hover)] active:scale-[0.98] disabled:opacity-50"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />}
           {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}

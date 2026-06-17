@@ -20,14 +20,14 @@ export function OpportunityDetailModal({ opp, onClose, onStatusChange }: ModalPr
               <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] border border-[var(--border-subtle)] px-2 py-1 rounded-md">
                 {CATEGORY_LABELS[opp.category]}
               </span>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#86efac]">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--success)]">
                 Skor {opp.score.total}/100
               </span>
             </div>
             <h2 className="text-xl font-black text-[var(--text-primary)] leading-tight">{opp.title}</h2>
             <p className="text-sm text-[var(--text-secondary)] mt-2 max-w-3xl">{opp.decision}</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-md transition-colors text-[var(--text-muted)] hover:text-white" aria-label="Kapat">
+          <button onClick={onClose} className="p-2 hover:bg-[var(--bg-card-hover)] rounded-md transition-colors text-[var(--text-muted)] hover:text-[var(--text-primary)]" aria-label="Kapat">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -113,12 +113,12 @@ export function OpportunityDetailModal({ opp, onClose, onStatusChange }: ModalPr
                 <ScoreRow label="Aksiyon netliği" value={opp.score.actionClarity} />
               </div>
 
-              <div className="rounded-lg border border-[#ef4444]/25 bg-[#2a1111] p-4">
-                <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-[#fca5a5] mb-2">
+              <div className="rounded-lg border border-[var(--danger)]/25 bg-[var(--danger)]/10 p-4">
+                <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest text-[var(--danger)] mb-2">
                   <AlertTriangle className="w-4 h-4" />
                   Blokaj
                 </div>
-                <p className="text-sm font-bold text-[#fecaca] leading-relaxed">{opp.launchBlocker}</p>
+                <p className="text-sm font-bold text-[var(--danger)] leading-relaxed">{opp.launchBlocker}</p>
               </div>
 
               <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">
@@ -155,7 +155,7 @@ function InfoBlock({ title, text }: { title: string, text: string }) {
 }
 
 function ListBlock({ title, items, tone }: { title: string, items: string[], tone: 'action' | 'done' | 'risk' }) {
-  const iconColor = tone === 'risk' ? 'text-[#fca5a5]' : tone === 'action' ? 'text-[var(--accent)]' : 'text-[#86efac]'
+  const iconColor = tone === 'risk' ? 'text-[var(--danger)]' : tone === 'action' ? 'text-[var(--accent)]' : 'text-[var(--success)]'
 
   return (
     <div className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-4">

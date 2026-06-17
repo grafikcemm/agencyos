@@ -273,7 +273,7 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
           <div className="px-5 py-3 border-b border-[var(--border-subtle)] shrink-0 grid grid-cols-2 gap-2 bg-[var(--bg-base)]/40">
             <a
               href={`tel:${lead.phone}`}
-              className="flex items-center justify-center gap-2 py-2.5 bg-gradient-to-b from-[var(--accent)] to-[var(--accent-2)] text-white text-sm font-bold rounded-lg shadow-[0_2px_14px_-4px_var(--accent-glow)] hover:brightness-110 transition-all"
+              className="flex items-center justify-center gap-2 py-2.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-sm font-bold rounded-lg transition-all"
             >
               <Phone className="w-4 h-4" />
               Ara
@@ -296,11 +296,11 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
           {lead.quality_label && (
             <div className="flex items-center justify-between">
               <span className={`text-[10px] font-black tracking-widest uppercase px-2 py-1 rounded border ${
-                lead.quality_label === 'Nokta Atışı' ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30' :
-                lead.quality_label === 'Çok Güçlü' ? 'bg-green-500/10 text-green-400 border-green-500/20' :
+                lead.quality_label === 'Nokta Atışı' ? 'bg-[var(--success)]/15 text-[var(--success)] border-[var(--success)]/30' :
+                lead.quality_label === 'Çok Güçlü' ? 'bg-[var(--success)]/10 text-[var(--success)] border-[var(--success)]/20' :
                 lead.quality_label === 'Takip Edilebilir' ? 'bg-[var(--warning)]/10 text-[var(--warning)] border-[var(--warning)]/20' :
-                lead.quality_label === 'Ele' ? 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20' :
-                'bg-orange-500/10 text-orange-400 border-orange-500/20'
+                lead.quality_label === 'Ele' ? 'bg-[var(--text-muted)]/10 text-[var(--text-muted)] border-[var(--text-muted)]/20' :
+                'bg-[var(--fire)]/10 text-[var(--fire)] border-[var(--fire)]/20'
               }`}>{lead.quality_label}</span>
               {(lead.conversion_probability ?? 0) > 0 && (
                 <span className="text-[11px] font-semibold text-[var(--text-muted)]" title="Model tahmini — gerçek dönüşüm satış icraatına bağlıdır.">
@@ -326,14 +326,14 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
               {Array.isArray(lead.pain_signals) && lead.pain_signals.length > 0 && (
                 <div className="flex flex-wrap gap-1 pt-1">
                   {lead.pain_signals.map((s, i) => (
-                    <span key={i} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 border border-red-500/20">{s}</span>
+                    <span key={i} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[var(--danger)]/10 text-[var(--danger)] border border-[var(--danger)]/20">{s}</span>
                   ))}
                 </div>
               )}
               {Array.isArray(lead.proof_points) && lead.proof_points.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {lead.proof_points.map((s, i) => (
-                    <span key={i} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">✓ {s}</span>
+                    <span key={i} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[var(--success)]/10 text-[var(--success)] border border-[var(--success)]/20">✓ {s}</span>
                   ))}
                 </div>
               )}
@@ -341,9 +341,9 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
           )}
 
           {lead.disqualification_reason && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
-              <div className="text-[10px] font-black tracking-widest uppercase text-red-400 mb-1">Elendi</div>
-              <p className="text-xs text-red-300">{lead.disqualification_reason}</p>
+            <div className="bg-[var(--danger)]/10 border border-[var(--danger)]/30 rounded-xl p-4">
+              <div className="text-[10px] font-black tracking-widest uppercase text-[var(--danger)] mb-1">Elendi</div>
+              <p className="text-xs text-[var(--danger)]">{lead.disqualification_reason}</p>
             </div>
           )}
 
@@ -385,7 +385,7 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
 
           <div className={`rounded-xl p-4 border ${
             lead.nextAction.isOverdue
-              ? 'bg-[#EF4444]/10 border-[#EF4444]/30'
+              ? 'bg-[var(--danger)]/10 border-[var(--danger)]/30'
               : lead.nextAction.priority === 'high'
                 ? 'bg-[var(--accent-muted)] border-[var(--accent)]/30'
                 : 'bg-[var(--bg-base)] border-[var(--border-subtle)]'
@@ -463,12 +463,12 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
           {lead.first_30_seconds_pitch && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <h3 className="text-[10px] text-emerald-400 font-bold tracking-widest uppercase">📞 30 Saniyelik Açılış</h3>
+                <h3 className="text-[10px] text-[var(--success)] font-bold tracking-widest uppercase">📞 30 Saniyelik Açılış</h3>
                 <button onClick={() => copyText(lead.first_30_seconds_pitch ?? '')} className="text-[9px] text-[var(--accent)] hover:text-[var(--accent-hover)] flex items-center gap-1">
                   <Copy className="w-3 h-3" /> Kopyala
                 </button>
               </div>
-              <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg p-3 text-[11px] text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">
+              <div className="bg-[var(--success)]/5 border border-[var(--success)]/20 rounded-lg p-3 text-[11px] text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">
                 {lead.first_30_seconds_pitch}
               </div>
             </div>
@@ -514,7 +514,7 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
             )}
 
             {emailError && (
-              <div className="bg-red-500/5 border border-red-500/20 rounded-lg p-2.5 text-[10px] text-red-400 leading-relaxed">
+              <div className="bg-[var(--danger)]/5 border border-[var(--danger)]/20 rounded-lg p-2.5 text-[10px] text-[var(--danger)] leading-relaxed">
                 {emailError}
               </div>
             )}
@@ -599,7 +599,7 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
             <button
               onClick={handleConvertToProject}
               disabled={lead.status === 'converted'}
-              className="flex items-center justify-center gap-1.5 py-2 bg-[var(--bg-base)] border border-[var(--border-subtle)] hover:border-[#1D9E75] hover:text-[#1D9E75] text-[var(--text-primary)] text-xs font-bold rounded-lg transition-all disabled:opacity-40"
+              className="flex items-center justify-center gap-1.5 py-2 bg-[var(--bg-base)] border border-[var(--border-subtle)] hover:border-[var(--success)] hover:text-[var(--success)] text-[var(--text-primary)] text-xs font-bold rounded-lg transition-all disabled:opacity-40"
             >
               <Briefcase className="w-3.5 h-3.5" />
               {lead.status === 'converted' ? 'Kazanıldı' : 'Projeye Dönüştür'}
@@ -618,17 +618,17 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
             <button
               onClick={handleApolloEnrich}
               disabled={enrichingApollo || apolloConfigured === false}
-              className="w-full flex items-center justify-center gap-2 py-2 bg-[var(--bg-base)] border border-[var(--border-subtle)] hover:border-blue-500 hover:text-blue-400 text-[var(--text-primary)] text-xs font-bold rounded-lg transition-all disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-2 py-2 bg-[var(--bg-base)] border border-[var(--border-subtle)] hover:border-[var(--info)] hover:text-[var(--info)] text-[var(--text-primary)] text-xs font-bold rounded-lg transition-all disabled:opacity-50"
             >
               🚀 {enrichingApollo ? 'Apollo Enrichment...' : 'Apollo Pilot Enrich'}
             </button>
             {apolloConfigured === false && (
-              <div className="text-[10px] text-rose-400 font-bold text-center mt-1">
+              <div className="text-[10px] text-[var(--danger)] font-bold text-center mt-1">
                 ⚠️ Apollo kapalı / API key yok
               </div>
             )}
             {apolloResult && (
-              <div className="text-[10px] text-center font-semibold bg-blue-500/5 border border-blue-500/20 text-blue-300 p-2 rounded-lg leading-relaxed">
+              <div className="text-[10px] text-center font-semibold bg-[var(--info)]/5 border border-[var(--info)]/20 text-[var(--info)] p-2 rounded-lg leading-relaxed">
                 {apolloResult}
               </div>
             )}
