@@ -9,6 +9,7 @@ import { derivePolicyState } from '@/app/actions/dailyV2';
 import { getIstanbulDateAndDay } from '@/lib/assistant/timezone';
 import {
   logConversationTurn,
+  getRecentConversation,
   getCommitment,
   setCommitment,
   markCommitmentDone,
@@ -22,6 +23,8 @@ import {
   commitmentSetConfirmation,
   eveningDoneCelebration,
 } from '@/lib/assistant/mentorLoop';
+import { classifyQuestion } from '@/lib/assistant/classifyQuestion';
+import { deliberateBusiness } from '@/lib/assistant/deliberate';
 
 // OpenRouter reasoning modelleri yavaş — 25s LLM timeout'una alan tanı (Vercel).
 export const maxDuration = 60;
@@ -69,13 +72,38 @@ async function sendTelegram(text: string): Promise<{ ok: boolean; status: number
 
 /** sendTelegram + assistant turunu telegram_conversations'a logla (best-effort).
  *  Gönderim başarısızsa tur LOGLANMAZ — kullanıcının görmediği mesaj LLM geçmişini kirletmesin. */
-async function reply(text: string, date: string, intent?: string, agent?: string): Promise<void> {
+async function reply(text: string, date: string, intent?: string, agent?: string): Promise<{ ok: boolean }> {
   const sent = await sendTelegram(text);
   if (!sent.ok) {
     console.error('[telegram] reply delivery failed', { intent: intent ?? null, status: sent.status });
-    return;
+    return { ok: false };
   }
   await logConversationTurn({ date, role: 'assistant', message: text, intent: intent ?? null, agent: agent ?? null });
+  return { ok: true };
+}
+
+/** HTML etiketlerini sök (HTML parse hatası gönderimi düşürdüyse düz-metin retry için). */
+function stripHtml(text: string): string {
+  return text.replace(/<[^>]+>/g, '').trim();
+}
+
+const GRACEFUL_TR_FALLBACK =
+  'Şu an cevabı toparlayamadım Cem — bir hata oldu. Birazdan tekrar yazar mısın?';
+
+/**
+ * Serbest-metin yanıtının kullanıcıya MUTLAKA ulaşmasını garanti eder.
+ * İlk gönderim başarısızsa (ör. HTML parse hatası) düz-metin tek retry yapar.
+ * Boş/HTML-only metin kalırsa graceful Türkçe fallback gönderir.
+ */
+async function replyGuaranteed(text: string, date: string, intent?: string, agent?: string): Promise<void> {
+  const primary = (text ?? '').trim();
+  const first = await reply(primary || GRACEFUL_TR_FALLBACK, date, intent, agent);
+  // Başarılı VEYA primary boştu (zaten fallback gönderildi; tekrar göndermeye gerek yok).
+  if (first.ok || !primary) return;
+
+  // Retry: HTML parse hatası olabilir → etiketleri sök, düz metin gönder.
+  const plain = stripHtml(primary) || GRACEFUL_TR_FALLBACK;
+  await reply(plain, date, intent ? `${intent}_retry` : 'retry', agent);
 }
 
 /** Bugün belirli bir item için kaç kez snooze edildiğini sayar (akıllı snooze). */
@@ -668,7 +696,8 @@ export async function POST(req: Request): Promise<NextResponse> {
           if (await maybeAdvanceMorningCommitment(today)) break;
         }
 
-        // ── LLM serbest-metin fallback (brain + geçmiş + bellek) ──────────────
+        // ── Akıllı yönlendirme: hayat (hızlı mentor) vs iş (çok-ajanlı kurul) ──
+        // Tüm yol iç try/catch'te: bir throw'da bile kullanıcı MUTLAKA cevap alır.
         const { data: v2state } = await supabaseAdmin
           .from('daily_v2')
           .select('energy')
@@ -677,8 +706,21 @@ export async function POST(req: Request): Promise<NextResponse> {
         const energyLevel =
           v2state?.energy === 'low' ? 'LOW' : v2state?.energy === 'high' ? 'HIGH' : 'NORMAL';
 
-        const { reply: llmReply, agent } = await runMentorFreeText(text, { energyLevel });
-        await reply(llmReply, today, 'llm_freetext', agent);
+        try {
+          const history = await getRecentConversation(10);
+          const { route } = await classifyQuestion(text, history);
+
+          if (route === 'business_deliberate') {
+            const { reply: bizReply } = await deliberateBusiness(text, history);
+            await replyGuaranteed(bizReply, today, 'biz_deliberation');
+          } else {
+            const { reply: llmReply, agent } = await runMentorFreeText(text, { energyLevel });
+            await replyGuaranteed(llmReply, today, 'llm_freetext', agent);
+          }
+        } catch (err) {
+          console.error('[telegram] free-text routing failed', err);
+          await replyGuaranteed(GRACEFUL_TR_FALLBACK, today, 'freetext_error');
+        }
         break;
       }
     }

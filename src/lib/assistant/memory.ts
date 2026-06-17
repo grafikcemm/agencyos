@@ -6,10 +6,15 @@
 //   mentor_memory           — öğrenilen kalıplar (kind/key/value/confidence/occurrences/last_seen)
 //   daily_commitments       — sabah taahhüt → akşam geri-çağırma (date PK)
 //
-// createClient — server actions deseniyle aynı (src/app/actions/taskActions.ts).
-// Tüm fonksiyonlar best-effort: hata fırlatmaz, mentör akışını bloklamaz.
+// Service-role (lifeSupabaseAdmin) kullanılır — webhook/cron server bağlamında
+// RLS'i bypass eder. Anon key (supabase/server createClient) RLS'e takılıp
+// telegram_conversations insert/select'i SESSİZCE düşürebiliyordu → çok-turlu
+// hafıza çalışmıyordu. Tüm fonksiyonlar best-effort: hata fırlatmaz.
 // ─────────────────────────────────────────────────────────────────────────────
-import { createClient } from "@/lib/supabase/server";
+import { lifeSupabaseAdmin } from "@/lib/lifeSupabaseAdmin";
+
+// Mevcut çağrı yerlerini (const supabase = createClient()) korumak için ince shim.
+const createClient = () => lifeSupabaseAdmin;
 
 export type ConversationRole = "user" | "assistant";
 

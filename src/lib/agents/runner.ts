@@ -134,7 +134,8 @@ async function gatherContext(agentKey: string, input: Record<string, unknown>): 
 }
 
 // Sales Rep: top A/B leads with pitch material.
-async function qualifiedLeadsContext(): Promise<string> {
+// Exported for reuse by the Telegram deliberation engine (businessContext.ts).
+export async function qualifiedLeadsContext(): Promise<string> {
   const { data: leads } = await supabaseAdmin
     .from('leads')
     .select(
@@ -157,7 +158,7 @@ async function qualifiedLeadsContext(): Promise<string> {
 }
 
 // Researcher: best sectors to scan + recent high-confidence trend signals.
-async function researcherContext(): Promise<string> {
+export async function researcherContext(): Promise<string> {
   const { getSectorOpportunities } = await import('@/lib/sectorOpportunityEngine')
   const sectors = getSectorOpportunities(5)
   const sectorLines = sectors.map(
@@ -183,7 +184,7 @@ async function researcherContext(): Promise<string> {
 }
 
 // Data Analyst: lead funnel counts by status.
-async function funnelContext(): Promise<string> {
+export async function funnelContext(): Promise<string> {
   const { data: leads } = await supabaseAdmin.from('leads').select('status, lead_tier').limit(2000)
   if (!leads || leads.length === 0) return 'Funnel için lead verisi yok.'
 
@@ -201,7 +202,7 @@ PROJELER: ${activeProjects.length} aktif | Aylık tekrarlayan gelir (MRR): ₺${
 }
 
 // CMO: which sectors dominate the qualified pipeline (content targeting).
-async function sectorMixContext(): Promise<string> {
+export async function sectorMixContext(): Promise<string> {
   const { data: leads } = await supabaseAdmin
     .from('leads')
     .select('sector')
