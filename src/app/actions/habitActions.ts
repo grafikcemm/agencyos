@@ -3,6 +3,7 @@
 import { format, parseISO, subDays } from 'date-fns'
 import { revalidatePath } from 'next/cache'
 import { createServerSupabase } from '@/lib/supabaseServer'
+import { assertSession } from '@/lib/auth'
 import { computeHabit } from '@/lib/habits/streaks'
 import { makeIsDue } from '@/lib/habits/cadence'
 import type { HabitDef, HabitOverviewItem } from '@/lib/habits/config'
@@ -50,6 +51,7 @@ export async function setHabitValue(
   value: number,
   dateStr?: string
 ): Promise<{ ok: boolean; error?: string }> {
+  await assertSession()
   const supabase = createServerSupabase()
   const date = dateStr ?? todayStr()
   try {
@@ -74,6 +76,7 @@ export async function setHabitValue(
  * Günlük'te tik atınca ilgili zincir otomatik büyür (kullanıcı çift iş yapmaz).
  */
 export async function mirrorHabitDone(key: string, date: string, done: boolean): Promise<void> {
+  await assertSession()
   const supabase = createServerSupabase()
   try {
     if (done) {

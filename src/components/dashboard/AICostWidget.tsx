@@ -3,35 +3,28 @@
 import { useEffect, useState } from 'react'
 import { ProgressBar } from '@/components/ui/ProgressBar'
 
+interface CostBreakdown {
+  light: number
+  medium: number
+  heavy: number
+  total: number
+}
+
 export function AICostWidget() {
-  const [costs, setCosts] = useState<any>({ light: 0, medium: 0, heavy: 0, total: 0 })
+  const [costs, setCosts] = useState<CostBreakdown>({ light: 0, medium: 0, heavy: 0, total: 0 })
   const [budget, setBudget] = useState(100)
 
   useEffect(() => {
     const fetchCosts = async () => {
-      const startOfMonth = new Date()
-      startOfMonth.setDate(1)
-      startOfMonth.setHours(0, 0, 0, 0)
-
-      const costRes = await fetch('/api/db/ai_cost_logs')
-      const data = await costRes.json()
-      
-      const setRes = await fetch('/api/db/settings')
-      const settingsData = await setRes.json()
-      
-      const budgetSetting = settingsData?.find((s: any) => s.key === 'ai_monthly_budget_tl')
-      if (budgetSetting?.value) setBudget(parseInt(budgetSetting.value))
-
-      if (Array.isArray(data)) {
-        // Filter by date manually since we didn't add date filtering to generic proxy yet
-        const startISO = startOfMonth.toISOString()
-        const breakdown = data.filter((log: any) => log.created_at >= startISO).reduce((acc: any, log: any) => {
-          const tier = (log.model_tier || 'light').toLowerCase()
-          acc[tier] = (acc[tier] || 0) + (log.cost_tl || 0)
-          acc.total += (log.cost_tl || 0)
-          return acc
-        }, { light: 0, medium: 0, heavy: 0, total: 0 })
-        setCosts(breakdown)
+      try {
+        // Server-side aggregate (M11) — eskiden tüm satırlar cliente çekiliyordu.
+        const res = await fetch('/api/metrics/ai-cost')
+        if (!res.ok) return
+        const data = (await res.json()) as CostBreakdown & { budget?: number }
+        setCosts({ light: data.light, medium: data.medium, heavy: data.heavy, total: data.total })
+        if (data.budget && data.budget > 0) setBudget(data.budget)
+      } catch {
+        console.error('AI cost fetch error')
       }
     }
     fetchCosts()

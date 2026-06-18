@@ -5,9 +5,24 @@ import {
   createSessionToken,
   verifyPassword,
 } from '@/lib/session'
+import { rateLimit, clientIp } from '@/lib/api/rateLimit'
+
+// Tek paylaşımlı parola modeli → brute-force koruması kritik. IP başına 15 dk'da 8 deneme.
+const LOGIN_LIMIT = 8
+const LOGIN_WINDOW_MS = 15 * 60 * 1000
 
 // POST /api/auth/login — single shared password → httpOnly session cookie.
 export async function POST(req: Request) {
+  const ip = clientIp(req)
+  const rl = rateLimit(`login:${ip}`, LOGIN_LIMIT, LOGIN_WINDOW_MS)
+  if (!rl.allowed) {
+    console.warn(`Login rate-limit aşıldı: ip=${ip}`)
+    return NextResponse.json(
+      { error: 'Çok fazla deneme. Lütfen biraz sonra tekrar deneyin.' },
+      { status: 429, headers: { 'Retry-After': String(rl.retryAfterSec) } },
+    )
+  }
+
   let password = ''
   try {
     const body = await req.json()
@@ -30,6 +45,7 @@ export async function POST(req: Request) {
   }
 
   if (!ok) {
+    console.warn(`Başarısız login denemesi: ip=${ip}`)
     return NextResponse.json({ error: 'Hatalı parola.' }, { status: 401 })
   }
 

@@ -2,7 +2,6 @@
 
 import { createElement, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { motion, useReducedMotion, AnimatePresence } from 'framer-motion'
 import {
   Music,
   Salad,
@@ -14,8 +13,6 @@ import {
   Phone,
   Flame,
   Check,
-  AlertTriangle,
-  ChevronDown,
   type LucideIcon,
 } from 'lucide-react'
 import { setHabitValue } from '@/app/actions/habitActions'
@@ -25,6 +22,7 @@ import {
   type HabitGroup,
   type HabitOverviewItem,
 } from '@/lib/habits/config'
+import { cn } from '@/lib/utils'
 
 const ICONS: Record<string, LucideIcon> = {
   music: Music,
@@ -42,23 +40,16 @@ function iconFor(key: string | null): LucideIcon {
 }
 
 const CADENCE_LABEL: Record<string, string> = {
-  daily: 'Her gün',
   training_days: 'Antrenman günleri',
   english_days: 'İngilizce günleri',
 }
 
-const WEEKDAY_TR = ['Pz', 'Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct'] // getDay 0=Pazar
+// getDay 0=Pazar
+const WEEKDAY_TR = ['Pz', 'Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct']
 
 function weekdayShort(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`)
   return WEEKDAY_TR[d.getDay()] ?? ''
-}
-
-function milestone(streak: number): string | null {
-  if (streak >= 100) return '100+ gün'
-  if (streak >= 30) return '30 gün'
-  if (streak >= 7) return '7 gün'
-  return null
 }
 
 export function HabitTracker({ items, today }: { items: HabitOverviewItem[]; today: string }) {
@@ -76,8 +67,6 @@ export function HabitTracker({ items, today }: { items: HabitOverviewItem[]; tod
 
   const dueToday = local.filter((h) => h.computed.todayStatus !== 'not_due')
   const doneToday = dueToday.filter((h) => h.computed.todayStatus === 'done')
-  const atRisk = local.filter((h) => h.computed.atRisk)
-  const activeChains = local.filter((h) => h.computed.currentStreak > 0).length
 
   function tap(h: HabitOverviewItem) {
     if (busyKey) return
@@ -139,28 +128,27 @@ export function HabitTracker({ items, today }: { items: HabitOverviewItem[]; tod
     .filter((s) => s.habits.length > 0)
 
   return (
-    <div className="max-w-[1080px] mx-auto px-4 sm:px-6 flex flex-col gap-8 pb-20">
-      {/* Başlık + özet */}
-      <header className="flex flex-col gap-4">
-        <div className="flex items-center gap-2.5">
-          <Flame className="w-6 h-6 text-[var(--accent-yellow)]" />
-          <h1 className="text-2xl sm:text-3xl font-bold font-[family-name:var(--font-inter-tight)] tracking-tight text-[var(--text-primary)]">
-            Alışkanlık Zinciri
-          </h1>
+    <div className="max-w-[760px] mx-auto px-4 sm:px-6 flex flex-col gap-9 pb-20">
+      {/* Başlık + sessiz özet */}
+      <header className="flex items-end justify-between gap-4 pt-1">
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2.5">
+            <Flame className="w-5 h-5 text-[var(--accent)]" />
+            <h1 className="text-2xl sm:text-3xl font-semibold font-[family-name:var(--font-display)] tracking-tight text-[var(--text-primary)]">
+              Alışkanlıklar
+            </h1>
+          </div>
+          <p className="text-[13px] text-[var(--text-muted)]">
+            Küçük tutarlılık → büyük kontrol.
+          </p>
         </div>
-        <p className="text-sm text-[var(--text-secondary)] leading-relaxed max-w-prose">
-          Küçük tutarlılık → büyük kontrol.{' '}
-          <span className="text-[var(--text-primary)] font-semibold">Zinciri kırma.</span>
-        </p>
-        <div className="flex flex-wrap items-center gap-2.5">
-          <Stat label="Bugün" value={`${doneToday.length}/${dueToday.length}`} />
-          <Stat label="Aktif zincir" value={String(activeChains)} />
-          {atRisk.length > 0 && (
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[var(--warning)] bg-[var(--warning)]/10 border border-[var(--warning)]/25 rounded-lg px-3 py-2">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              {atRisk.length} zincir risk altında
-            </span>
-          )}
+        <div className="shrink-0 text-right">
+          <div className="num text-lg font-semibold text-[var(--text-primary)] leading-none">
+            {doneToday.length}/{dueToday.length}
+          </div>
+          <div className="text-[10px] font-medium uppercase tracking-widest text-[var(--text-muted)] mt-1">
+            Bugün
+          </div>
         </div>
       </header>
 
@@ -169,24 +157,18 @@ export function HabitTracker({ items, today }: { items: HabitOverviewItem[]; tod
         const due = section.habits.filter((h) => h.computed.todayStatus !== 'not_due')
         const done = due.filter((h) => h.computed.todayStatus === 'done')
         return (
-          <section key={section.group} className="flex flex-col gap-4">
-            <div className="flex items-baseline justify-between border-b border-[var(--border-subtle)] pb-2">
-              <h2 className="text-base font-bold font-[family-name:var(--font-inter-tight)] tracking-tight text-[var(--text-primary)] flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--accent-yellow)]" />
+          <section key={section.group} className="flex flex-col">
+            <div className="flex items-baseline justify-between mb-1.5">
+              <h2 className="text-[11px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">
                 {section.meta.label}
               </h2>
-              <span className="num text-[11px] font-bold tracking-wide text-[var(--text-muted)]">
+              <span className="num text-[11px] font-medium text-[var(--text-muted)]">
                 {done.length}/{due.length || section.habits.length}
               </span>
             </div>
-            <motion.div
-              className="grid grid-cols-1 md:grid-cols-2 gap-3"
-              initial="hidden"
-              animate="show"
-              variants={{ show: { transition: { staggerChildren: 0.06 } } }}
-            >
+            <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] divide-y divide-[var(--border-subtle)] overflow-hidden">
               {section.habits.map((h) => (
-                <HabitWatchCard
+                <HabitRow
                   key={h.key}
                   habit={h}
                   today={today}
@@ -194,7 +176,7 @@ export function HabitTracker({ items, today }: { items: HabitOverviewItem[]; tod
                   onTap={() => tap(h)}
                 />
               ))}
-            </motion.div>
+            </div>
           </section>
         )
       })}
@@ -202,19 +184,7 @@ export function HabitTracker({ items, today }: { items: HabitOverviewItem[]; tod
   )
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-2">
-      <div className="text-[9px] font-bold tracking-widest uppercase text-[var(--text-muted)]">{label}</div>
-      <div className="num text-lg font-bold text-[var(--text-primary)]">{value}</div>
-    </div>
-  )
-}
-
-const RING_R = 34
-const RING_C = 2 * Math.PI * RING_R
-
-function HabitWatchCard({
+function HabitRow({
   habit,
   today,
   busy,
@@ -225,200 +195,142 @@ function HabitWatchCard({
   busy: boolean
   onTap: () => void
 }) {
-  const reduce = useReducedMotion()
-  const [expanded, setExpanded] = useState(false)
   const Icon = iconFor(habit.icon)
   const { computed } = habit
-  const ms = milestone(computed.currentStreak)
   const isCounter = habit.target > 1
-  const isBusiness = habit.category === 'business'
-  const isDone = computed.todayStatus === 'done'
-  const notDue = computed.todayStatus === 'not_due'
-
-  const frac = Math.max(0, Math.min(1, habit.todayValue / habit.target))
-  const dashoffset = RING_C * (1 - frac)
-  const last7 = habit.cells.slice(-7)
   const hasStreak = computed.currentStreak > 0
+  const cadence = CADENCE_LABEL[habit.cadence_type]
+  const last7 = habit.cells.slice(-7)
 
   return (
-    <motion.div
-      variants={{ hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } }}
-      transition={{ type: 'spring', stiffness: 260, damping: 26 }}
-      className={`relative overflow-hidden bg-[var(--bg-card)] border rounded-2xl p-5 flex gap-5 ${
-        computed.atRisk ? 'border-[var(--warning)]/40' : 'border-[var(--border-subtle)]'
-      }`}
-    >
-      {/* Watch face — tappable ring */}
-      <button
-        onClick={onTap}
-        disabled={busy}
-        aria-label={`${habit.label} işaretle`}
-        className="relative shrink-0 w-[88px] h-[88px] flex items-center justify-center disabled:opacity-60 focus:outline-none"
-      >
-        {/* Alev-glow (streak varsa pulse) */}
-        {hasStreak && (
-          <motion.span
-            aria-hidden
-            className="absolute inset-0 rounded-full pointer-events-none"
-            style={{
-              background:
-                'radial-gradient(circle, rgba(164, 22, 26, 0.35) 0%, rgba(122, 17, 21, 0.18) 45%, transparent 70%)',
-            }}
-            animate={reduce ? undefined : { scale: [1, 1.12, 1], opacity: [0.55, 0.9, 0.55] }}
-            transition={reduce ? undefined : { duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
-          />
-        )}
-        <svg viewBox="0 0 80 80" className="absolute inset-0 w-full h-full -rotate-90">
-          <circle cx="40" cy="40" r={RING_R} fill="none" stroke="var(--border-subtle)" strokeWidth="6" />
-          <motion.circle
-            cx="40"
-            cy="40"
-            r={RING_R}
-            fill="none"
-            stroke={notDue ? 'var(--border-strong)' : 'var(--accent-yellow)'}
-            strokeWidth="6"
-            strokeLinecap="round"
-            strokeDasharray={RING_C}
-            initial={false}
-            animate={{ strokeDashoffset: notDue ? RING_C : dashoffset }}
-            transition={{ type: 'spring', stiffness: 120, damping: 20 }}
-          />
-        </svg>
-        {/* Merkez: streak + alev / done check */}
-        <motion.div
-          key={isDone ? 'done' : 'open'}
-          initial={reduce ? false : { scale: 0.8 }}
-          animate={{ scale: 1 }}
-          transition={{ type: 'spring', stiffness: 400, damping: 18 }}
-          className="relative flex flex-col items-center justify-center"
-        >
-          {isDone && !isCounter ? (
-            <Check className="w-7 h-7 text-[var(--accent-yellow)]" />
-          ) : isCounter ? (
-            <>
-              <span className="num text-lg font-bold leading-none text-[var(--text-primary)]">
-                {habit.todayValue}
-              </span>
-              <span className="num text-[10px] text-[var(--text-muted)] leading-none mt-0.5">
-                /{habit.target}
-              </span>
-            </>
-          ) : (
-            <div className="flex items-center gap-0.5">
-              <Flame
-                className={`w-3.5 h-3.5 ${hasStreak ? 'text-[var(--accent-yellow)]' : 'text-[var(--text-muted)]'}`}
-              />
-              <span className="num text-xl font-bold leading-none text-[var(--text-primary)]">
-                {computed.currentStreak}
-              </span>
-            </div>
-          )}
-        </motion.div>
-      </button>
-
-      {/* Sağ taraf: bilgi */}
-      <div className="min-w-0 flex-1 flex flex-col gap-2.5">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              {createElement(Icon, { className: 'w-4 h-4 text-[var(--text-secondary)] shrink-0' })}
-              <span className="text-sm font-semibold text-[var(--text-primary)] truncate">{habit.label}</span>
-              {isBusiness && (
-                <span className="text-[8px] font-black tracking-wider uppercase text-[var(--accent-yellow)] border border-[var(--accent-yellow)]/30 rounded px-1.5 py-0.5 shrink-0">
-                  İŞ
-                </span>
-              )}
-            </div>
-            <div className="text-[10px] text-[var(--text-muted)] font-medium mt-1">
-              {CADENCE_LABEL[habit.cadence_type] ?? 'Her gün'}
-            </div>
-          </div>
-          {/* Streak rozeti (counter/done için sağda da göster) */}
-          {(isCounter || isDone) && (
-            <div className="flex items-center gap-1 shrink-0">
-              <Flame
-                className={`w-4 h-4 ${hasStreak ? 'text-[var(--accent-yellow)]' : 'text-[var(--text-muted)]'}`}
-              />
-              <span className="num text-base font-bold text-[var(--text-primary)]">{computed.currentStreak}</span>
-            </div>
-          )}
+    <div className="flex items-center gap-3 px-4 py-3.5 hover:bg-[var(--bg-card-hover)] transition-colors duration-200">
+      {/* Sol: ikon + ad */}
+      <div className="min-w-0 flex-1 flex items-center gap-2.5">
+        {createElement(Icon, { className: 'w-4 h-4 text-[var(--text-muted)] shrink-0' })}
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-[var(--text-primary)] truncate">{habit.label}</div>
+          {cadence && <div className="text-[10px] text-[var(--text-muted)] mt-0.5">{cadence}</div>}
         </div>
-
-        {/* Haftalık 7-dot */}
-        <div className="flex items-center gap-1.5">
-          {last7.map((c) => {
-            const isToday = c.date === today
-            let cls = 'bg-[var(--bg-card-hover)] border border-transparent'
-            if (c.due && c.done) cls = 'bg-[var(--accent-yellow)] border border-transparent'
-            else if (isToday) cls = 'bg-transparent border-2 border-[var(--accent-yellow)]/70'
-            else if (c.due && !c.done) cls = 'bg-[var(--danger)]/25 border border-transparent'
-            return (
-              <div key={c.date} className="flex flex-col items-center gap-1">
-                <div
-                  title={`${c.date}${c.due ? (c.done ? ' · yapıldı' : ' · kaçırıldı') : ' · gerekli değil'}`}
-                  className={`w-5 h-5 rounded-full flex items-center justify-center ${cls}`}
-                >
-                  {c.due && c.done && <Check className="w-3 h-3 text-black" />}
-                </div>
-                <span className="text-[7px] font-bold text-[var(--text-muted)] uppercase">
-                  {weekdayShort(c.date)}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Meta + genişlet */}
-        <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)] font-medium">
-          <span>
-            En uzun {computed.longestStreak}g · %{Math.round(computed.completionRate30 * 100)} (30g)
-            {ms && <span className="text-[var(--accent-yellow)] font-bold"> · {ms}</span>}
-          </span>
-          <button
-            onClick={() => setExpanded((v) => !v)}
-            className="inline-flex items-center gap-0.5 hover:text-[var(--text-secondary)] transition-colors"
-          >
-            30g
-            <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-          </button>
-        </div>
-
-        {/* Genişlet: 30-gün tam zincir */}
-        <AnimatePresence initial={false}>
-          {expanded && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: reduce ? 0 : 0.2 }}
-              className="overflow-hidden"
-            >
-              <div className="flex items-end gap-[3px] pt-1">
-                {habit.cells.map((c) => {
-                  const isToday = c.date === today
-                  let cls = 'bg-[var(--bg-card-hover)]'
-                  if (c.due && c.done) cls = 'bg-[var(--accent-yellow)]'
-                  else if (c.due && !c.done) cls = isToday ? 'bg-[var(--warning)]/40' : 'bg-[var(--danger)]/25'
-                  else if (!c.due) cls = 'bg-[var(--bg-elevated)]'
-                  return (
-                    <div
-                      key={c.date}
-                      title={`${c.date}${c.due ? (c.done ? ' · yapıldı' : ' · kaçırıldı') : ' · gerekli değil'}`}
-                      className={`h-5 flex-1 min-w-[4px] rounded-[2px] ${cls} ${
-                        isToday ? 'ring-1 ring-[var(--accent-yellow)]' : ''
-                      }`}
-                    />
-                  )
-                })}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
-      {computed.atRisk && hasStreak && (
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--warning)]/50" />
+      {/* Sağ: 7 gün-çemberi */}
+      <div className="flex items-center gap-1 shrink-0">
+        {last7.map((c) => {
+          const isToday = c.date === today
+          return (
+            <DayCircle
+              key={c.date}
+              date={c.date}
+              due={c.due}
+              done={c.due && c.done}
+              isToday={isToday}
+              isCounter={isCounter}
+              todayValue={isToday ? habit.todayValue : 0}
+              target={habit.target}
+              label={habit.label}
+              busy={busy}
+              onTap={isToday ? onTap : undefined}
+            />
+          )
+        })}
+      </div>
+
+      {/* Streak */}
+      <div className="flex items-center gap-1 shrink-0 w-9 justify-end" aria-label={`${computed.currentStreak} gün zincir`}>
+        <Flame
+          className={cn('w-3.5 h-3.5', hasStreak ? 'text-[var(--accent)]' : 'text-[var(--text-quaternary)]')}
+        />
+        <span
+          className={cn(
+            'num text-sm font-semibold',
+            hasStreak ? 'text-[var(--text-primary)]' : 'text-[var(--text-quaternary)]',
+          )}
+        >
+          {computed.currentStreak}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function DayCircle({
+  date,
+  due,
+  done,
+  isToday,
+  isCounter,
+  todayValue,
+  target,
+  label,
+  busy,
+  onTap,
+}: {
+  date: string
+  due: boolean
+  done: boolean
+  isToday: boolean
+  isCounter: boolean
+  todayValue: number
+  target: number
+  label: string
+  busy: boolean
+  onTap?: () => void
+}) {
+  // Görsel durum sınıfları (Framer dark, sakin):
+  // done = yeşil dolu · bugün = mavi ring · kaçırılan = ince turuncu · boş = soluk
+  const missed = due && !done && !isToday
+
+  const circleCls = cn(
+    'w-7 h-7 rounded-full flex items-center justify-center text-[9px] num font-semibold transition-all duration-150',
+    done
+      ? 'bg-[var(--success)] text-black'
+      : isToday
+        ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
+        : missed
+          ? 'border border-[var(--fire)]/45 text-[var(--fire)]/70'
+          : due
+            ? 'border border-[var(--border-strong)] text-transparent'
+            : 'border border-[var(--border-subtle)]/60 text-transparent',
+  )
+
+  const inner = done ? (
+    isCounter ? <span className="text-black">{Math.min(todayValue || target, target)}</span> : <Check className="w-3.5 h-3.5" strokeWidth={3} />
+  ) : isToday && isCounter ? (
+    <span>{todayValue}</span>
+  ) : null
+
+  const title = `${weekdayShort(date)} ${date}${
+    due ? (done ? ' · yapıldı' : isToday ? ' · bugün' : ' · kaçırıldı') : ' · gerekli değil'
+  }`
+
+  const circle = (
+    <div className={circleCls} title={title}>
+      {inner}
+    </div>
+  )
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      {onTap ? (
+        <button
+          onClick={onTap}
+          disabled={busy}
+          aria-label={`${label} · bugün işaretle`}
+          className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--bg-card)] active:scale-90 transition-transform duration-150 disabled:opacity-60"
+        >
+          {circle}
+        </button>
+      ) : (
+        circle
       )}
-    </motion.div>
+      <span
+        className={cn(
+          'text-[8px] font-semibold uppercase tracking-wide',
+          isToday ? 'text-[var(--accent)]' : 'text-[var(--text-quaternary)]',
+        )}
+      >
+        {weekdayShort(date)}
+      </span>
+    </div>
   )
 }

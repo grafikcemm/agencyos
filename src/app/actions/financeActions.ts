@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { revalidatePath } from "next/cache";
 import { createServerSupabase } from "@/lib/supabaseServer";
+import { assertSession } from "@/lib/auth";
 
 type Result = { success: boolean; error?: string };
 
@@ -29,6 +30,7 @@ export interface FinanceTxInput {
 }
 
 export async function addFinanceTx(input: FinanceTxInput): Promise<Result> {
+  await assertSession();
   if (!input.title.trim()) return fail("Başlık boş olamaz.");
   if (!(input.amount > 0)) return fail("Tutar 0'dan büyük olmalı.");
   if (!/^\d{4}-\d{2}$/.test(input.month)) return fail("Geçersiz ay.");
@@ -53,6 +55,7 @@ export async function updateFinanceTx(
   id: string,
   patch: Partial<Omit<FinanceTxInput, "type" | "month">>,
 ): Promise<Result> {
+  await assertSession();
   const supabase = createServerSupabase();
   const updates: Record<string, unknown> = {};
   if (patch.title !== undefined) updates.title = patch.title.trim();
@@ -70,6 +73,7 @@ export async function updateFinanceTx(
 }
 
 export async function deleteFinanceTx(id: string): Promise<Result> {
+  await assertSession();
   const supabase = createServerSupabase();
   const { error } = await supabase.from("finance_transactions").delete().eq("id", id);
   if (error) return fail(error.message);
@@ -89,6 +93,7 @@ export interface FixedExpenseInput {
 }
 
 export async function addFixedExpense(input: FixedExpenseInput): Promise<Result> {
+  await assertSession();
   if (!input.title.trim()) return fail("Başlık boş olamaz.");
   if (!(input.amount > 0)) return fail("Tutar 0'dan büyük olmalı.");
   const supabase = createServerSupabase();
@@ -110,6 +115,7 @@ export async function updateFixedExpense(
   id: string,
   patch: Partial<FixedExpenseInput> & { is_active?: boolean },
 ): Promise<Result> {
+  await assertSession();
   const supabase = createServerSupabase();
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.title !== undefined) updates.title = patch.title.trim();
@@ -126,6 +132,7 @@ export async function updateFixedExpense(
 }
 
 export async function deleteFixedExpense(id: string): Promise<Result> {
+  await assertSession();
   const supabase = createServerSupabase();
   const { error } = await supabase.from("finance_fixed_expenses").delete().eq("id", id);
   if (error) return fail(error.message);
@@ -150,6 +157,7 @@ export interface SubscriptionInput {
 }
 
 export async function addFinanceSubscription(input: SubscriptionInput): Promise<Result> {
+  await assertSession();
   if (!input.title.trim()) return fail("Başlık boş olamaz.");
   if (!(input.amount > 0)) return fail("Tutar 0'dan büyük olmalı.");
   const supabase = createServerSupabase();
@@ -176,6 +184,7 @@ export async function updateFinanceSubscription(
   id: string,
   patch: Partial<SubscriptionInput> & { is_active?: boolean },
 ): Promise<Result> {
+  await assertSession();
   const supabase = createServerSupabase();
   const updates: Record<string, unknown> = {};
   if (patch.title !== undefined) updates.title = patch.title.trim();
@@ -198,6 +207,7 @@ export async function updateFinanceSubscription(
 }
 
 export async function deleteFinanceSubscription(id: string): Promise<Result> {
+  await assertSession();
   const supabase = createServerSupabase();
   const { error } = await supabase.from("finance_subscriptions").delete().eq("id", id);
   if (error) return fail(error.message);
@@ -219,6 +229,7 @@ export interface LocalFinancePayload {
 export async function seedFinanceFromLocal(
   payload: LocalFinancePayload,
 ): Promise<{ ok: boolean; migrated: boolean; txInserted: number; subsInserted: number }> {
+  await assertSession();
   const supabase = createServerSupabase();
   const month = /^\d{4}-\d{2}$/.test(payload.month) ? payload.month : null;
   if (!month) return { ok: false, migrated: false, txInserted: 0, subsInserted: 0 };

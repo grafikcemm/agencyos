@@ -5,6 +5,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireApiAccess } from '@/lib/auth'
+import { redactForLog } from '@/lib/redact'
 
 const APOLLO_API_KEY = process.env.APOLLO_API_KEY
 
@@ -98,8 +99,9 @@ export async function POST(req: Request) {
           'x-rate-limit-reset': orgRes.headers.get('x-rate-limit-reset'),
         })
         const errBody = await orgRes.text().catch(() => '')
-        // Ensure API key is NEVER log-printed by never referencing APOLLO_API_KEY in logs
-        console.error(`Apollo API Error: status=${status}, endpoint=https://api.apollo.io/api/v1/organizations/enrich, headers=${headersStr}, body=${errBody}`)
+        // Ensure API key is NEVER log-printed by never referencing APOLLO_API_KEY in logs.
+        // Body redacted/truncated — sağlayıcı yanıtı org/PII detayı içerebilir.
+        console.error(`Apollo API Error: status=${status}, endpoint=https://api.apollo.io/api/v1/organizations/enrich, headers=${headersStr}, body=${redactForLog(errBody)}`)
         return NextResponse.json({
           error: 'Apollo API error',
           status,

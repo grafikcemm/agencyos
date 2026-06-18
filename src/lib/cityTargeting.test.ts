@@ -3,7 +3,6 @@ import {
   SCAN_CITIES,
   SCAN_TARGETS,
   buildDailyTargetPlan,
-  type ScanCity,
 } from './cityTargeting'
 import { SCAN_SECTORS, type SectorEngagement } from './sectorRotation'
 import { matchSectorProfile } from './sectorPriority'

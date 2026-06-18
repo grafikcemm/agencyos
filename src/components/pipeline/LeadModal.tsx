@@ -293,7 +293,7 @@ ${services}
                       <Sparkles className="w-3 h-3" /> AI Analizi
                     </h3>
                     {!lead.ai_analysis && (
-                      <button onClick={handleAnalyze} disabled={loading} className="text-[10px] bg-[var(--accent)] text-white px-2 py-1 rounded-md font-bold hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50">
+                      <button onClick={handleAnalyze} disabled={loading} className="text-[10px] bg-[var(--cta-bg)] text-[var(--cta-fg)] px-2 py-1 rounded-md font-bold hover:bg-[#e6e6e6] transition-all disabled:opacity-50">
                         {loading ? 'Analiz...' : 'Analiz Et'}
                       </button>
                     )}
@@ -498,7 +498,7 @@ ${services}
             <button onClick={handleConvertToProject} disabled={loading} className="flex items-center gap-1.5 px-4 py-2 bg-[var(--success)] text-white text-[11px] font-bold rounded-lg hover:opacity-90 transition-all disabled:opacity-50">
               <CheckCircle2 className="w-3.5 h-3.5" /> Projeye Dönüştür
             </button>
-            <button onClick={handleSave} disabled={loading} className="px-4 py-2 bg-[var(--accent)] text-white text-[11px] font-bold rounded-lg hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50">
+            <button onClick={handleSave} disabled={loading} className="px-4 py-2 bg-[var(--cta-bg)] text-[var(--cta-fg)] text-[11px] font-bold rounded-lg hover:bg-[#e6e6e6] transition-all disabled:opacity-50">
               {loading ? 'Kaydediliyor...' : 'Kaydet & Kapat'}
             </button>
           </div>

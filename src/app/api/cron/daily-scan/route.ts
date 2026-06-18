@@ -112,6 +112,9 @@ async function handleScan(req: Request) {
     const cityStats = await loadCityEngagement()
     const targetPlan = buildDailyTargetPlan(baseIndex, sectorStats, cityStats)
 
+    // Günlük hedef: 2 lead — SADECE A-tier. "Gerçekten para kazandıran, boş kayıt yok."
+    const DAILY_TARGET = 2
+
     const acceptedLeads: Array<{
       id: string
       name: string
@@ -140,7 +143,7 @@ async function handleScan(req: Request) {
 
     // Şehir×sektör adayları üzerinde dön: her aday için ilçe rotasyonu + sektör query'leri.
     for (const candidate of targetPlan) {
-      if (acceptedLeads.length >= 5 || attempts >= maxAttempts) break
+      if (acceptedLeads.length >= DAILY_TARGET || attempts >= maxAttempts) break
 
       const sector = candidate.sector
       const cleanSector = normalizeSector(sector.displayName)
@@ -150,7 +153,7 @@ async function handleScan(req: Request) {
       let candidateAttempts = 0
 
       for (let di = 0; di < districtList.length; di++) {
-        if (acceptedLeads.length >= 5 || attempts >= maxAttempts || candidateAttempts >= PER_CANDIDATE_BUDGET) break
+        if (acceptedLeads.length >= DAILY_TARGET || attempts >= maxAttempts || candidateAttempts >= PER_CANDIDATE_BUDGET) break
         const district = districtList[(startD + di) % districtList.length]
         const loc = normalizeLocation(candidate.city, district || null)
         attempts++
@@ -158,7 +161,7 @@ async function handleScan(req: Request) {
 
         // Bu aday için sektör query'lerini tara
         for (const query of sector.queries) {
-          if (acceptedLeads.length >= 5) break
+          if (acceptedLeads.length >= DAILY_TARGET) break
 
           const searchQuery = `${query} ${loc.googleQuery}`
         scannedQueries.push(searchQuery)
@@ -181,7 +184,7 @@ async function handleScan(req: Request) {
 
         // Process place results
         for (const place of places) {
-          if (acceptedLeads.length >= 5) break
+          if (acceptedLeads.length >= DAILY_TARGET) break
 
           const placeId = place.place_id
           if (!placeId) continue
@@ -303,10 +306,10 @@ async function handleScan(req: Request) {
           let finalLabel = qr.quality_label
           let finalAction = qr.next_action_priority
 
-          if (finalTier !== 'A' && finalTier !== 'B') {
+          if (finalTier !== 'A') {
             rejectedLeads.push({
               name: d.name,
-              reason: `Düşük kalite seviyesi (Tier: ${finalTier || 'C/D'})`
+              reason: `A-tier değil — reddedildi (Tier: ${finalTier || 'C/D'})`
             })
             continue
           }
@@ -425,10 +428,10 @@ async function handleScan(req: Request) {
       nextRun: 'Yarın Sabah 08:00 (TR)'
     }
 
-    if (acceptedLeads.length < 5) {
+    if (acceptedLeads.length < DAILY_TARGET) {
       responsePayload.accepted = acceptedLeads.length
-      responsePayload.target = 5
-      responsePayload.reason = 'Kalite kapısı korunarak yeterli lead bulunamadı.'
+      responsePayload.target = DAILY_TARGET
+      responsePayload.reason = 'A-tier kalite kapısı korunarak yeterli lead bulunamadı.'
     }
 
     if (isDryRun) {

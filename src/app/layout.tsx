@@ -1,18 +1,26 @@
 import type { Metadata } from 'next'
-import { Inter, Inter_Tight, IBM_Plex_Mono } from 'next/font/google'
+import { Inter, Inter_Tight, IBM_Plex_Mono, Geist } from 'next/font/google'
 import './globals.css'
 
-// Gövde metni (FTG "Sakin Karanlık Editöryel" sistemi)
+// Gövde metni (Inter Variable + OpenType char varyantları — Framer body sesi)
 const inter = Inter({
   subsets: ['latin'],
   variable: '--font-sans',
 })
 
-// Editöryel başlık (büyük, ağır) — "Günaydın, Cem"
+// Editöryel başlık fallback (Inter Tight) — Geist yoksa display bunu kullanır
 const interTight = Inter_Tight({
   subsets: ['latin'],
   variable: '--font-inter-tight',
   weight: ['500', '600', '700', '800'],
+})
+
+// Framer display ikamesi: Geist (geometrik grotesk, GT Walsheim'a en yakın
+// açık kaynak). Agresif negatif tracking ile poster hissi taşır.
+const geist = Geist({
+  subsets: ['latin'],
+  variable: '--font-display',
+  weight: ['500', '600', '700'],
 })
 
 // Zaman / etiket / data — timeline omurgası, mono numerikler
@@ -35,7 +43,7 @@ export default function RootLayout({
   return (
     <html
       lang="tr"
-      className={`${inter.variable} ${interTight.variable} ${plexMono.variable} h-full`}
+      className={`${inter.variable} ${interTight.variable} ${plexMono.variable} ${geist.variable} h-full`}
       suppressHydrationWarning
     >
       <body className="min-h-full font-sans antialiased" suppressHydrationWarning>

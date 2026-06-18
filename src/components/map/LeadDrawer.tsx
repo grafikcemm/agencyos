@@ -273,7 +273,7 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
           <div className="px-5 py-3 border-b border-[var(--border-subtle)] shrink-0 grid grid-cols-2 gap-2 bg-[var(--bg-base)]/40">
             <a
               href={`tel:${lead.phone}`}
-              className="flex items-center justify-center gap-2 py-2.5 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-sm font-bold rounded-lg transition-all"
+              className="flex items-center justify-center gap-2 py-2.5 bg-[var(--cta-bg)] hover:bg-[#e6e6e6] text-[var(--cta-fg)] text-sm font-bold rounded-lg transition-all"
             >
               <Phone className="w-4 h-4" />
               Ara
@@ -591,7 +591,7 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleBuildProposal}
-              className="flex items-center justify-center gap-1.5 py-2 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white text-xs font-bold rounded-lg transition-all"
+              className="flex items-center justify-center gap-1.5 py-2 bg-[var(--cta-bg)] hover:bg-[#e6e6e6] text-[var(--cta-fg)] text-xs font-bold rounded-lg transition-all"
             >
               <FileText className="w-3.5 h-3.5" />
               {proposal ? 'Teklifi Yenile' : 'Teklif Oluştur'}

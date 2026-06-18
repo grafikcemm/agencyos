@@ -1,5 +1,6 @@
 "use server";
 import { createClient } from "@/lib/supabase/server";
+import { assertSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
 
 // Üniversiteye ait tüm veriyi çek
@@ -46,6 +47,7 @@ export async function addCourse(data: {
   midterm_score?: number;
   notes?: string;
 }) {
+  await assertSession();
   const supabase = createClient();
   await supabase.from('courses').insert(data);
   revalidatePath('/universite');
@@ -59,6 +61,7 @@ export async function updateCourse(id: string, data: Partial<{
   midterm_score: number;
   notes: string;
 }>) {
+  await assertSession();
   const supabase = createClient();
   await supabase.from('courses').update(data).eq('id', id);
   revalidatePath('/universite');
@@ -66,6 +69,7 @@ export async function updateCourse(id: string, data: Partial<{
 
 // Ders sil
 export async function deleteCourse(id: string) {
+  await assertSession();
   const supabase = createClient();
   await supabase.from('courses').delete().eq('id', id);
   revalidatePath('/universite');
@@ -79,6 +83,7 @@ export async function addExam(data: {
   exam_date: string;
   type: 'exam' | 'assignment' | 'project';
 }) {
+  await assertSession();
   const supabase = createClient();
   await supabase.from('exams').insert(data);
   revalidatePath('/universite');
@@ -86,6 +91,7 @@ export async function addExam(data: {
 
 // Sınavı tamamlandı işaretle
 export async function toggleExam(id: string, is_completed: boolean) {
+  await assertSession();
   const supabase = createClient();
   await supabase.from('exams')
     .update({ is_completed })
@@ -95,6 +101,7 @@ export async function toggleExam(id: string, is_completed: boolean) {
 
 // Sınav sil
 export async function deleteExam(id: string) {
+  await assertSession();
   const supabase = createClient();
   await supabase.from('exams').delete().eq('id', id);
   revalidatePath('/universite');
@@ -106,6 +113,7 @@ export async function addUniversityPoints(
   points: number, 
   course_id?: string
 ) {
+  await assertSession();
   const supabase = createClient();
   await supabase.from('university_points')
     .insert({ action, points, course_id });

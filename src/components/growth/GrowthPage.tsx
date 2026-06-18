@@ -62,7 +62,7 @@ export function GrowthPage({}: { uiMode: 'koruma' | 'denge' | 'atak' }) {
           <p className="text-xs text-[var(--text-muted)] leading-relaxed mb-3">{recommendedSkill.shortDescription}</p>
           <button
             onClick={() => setActiveFocus(recommendedSkill.id, activeLevel.id)}
-            className="bg-[var(--accent)] text-white font-mono font-bold text-xs px-3.5 py-1.5 rounded hover:bg-[var(--accent-hover)] transition-colors"
+            className="bg-[var(--cta-bg)] text-[var(--cta-fg)] font-mono font-bold text-xs px-3.5 py-1.5 rounded hover:bg-[#e6e6e6] transition-colors"
           >
             Odak Olarak Seç
           </button>

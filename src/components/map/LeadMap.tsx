@@ -21,28 +21,29 @@ const fixLeafletIcons = () => {
 
 // Custom marker icon based on status/priority
 const createCustomIcon = (status: string, priority?: string) => {
-  // Apple light tema — marka kırmızısı aksan (hex literals zorunlu: Leaflet divIcon HTML string'i)
-  const accentColor = '#a4161a' // --accent (brand red)
-  const successColor = '#1a8a3a' // --success
-  const mutedColor = '#86868b'   // --text-muted
+  // Framer dark canvas — hex literals zorunlu: Leaflet divIcon HTML string'i var() çözmez.
+  const highColor = '#ffffff'    // yüksek öncelik = beyaz (Framer CTA tonu)
+  const successColor = '#30d158' // --success
+  const mutedColor = '#999999'   // --text-muted
+  const markerBorder = '#090909' // canvas (koyu kenar)
 
   if (priority === 'high') {
     return L.divIcon({
       className: 'custom-div-icon',
-      html: `<div style="width: 16px; height: 16px; background-color: ${accentColor}; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,0.25); border: 2px solid #fff;"></div>`,
+      html: `<div style="width: 16px; height: 16px; background-color: ${highColor}; border-radius: 50%; box-shadow: 0 1px 6px rgba(0,0,0,0.6); border: 2px solid ${markerBorder};"></div>`,
       iconSize: [16, 16],
       iconAnchor: [8, 8]
     })
   }
 
-  const color = status === 'new' ? '#0071a8' :
-                status === 'contacted' ? '#b25e00' :
+  const color = status === 'new' ? '#64d2ff' :
+                status === 'contacted' ? '#ffd60a' :
                 status === 'converted' ? successColor :
-                status === 'lost' ? '#d11507' : mutedColor
+                status === 'lost' ? '#ff453a' : mutedColor
 
   return L.divIcon({
     className: 'custom-div-icon',
-    html: `<div style="width: 12px; height: 12px; background-color: ${color}; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.25); border: 1px solid #fff;"></div>`,
+    html: `<div style="width: 12px; height: 12px; background-color: ${color}; border-radius: 50%; box-shadow: 0 1px 4px rgba(0,0,0,0.6); border: 1px solid ${markerBorder};"></div>`,
     iconSize: [12, 12],
     iconAnchor: [6, 6]
   })
@@ -85,14 +86,14 @@ function ClusterLayer({ leads, onLeadClick }: { leads: EnrichedLead[]; onLeadCli
 
       // Popup with minimal info
       marker.bindPopup(`
-        <div style="font-family: system-ui; min-width: 180px; padding: 4px;">
-          <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px;">${lead.business_name}</div>
-          <div style="font-size: 10px; color: #86868b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">
+        <div style="font-family: system-ui; min-width: 180px; padding: 4px; color: #ffffff;">
+          <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px; color: #ffffff;">${lead.business_name}</div>
+          <div style="font-size: 10px; color: #999999; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px;">
             ${lead.sector || ''} • ${lead.city || ''}${lead.district ? ' / ' + lead.district : ''}
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-top: 1px solid #e5e5e7; border-bottom: 1px solid #e5e5e7; margin-bottom: 8px;">
-            <span style="font-size: 10px; color: #6e6e73; font-weight: 700;">SKOR</span>
-            <span style="font-size: 12px; font-weight: 700; color: #a4161a;">${lead.potential_score || 0}</span>
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-top: 1px solid #262626; border-bottom: 1px solid #262626; margin-bottom: 8px;">
+            <span style="font-size: 10px; color: #999999; font-weight: 700;">SKOR</span>
+            <span style="font-size: 12px; font-weight: 700; color: #0099ff;">${lead.potential_score || 0}</span>
           </div>
         </div>
       `, { className: 'dark-popup' })
@@ -148,18 +149,18 @@ function CircleDrawLayer({
 
   useEffect(() => {
     if (!circle) return
-    // hex zorunlu: var() Leaflet path option'larında çalışmaz (--accent = #a4161a).
+    // hex zorunlu: var() Leaflet path option'larında çalışmaz (--accent = #0099ff).
     const area = L.circle([circle.lat, circle.lng], {
       radius: circle.radius,
-      color: '#a4161a',
+      color: '#0099ff',
       weight: 2,
-      fillColor: '#a4161a',
-      fillOpacity: 0.08,
+      fillColor: '#0099ff',
+      fillOpacity: 0.10,
     }).addTo(map)
     const center = L.circleMarker([circle.lat, circle.lng], {
       radius: 4,
-      color: '#a4161a',
-      fillColor: '#a4161a',
+      color: '#0099ff',
+      fillColor: '#0099ff',
       fillOpacity: 1,
       weight: 2,
     }).addTo(map)
@@ -207,7 +208,7 @@ export default function LeadMap({ leads, onLeadClick, drawMode = false, circle =
       >
         <TileLayer
           attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
         <ClusterLayer leads={leads} onLeadClick={handleLeadClick} />
         <CircleDrawLayer drawMode={drawMode} circle={circle} onCircleChange={onCircleChange} />
@@ -226,39 +227,40 @@ export default function LeadMap({ leads, onLeadClick, drawMode = false, circle =
           border-radius: 50%;
           font-weight: 800;
           font-size: 12px;
-          color: #fff;
+          color: #000;
           font-family: system-ui, sans-serif;
           letter-spacing: 0.02em;
         }
         .cluster-small {
-          background: rgba(164, 22, 26, 0.88);
-          border: 2px solid rgba(255, 255, 255, 0.85);
-          box-shadow: 0 1px 6px rgba(0, 0, 0, 0.2);
+          background: rgba(255, 255, 255, 0.92);
+          border: 2px solid rgba(0, 0, 0, 0.4);
+          box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
           width: 36px; height: 36px;
         }
         .cluster-medium {
-          background: rgba(164, 22, 26, 0.9);
-          border: 2px solid rgba(255, 255, 255, 0.85);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+          background: rgba(255, 255, 255, 0.92);
+          border: 2px solid rgba(0, 0, 0, 0.4);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
           width: 44px; height: 44px;
           font-size: 13px;
         }
         .cluster-large {
-          background: rgba(122, 17, 21, 0.92);
-          border: 2px solid rgba(255, 255, 255, 0.85);
-          box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+          background: rgba(0, 153, 255, 0.95);
+          color: #fff;
+          border: 2px solid rgba(0, 0, 0, 0.4);
+          box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
           width: 52px; height: 52px;
           font-size: 14px;
         }
         .dark-popup .leaflet-popup-content-wrapper {
-          background: #ffffff;
-          color: #1d1d1f;
+          background: #141414;
+          color: #ffffff;
           border-radius: 12px;
-          border: 1px solid #e5e5e7;
-          box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+          border: 1px solid #262626;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.55);
         }
         .dark-popup .leaflet-popup-tip {
-          background: #ffffff;
+          background: #141414;
         }
         .draw-mode .leaflet-container,
         .draw-mode .leaflet-grab {

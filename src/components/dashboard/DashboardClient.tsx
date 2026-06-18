@@ -1,16 +1,20 @@
 "use client"
 
 import { useMemo, useState, useEffect } from 'react'
+import dynamic from 'next/dynamic'
 import { useQuery } from '@tanstack/react-query'
 import { TrendingUp, TrendingDown, Cpu, Flame, Clock, Activity, Search, Filter, ArrowRight, Wallet, CheckCircle, Star, AlertTriangle, ChevronRight } from 'lucide-react'
-import { BarChart, Bar, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
 import { LeadDrawer } from '@/components/map/LeadDrawer'
 import type { EnrichedLead } from '@/lib/enrichLead'
 import { fetchProjects } from '@/lib/repositories/projects'
 import { dbGet } from '@/lib/repositories/base'
 
+// Recharts ağır — ana bundle'dan ayır, yalnız client'ta yükle (M11).
+const CashFlowChart = dynamic(() => import('./CashFlowChart'), { ssr: false })
+
 const MONTH_LABELS_TR = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara']
-const USD_TO_TL = 38
+// USD/TRY — env ile override edilebilir (stale hardcode riskini azaltır).
+const USD_TO_TL = Number(process.env.NEXT_PUBLIC_USD_TO_TL) || 38
 
 // Kategori adından 3 harfli kısa kod (cüzdan rozeti).
 function walletCode(name: string): string {
@@ -128,14 +132,14 @@ interface DashboardClientProps {
 // hex-alpha suffixes (`${color}1f`) and inline styles where var()-inside-color-mix
 // is unreliable cross-browser (Safari/Firefox). Keep in sync with globals.css.
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  active: { label: 'Aktif', color: '#1a8a3a' },        // --success
-  completed: { label: 'Tamamlandı', color: '#0071a8' }, // --info
-  pending: { label: 'Bekliyor', color: '#b25e00' },     // --warning
-  cancelled: { label: 'İptal', color: '#d11507' },      // --danger
-  new: { label: 'Yeni', color: '#0071a8' },             // --info
-  contacted: { label: 'İletişim', color: '#b25e00' },   // --warning
-  converted: { label: 'Kazanıldı', color: '#1a8a3a' },  // --success
-  proposal: { label: 'Teklif', color: '#1a8a3a' },      // --accent
+  active: { label: 'Aktif', color: '#30d158' },        // --success
+  completed: { label: 'Tamamlandı', color: '#64d2ff' }, // --info
+  pending: { label: 'Bekliyor', color: '#ffd60a' },     // --warning
+  cancelled: { label: 'İptal', color: '#ff453a' },      // --danger
+  new: { label: 'Yeni', color: '#64d2ff' },             // --info
+  contacted: { label: 'İletişim', color: '#ffd60a' },   // --warning
+  converted: { label: 'Kazanıldı', color: '#30d158' },  // --success
+  proposal: { label: 'Teklif', color: '#30d158' },      // --accent
 }
 
 export function DashboardClient(props: DashboardClientProps) {
@@ -204,7 +208,7 @@ export function DashboardClient(props: DashboardClientProps) {
     queryFn: async (): Promise<CashFlowPoint[]> => {
       const [projects, costLogs] = await Promise.all([
         fetchProjects({ limit: 500 }),
-        dbGet<CostLogRow>('ai_cost_logs', { limit: 5000 }),
+        dbGet<CostLogRow>('ai_cost_logs', { limit: 1000 }),
       ])
       return buildCashFlow(projects, costLogs)
     },
@@ -238,7 +242,7 @@ export function DashboardClient(props: DashboardClientProps) {
             </div>
             <div className="flex items-center gap-3">
               <span className="text-[10px] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[var(--text-secondary)] font-bold px-3 py-1.5 rounded-lg flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-[var(--accent)]" /> 2026 Mayıs
+                <Clock className="w-3.5 h-3.5 text-[var(--accent)]" /> {new Date().toLocaleDateString('tr-TR', { year: 'numeric', month: 'long' })}
               </span>
               <button
                 onClick={() => window.location.reload()}
@@ -248,41 +252,6 @@ export function DashboardClient(props: DashboardClientProps) {
               </button>
             </div>
           </div>
-
-          {/* Temiz Başlangıç Hazır (Clean Production Start standby UX) */}
-          {(actionLeads.length === 0 && new Date().getTime() < new Date('2026-06-01T00:00:00+03:00').getTime()) && (
-            <div className="bg-[color-mix(in_srgb,var(--success)_6%,var(--bg-base))] border border-[var(--success)]/25 rounded-2xl p-5 flex items-center justify-between gap-4 animate-in fade-in slide-in-from-top-1 shadow-[0_4px_24px_var(--accent-glow)]">
-              <div className="flex items-start gap-4">
-                <div className="p-2.5 bg-[var(--success)]/10 rounded-xl border border-[var(--success)]/20 shrink-0 text-[var(--success)]">
-                  <CheckCircle className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-xs font-black text-[var(--success)] uppercase tracking-widest">Temiz Başlangıç Hazır</h4>
-                  <p className="text-[10px] text-[var(--text-secondary)] mt-1 font-medium leading-relaxed">
-                    Sistem 1 Haziran 2026 Pazartesi günü otomatik ve temiz bir başlangıç yapacak şekilde hazırlandı.
-                    Otomatik tarama <span className="text-[var(--success)] font-bold">1 Haziran Pazartesi 08:00 (TR)</span> saatinde başlayacaktır.
-                  </p>
-                  <p className="text-[9px] text-[var(--text-muted)] mt-1 font-bold">
-                    💡 İpucu: dry-run testi şu an arka planda tam 5 adet kaliteli müşteri adayı bulabiliyor.
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await fetch('/api/cron/daily-scan?dryRun=true')
-                    const data = await res.json()
-                    alert(`Dry-run Başarılı! Aday Sayısı: ${data.wouldInsertCount || 0}`);
-                  } catch {
-                    alert('Dry-run isteği başarısız oldu.');
-                  }
-                }}
-                className="text-[10px] bg-[var(--success)] hover:bg-[var(--accent-hover)] text-white font-black px-4 py-2.5 rounded-xl shrink-0 transition-all shadow-[0_4px_12px_var(--accent-glow)] flex items-center gap-1"
-              >
-                Dry-run Testi Yap <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          )}
 
           {/* Veri Bakımı Gerekli (Admin Maintenance Warning) */}
           {qualityMissingCount > 0 && (
@@ -465,7 +434,7 @@ export function DashboardClient(props: DashboardClientProps) {
                 <PlanColumn
                   title="En Hızlı Paraya Dönecekler"
                   icon={Wallet}
-                  color="#8B5CF6"
+                  color="#a78bfa"
                   leads={plan.fastMoney}
                   emptyMessage="Dönüşüm olasılığı yüksek lead yok."
                   onSelect={setSelectedLead}
@@ -477,20 +446,20 @@ export function DashboardClient(props: DashboardClientProps) {
           {/* ROW 1: 3 Premium Cards (Glowing Net Gelir + 2 Charcoal Glass) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             
-            {/* Card 1: My Balance (Mint accent gradient — Calm Operator Console) */}
-            <div className="bg-gradient-to-br from-[var(--accent)] via-[var(--accent-2)] to-[var(--accent-hover)] text-white rounded-2xl p-5 shadow-[0_8px_30px_var(--accent-glow)] flex flex-col justify-between min-h-[160px] relative overflow-hidden group hover:scale-[1.01] transition-all duration-300">
+            {/* Card 1: Kasa & Net Gelir (Framer violet gradient spotlight imzası) */}
+            <div className="gradient-spotlight gradient-spotlight-violet text-white p-5 flex flex-col justify-between min-h-[160px] overflow-hidden group hover:scale-[1.01] transition-transform duration-200">
               {/* Background Glow Ring */}
-              <div className="absolute -right-10 -top-10 w-32 h-32 rounded-full bg-white/10 blur-xl pointer-events-none group-hover:scale-125 transition-all duration-500" />
+              <div className="absolute -right-10 -top-10 w-32 h-32 rounded-full bg-white/10 blur-xl pointer-events-none group-hover:scale-110 transition-transform duration-300" />
 
-              <div>
+              <div className="relative z-10">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-black/15 flex items-center justify-center">
+                    <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center">
                       <Wallet className="w-4 h-4 text-white" />
                     </div>
                     <span className="text-[10px] font-black uppercase tracking-widest text-white/70">Kasa & Net Gelir</span>
                   </div>
-                  <div className="flex items-center gap-1 text-[10px] font-black bg-black/15 px-2 py-0.5 rounded-full num">
+                  <div className="flex items-center gap-1 text-[10px] font-black bg-white/10 px-2 py-0.5 rounded-full num">
                     {props.revenueUp ? <TrendingUp className="w-3 h-3 text-white" /> : <TrendingDown className="w-3 h-3 text-white" />}
                     %{props.revenueTrend}
                   </div>
@@ -504,7 +473,7 @@ export function DashboardClient(props: DashboardClientProps) {
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t border-black/10 mt-2">
+              <div className="relative z-10 flex items-center justify-between pt-4 border-t border-white/10 mt-2">
                 <span className="text-[9px] font-black uppercase tracking-widest text-white/70">Detayları İncele</span>
                 <ArrowRight className="w-3.5 h-3.5 text-white group-hover:translate-x-1 transition-all" />
               </div>
@@ -551,7 +520,7 @@ export function DashboardClient(props: DashboardClientProps) {
                     </div>
                     <span className="text-[10px] font-black uppercase tracking-widest text-[var(--text-secondary)]">Yapay Zekâ Altyapısı</span>
                   </div>
-                  <div className="w-2 h-2 rounded-full bg-[var(--success)] animate-pulse" />
+                  <div className="w-2 h-2 rounded-full bg-[var(--success)] shadow-[0_0_0_3px_rgba(48,209,88,0.15)]" />
                 </div>
 
                 <div className="mt-4">
@@ -592,7 +561,7 @@ export function DashboardClient(props: DashboardClientProps) {
                     {props.sectorWallets.map((wallet, idx) => (
                       <div
                         key={idx}
-                        className="p-3.5 rounded-xl border bg-[var(--bg-elevated)] border-[var(--border-subtle)] hover:border-[var(--border-highlight)] transition-all duration-300 hover:scale-[1.02] flex flex-col justify-between min-h-[100px]"
+                        className="p-3.5 rounded-xl border bg-[var(--bg-elevated)] border-[var(--border-subtle)] hover:border-[var(--border-highlight)] transition-colors duration-200 flex flex-col justify-between min-h-[100px]"
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-[9px] font-black tracking-widest text-[var(--text-muted)] uppercase">{walletCode(wallet.name)}</span>
@@ -660,33 +629,7 @@ export function DashboardClient(props: DashboardClientProps) {
                     <span className="text-[9px] text-[var(--text-muted)]/70">Aktif proje eklendiğinde MRR burada görünecek.</span>
                   </div>
                 ) : (
-                  <ResponsiveContainer width="100%" height={192}>
-                    <BarChart data={cashFlowData}>
-                      {/* SVG <stop>/tick render as presentation attributes where CSS var()
-                          does NOT resolve, so these mirror the globals.css token hexes:
-                          success #1a8a3a, info #0071a8, text-muted #86868b. */}
-                      <defs>
-                        <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#1a8a3a" stopOpacity={0.9} />
-                          <stop offset="100%" stopColor="#1a8a3a" stopOpacity={0.15} />
-                        </linearGradient>
-                        <linearGradient id="barGradSecondary" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#0071a8" stopOpacity={0.2} />
-                          <stop offset="100%" stopColor="#0071a8" stopOpacity={0.02} />
-                        </linearGradient>
-                      </defs>
-                      <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#86868b', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
-                      <Tooltip
-                        contentStyle={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: '12px', fontSize: '10px', color: 'var(--text-primary)' }}
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        formatter={(value: any, name: any) => [
-                          `₺${Number(value).toLocaleString('tr-TR')}`,
-                          name === 'inflow' ? 'Giriş' : 'Çıkış'
-                        ]}
-                      />
-                      <Bar dataKey="inflow" fill="url(#barGrad)" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <CashFlowChart data={cashFlowData} />
                 )}
               </div>
 

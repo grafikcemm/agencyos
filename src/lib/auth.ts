@@ -49,3 +49,18 @@ export async function requireApiAccess(_req?: Request): Promise<{ ok: true } | {
   if (await hasValidSession()) return { ok: true }
   return { response: unauthorized() }
 }
+
+/**
+ * Throwing session guard for Server Actions.
+ *
+ * Server Actions are auto-exposed as public POST endpoints by Next.js, so they
+ * must authenticate independently of any page-level proxy gate. Unlike
+ * `requireApiAccess` (which returns a NextResponse for route handlers), actions
+ * have no Response to return, so this throws on failure. Call it at the top of
+ * every mutating action.
+ */
+export async function assertSession(): Promise<void> {
+  if (!(await hasValidSession())) {
+    throw new Error('Yetkisiz. Giriş gerekli.')
+  }
+}

@@ -4,6 +4,25 @@ import { writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { requireApiAccess } from '@/lib/auth'
 import { getKnowledgeDoc, getKnowledgeDocs } from '@/lib/knowledge'
+import { z } from 'zod'
+
+// --- Tool argument validation (LLM tool-call güvenliği) ---
+// Tool şemasındaki enum'lar model'e verilen TALİMAT'tır; runtime zorlama DEĞİL.
+// Model yanlış/enjekte argüman üretirse service-role mutasyonlarına ham gider.
+// Aşağıdaki şemalar destructive/para/status değiştiren tool'ları runtime'da doğrular.
+const LEAD_STAGES = ['new', 'contacted', 'responded', 'meeting', 'proposal', 'converted', 'lost'] as const
+
+const TOOL_ARG_SCHEMAS: Record<string, z.ZodTypeAny> = {
+  update_lead_stage: z.object({
+    lead_id: z.string().min(1),
+    stage: z.enum(LEAD_STAGES),
+  }),
+  create_project: z.object({
+    lead_id: z.string().min(1),
+    title: z.string().min(1).max(200),
+    revenue_tl: z.number().min(0).max(10_000_000).optional(),
+  }),
+}
 
 // --- Knowledge injection ---
 
@@ -416,6 +435,17 @@ async function findLeadByNameHelper(name: string): Promise<{ lead: SearchMatched
 // --- Tool executors ---
 
 async function executeTool(toolName: string, args: Record<string, unknown>): Promise<string> {
+  // Runtime arg doğrulaması — sensitive tool'lar için enum/bound zorlaması.
+  const argSchema = TOOL_ARG_SCHEMAS[toolName]
+  if (argSchema) {
+    const parsed = argSchema.safeParse(args)
+    if (!parsed.success) {
+      const detail = parsed.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')
+      return `Geçersiz araç argümanı (${toolName}): ${detail}`
+    }
+    args = parsed.data as Record<string, unknown>
+  }
+
   switch (toolName) {
     case 'find_lead_by_name': {
       const name = args.name as string

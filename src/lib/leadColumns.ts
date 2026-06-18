@@ -22,6 +22,7 @@ export type LeadColumnKey =
   | 'service'
   | 'tier'
   | 'value'
+  | 'source'
   | 'actions'
 
 export interface LeadColumnDef {
@@ -53,6 +54,7 @@ export const LEAD_COLUMNS: LeadColumnDef[] = [
   { key: 'service', label: 'Hizmet', align: 'left' },
   { key: 'tier', label: 'Tier', align: 'center' },
   { key: 'value', label: 'Tahmini Değer', align: 'right' },
+  { key: 'source', label: 'Kaynak', align: 'left' },
   { key: 'actions', label: 'Aksiyonlar', align: 'right', alwaysOn: true },
 ]
 

@@ -99,7 +99,7 @@ export function DirectiveResultModal({ running, result, error, label, onClose }:
               <Link
                 href="/tasks"
                 onClick={onClose}
-                className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-[var(--accent)] hover:opacity-90 text-white text-xs font-black rounded-lg transition-opacity"
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-[var(--cta-bg)] hover:bg-[#e6e6e6] text-[var(--cta-fg)] text-xs font-black rounded-lg transition-colors"
               >
                 Görev panosunu aç <ArrowRight className="w-3.5 h-3.5" />
               </Link>

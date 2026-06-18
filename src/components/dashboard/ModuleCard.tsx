@@ -1,5 +1,8 @@
 import Link from 'next/link'
 import { ArrowUpRight } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+type SpotlightColor = 'violet' | 'magenta' | 'orange' | 'coral'
 
 interface ModuleCardProps {
   number: string
@@ -7,12 +10,21 @@ interface ModuleCardProps {
   description: string
   badge: string
   href: string
+  /** Seçili modülü Framer gradient spotlight tile'ı olarak öne çıkar (seyrek). */
+  spotlight?: SpotlightColor
 }
 
-export function ModuleCard({ number, title, description, badge, href }: ModuleCardProps) {
+export function ModuleCard({ number, title, description, badge, href, spotlight }: ModuleCardProps) {
   return (
     <Link href={href} className="group">
-      <div className="bg-[var(--bg-surface)] p-6 rounded-2xl border border-[var(--border-subtle)] h-full transition-all duration-200 hover:border-[var(--border-highlight)] flex flex-col relative">
+      <div
+        className={cn(
+          'p-6 h-full transition-all duration-200 flex flex-col relative',
+          spotlight
+            ? `gradient-spotlight gradient-spotlight-${spotlight} [&>*]:relative [&>*]:z-10`
+            : 'bg-[var(--bg-surface)] rounded-2xl border border-[var(--border-subtle)] hover:border-[var(--border-highlight)]',
+        )}
+      >
         <div className="flex justify-between items-start mb-5">
           <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">{number}</span>
           <div className="w-7 h-7 rounded-full bg-[var(--bg-base)] border border-[var(--border-subtle)] flex items-center justify-center group-hover:border-[var(--border-highlight)] transition-all">

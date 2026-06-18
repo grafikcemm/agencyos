@@ -5,12 +5,13 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ─────────────────────────────────────────────────────────────────────
-   APPLE "CALM" AÇIK TEMA — birleşik token sistemi
-   Apple'ın sakin, fotoğraf-öncelikli dili (bkz. DESIGN-apple.md), AÇIK
-   zeminde. Tek aksan: marka koyu kırmızısı (#A4161A) — Apple'ın mavisinin
-   yerini alır. Beyaz/parchment yüzey ritmi, hairline border, tek ürün
-   gölgesi. AgencyOS token İSİMLERİ değişmedi (sayfalar otomatik reskin);
-   --accent-yellow hâlâ kırmızı alias'ı (FTG geriye-dönük uyumluluk).
+   FRAMER DARK CANVAS — birleşik token sistemi
+   Framer'ın "çalışan artboard" dili (bkz. DESIGN-framer.md): neredeyse saf
+   siyah zemin (#090909), beyaz display tip + agresif negatif tracking, TEK
+   mavi aksan (#0099FF) yalnız link/focus/seçim. Birincil CTA = beyaz pill.
+   Hiyerarşi yüzey LIFT'iyle taşınır (canvas→surface-1→surface-2). İmza:
+   gradient spotlight kartlar. AgencyOS token İSİMLERİ değişmedi (sayfalar
+   otomatik reskin); --accent-yellow hâlâ aksan alias'ı (FTG uyumluluk).
    ───────────────────────────────────────────────────────────────────── */
 
 @theme inline {
@@ -33,90 +34,103 @@
   --color-border: var(--border-subtle);
   --color-input: var(--border-subtle);
   --color-ring: var(--accent);
-  --radius-sm: 8px;
-  --radius-md: 11px;
-  --radius-lg: 18px;
-  /* Apple sistem yazıtipi yığını: macOS/iOS'ta gerçek SF Pro, Windows'ta
-     Segoe UI, sonra Inter Tight (Arial'a düşmez). Apple tight tracking. */
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", var(--font-inter-tight), system-ui, sans-serif;
-  --font-heading: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", var(--font-inter-tight), system-ui, sans-serif;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 15px;
+  /* Framer tip: gövde = Inter Variable, display = Geist (yoksa Inter Tight).
+     Apple sistem fontu kaldırıldı — açık-Apple görünümünü o zorluyordu. */
+  --font-sans: var(--font-sans), system-ui, sans-serif;
+  --font-heading: var(--font-display), var(--font-inter-tight), system-ui, sans-serif;
   --font-mono: var(--font-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
 :root {
-  /* ─ Zemin: Apple beyaz/parchment/pearl ─ */
-  --bg-base: #ffffff;          /* canvas */
-  --bg-surface: #ffffff;
-  --bg-elevated: #f5f5f7;      /* parchment */
-  --bg-sidebar: #f5f5f7;
-  --bg: #ffffff;
-  --surface: #ffffff;
-  --border: #e5e5e7;
+  /* ─ Zemin: Framer near-black canvas + surface lift ─ */
+  --bg-base: #090909;          /* canvas */
+  --bg-surface: #141414;       /* surface-1 */
+  --bg-elevated: #1c1c1c;      /* surface-2 */
+  --bg-sidebar: #0d0d0d;       /* canvas ile surface-1 arası */
+  --bg: #090909;
+  --surface: #141414;
+  --border: #262626;
 
   /* FTG enerji-tema varsayılanları (theme-mid mirror; wrapper'sız da çözülür) */
-  --bg-primary: #ffffff;
-  --bg-card: #ffffff;
-  --bg-card-elevated: #fafafc; /* pearl */
-  --bg-card-hover: #f5f5f7;
-  --border-strong: #c7c7cc;
+  --bg-primary: #090909;
+  --bg-card: #141414;
+  --bg-card-elevated: #1c1c1c;
+  --bg-card-hover: #242424;
+  --border-strong: #3a3a3a;
 
-  /* ─ Accent: marka koyu kırmızısı (Dark Red #A4161A) = TEK evrensel aksan.
-       Apple'ın mavisinin yerini alır. --accent-yellow ARTIK kırmızı alias'ı
-       (geriye-dönük: MoneyRulesPanel + HabitTracker bu ismi okuyor).
-       on-red metin = beyaz. ─ */
-  --accent: #a4161a;
+  /* ─ Accent: TEK mavi (#0099FF) = link / focus / seçim. ASLA dolgu değil.
+       Birincil CTA beyaz pill (--cta-* token'larından). --accent-yellow
+       ARTIK mavi alias'ı (geriye-dönük: MoneyRulesPanel + HabitTracker). ─ */
+  --accent: #0099ff;
   --accent-yellow: var(--accent);
-  --accent-green: #1a8a3a;
-  --accent-2: #7a1115;
-  --accent-hover: #c21f23;
-  --accent-muted: rgba(164, 22, 26, 0.08);
-  --accent-glow: rgba(164, 22, 26, 0.18);
+  --accent-green: #30d158;
+  --accent-2: #0a84ff;
+  --accent-hover: #33adff;
+  --accent-muted: rgba(0, 153, 255, 0.12);
+  --accent-glow: rgba(0, 153, 255, 0.22);
 
-  /* ─ Metin: Apple ink (saf siyah değil) ─ */
-  --text-primary: #1d1d1f;
-  --text-secondary: #6e6e73;
-  --text-muted: #86868b;
-  --text-tertiary: #a1a1a6;
-  --text-quaternary: #c7c7cc;
+  /* ─ CTA: beyaz pill (birincil) + charcoal pill (ikincil) ─ */
+  --cta-bg: #ffffff;
+  --cta-fg: #000000;
+  --cta-secondary-bg: #1c1c1c;
+  --cta-secondary-fg: #ffffff;
 
-  /* ─ Border: Apple hairline ─ */
-  --border-subtle: #e5e5e7;
-  --border-highlight: #d2d2d7;
-  --border-color: #e5e5e7;
+  /* ─ Metin: Framer binary hiyerarşi (ink / ink-muted) ─ */
+  --text-primary: #ffffff;
+  --text-secondary: #b3b3b3;
+  --text-muted: #999999;
+  --text-tertiary: #6b6b6b;
+  --text-quaternary: #4d4d4d;
 
-  /* ─ Semantik (açık zemin için koyulaştırıldı: beyaz üstünde AA) ─ */
-  --success: #1a8a3a;
-  --warning: #b25e00;
-  --danger: #d11507;
-  --info: #0071a8;
-  --fire: #c2410c;
+  /* ─ Border: siyah üstünde hairline ─ */
+  --border-subtle: #262626;
+  --border-highlight: #333333;
+  --border-color: #262626;
 
-  /* ─ FTG kategori aksanları (açık zemin için koyu/doygun) ─ */
-  --cat-blue: #1d6fd6;
-  --cat-teal: #0d9488;
-  --cat-pink: #be185d;
-  --cat-purple: #6d28d9;
-  --cat-orange: #c2410c;
-  --cat-cyan: #0e7490;
-  --cat-gray: #6b7280;
+  /* ─ Semantik (siyah zemin için parlatıldı/doygunlaştırıldı) ─ */
+  --success: #30d158;
+  --warning: #ffd60a;
+  --danger: #ff453a;
+  --info: #64d2ff;
+  --fire: #ff6b35;
 
-  /* ─ Shadow / radius / timeline ─ */
-  --shadow-soft: 0 0 0 1px rgba(0, 0, 0, 0.04);              /* kart = hairline */
-  --shadow-product: rgba(0, 0, 0, 0.22) 0 3px 30px;          /* yalnızca hero/ürün imgesi */
-  --shadow-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.6);
-  --radius-card: 18px;
+  /* ─ FTG kategori aksanları (siyah zemin için parlak/pastel) ─ */
+  --cat-blue: #4d9fff;
+  --cat-teal: #2dd4bf;
+  --cat-pink: #f472b6;
+  --cat-purple: #a78bfa;
+  --cat-orange: #fb923c;
+  --cat-cyan: #22d3ee;
+  --cat-gray: #9ca3af;
+
+  /* ─ Shadow / radius / timeline — depth = light-edge + doygunluk, ağır drop değil ─ */
+  --shadow-soft: 0 0 0 1px rgba(255, 255, 255, 0.06);        /* kart = light hairline */
+  --shadow-product: 0 8px 40px rgba(0, 0, 0, 0.5);           /* yalnızca hero/ürün imgesi */
+  --shadow-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  --radius-card: 20px;
   --radius-pill: 9999px;
-  --timeline-line: #e5e5e7;
+  --timeline-line: #262626;
 
-  /* ─ Depth — koyu kırmızı çok hafif wash (editöryel: neredeyse düz) ─ */
+  /* ─ Depth — mavi çok hafif üst wash ─ */
   --glow-radial: radial-gradient(
     55% 50% at 50% 0%,
-    rgba(164, 22, 26, 0.04),
-    rgba(164, 22, 26, 0.02) 40%,
+    rgba(0, 153, 255, 0.06),
+    rgba(0, 153, 255, 0.03) 40%,
     transparent 70%
   );
-  --glass-bg: rgba(245, 245, 247, 0.8);
+  --glass-bg: rgba(20, 20, 20, 0.72);
   --glass-blur: 20px;
+
+  /* ─ Gradient spotlight imza token'ları ─ */
+  --spot-violet: #6a4cf5;
+  --spot-magenta: #d44df0;
+  --spot-orange: #ff7a3d;
+  --spot-coral: #ff5577;
+  --radius-xxl: 30px;
+  --light-edge: rgba(255, 255, 255, 0.10);
 }
 
 @layer base {
@@ -126,16 +140,18 @@
   }
 
   html {
-    color-scheme: light;
+    color-scheme: dark;
   }
 
   body {
     background: var(--bg-base);
     color: var(--text-primary);
     font-family: var(--font-sans);
-    font-size: 17px;
-    line-height: 1.47;
+    font-size: 16px;
+    line-height: 1.3;
     letter-spacing: -0.01em;
+    /* Inter Variable OpenType char varyantları = Framer body sesi */
+    font-feature-settings: "cv01", "cv05", "cv11", "ss03";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overflow-x: hidden;
@@ -151,14 +167,14 @@
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb {
-    background: var(--border-highlight);
+    background: #2a2a2a;
     border-radius: 10px;
   }
-  ::-webkit-scrollbar-thumb:hover { background: var(--text-tertiary); }
+  ::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
 
   ::selection {
-    background: rgba(164, 22, 26, 0.18);
-    color: var(--accent-2);
+    background: rgba(0, 153, 255, 0.30);
+    color: #ffffff;
   }
 }
 
@@ -223,24 +239,26 @@
     font-family: var(--font-heading);
     letter-spacing: -0.03em;
   }
-  /* Tek, en büyük sayfa başlığı (hero kelime) — Apple display ölçeği */
+  /* Tek, en büyük sayfa başlığı (hero kelime) — Framer poster ölçeği,
+     agresif negatif tracking (-5% display imzası). */
   .display-xl {
     font-family: var(--font-heading);
     font-weight: 600;
-    font-size: clamp(40px, 6vw, 88px);
-    line-height: 1.04;
-    letter-spacing: -0.03em;
+    font-size: clamp(48px, 8vw, 110px);
+    line-height: 1.0;
+    letter-spacing: -0.05em;
   }
   .display-title {
     font-family: var(--font-heading);
     font-weight: 600;
     font-size: clamp(28px, 4vw, 48px);
     line-height: 1.07;
-    letter-spacing: -0.022em;
+    letter-spacing: -0.04em;
   }
+  /* Hero vurgu kelimesi — Framer'da beyaz ink (mavi yalnız gerçek link). */
   .display-accent {
     font-weight: 600;
-    color: var(--accent);
+    color: var(--text-primary);
     font-style: normal;
   }
   .hero-title {
@@ -248,7 +266,7 @@
     font-size: clamp(22px, 2.6vw, 30px);
     font-weight: 600;
     line-height: 1.1;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
   }
   /* Büyük istatistik sayıları (60 / 1000 / 100 000 motifi) */
   .stat-number {
@@ -293,20 +311,20 @@
   .glass-card {
     position: relative;
     background: var(--glass-bg);
-    -webkit-backdrop-filter: saturate(180%) blur(var(--glass-blur));
-    backdrop-filter: saturate(180%) blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    backdrop-filter: blur(var(--glass-blur));
     border: 1px solid var(--border-subtle);
-    box-shadow: var(--shadow-soft);
+    box-shadow: var(--shadow-soft), inset 0 1px 0 var(--light-edge);
   }
   .glass-card::before { content: none; }
   .glass-glow {
-    border-color: rgba(164, 22, 26, 0.2);
-    box-shadow: 0 0 0 1px rgba(164, 22, 26, 0.12);
+    border-color: rgba(0, 153, 255, 0.25);
+    box-shadow: 0 0 0 1px rgba(0, 153, 255, 0.15);
   }
   .glass-pill {
     background: var(--glass-bg);
-    -webkit-backdrop-filter: saturate(180%) blur(12px);
-    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
     border: 1px solid var(--border-subtle);
     border-radius: 9999px;
   }
@@ -315,47 +333,74 @@
     position: absolute;
     inset: 0;
     pointer-events: none;
-    opacity: 0.015;
+    opacity: 0.02;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
+
+  /* ---- Framer light-edge (üst ışık kenarı) ---- */
+  .light-edge { box-shadow: inset 0 1px 0 var(--light-edge); }
+
+  /* ---- İmza: gradient spotlight kartlar (mor/magenta/turuncu/coral) ----
+     Siyah grid içine seyrek serpilen atmosfer tile'ları. Renk doygunluğu
+     siyaha karşı = elevation (ağır gölge yerine). */
+  .gradient-spotlight {
+    position: relative;
+    border-radius: var(--radius-xxl);
+    background: #141414;
+    overflow: hidden;
+    box-shadow: var(--shadow-soft), inset 0 1px 0 var(--light-edge);
+  }
+  .gradient-spotlight::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(120% 120% at 80% -10%, var(--spot, var(--spot-violet)) 0%, transparent 55%);
+    opacity: 0.55;
+  }
+  .gradient-spotlight-violet { --spot: var(--spot-violet); }
+  .gradient-spotlight-magenta { --spot: var(--spot-magenta); }
+  .gradient-spotlight-orange { --spot: var(--spot-orange); }
+  .gradient-spotlight-coral { --spot: var(--spot-coral); }
 }
 
 /* ── ENERJİ TEMALARI (yalnızca hayat-sayfaları wrapper'ında) ──────────── */
 /* Bu sınıflar life layout wrapper'ına uygulanır; --accent'i FTG emphasis
    değerine override eder, böylece FTG bileşenleri orijinal görünür. */
 
-/* Açık enerji varyantları: low = parchment/soluk ink, mid = beyaz (varsayılan),
-   high = saf beyaz/güçlü kontrast. Her biri kendi kırmızı adımıyla. */
+/* Karanlık enerji varyantları (artık ışık/karanlık değil, KONTRAST seviyeleri):
+   low = daha derin siyah/soluk ink, mid = kanonik (:root mirror),
+   high = saf siyah/maksimum beyaz kontrast. */
 .theme-low {
-  --bg-primary: #f5f5f7;
-  --bg-card: #fafafc;
-  --bg-card-elevated: #ffffff;
-  --border-subtle: #e5e5e7;
-  --text-primary: #57575b;
-  --text-secondary: #86868b;
-  --text-tertiary: #a1a1a6;
-  --accent: #7a1115;
+  --bg-primary: #060606;
+  --bg-card: #101010;
+  --bg-card-elevated: #161616;
+  --border-subtle: #1f1f1f;
+  --text-primary: #cfcfcf;
+  --text-secondary: #7a7a7a;
+  --text-tertiary: #555555;
+  --accent: #0a84ff;
 }
 .theme-mid {
-  --bg-primary: #ffffff;
-  --bg-card: #ffffff;
-  --bg-card-elevated: #fafafc;
-  --border-subtle: #e5e5e7;
-  --text-primary: #1d1d1f;
-  --text-secondary: #6e6e73;
-  --text-tertiary: #a1a1a6;
-  --accent: #a4161a;
+  --bg-primary: #090909;
+  --bg-card: #141414;
+  --bg-card-elevated: #1c1c1c;
+  --border-subtle: #262626;
+  --text-primary: #ffffff;
+  --text-secondary: #b3b3b3;
+  --text-tertiary: #6b6b6b;
+  --accent: #0099ff;
 }
 .theme-high {
-  --bg-primary: #ffffff;
-  --bg-card: #ffffff;
-  --bg-card-elevated: #f5f5f7;
-  --border-subtle: #d2d2d7;
-  --border-strong: #c7c7cc;
-  --text-primary: #000000;
-  --text-secondary: #515154;
-  --text-tertiary: #86868b;
-  --accent: #c21f23;
+  --bg-primary: #000000;
+  --bg-card: #161616;
+  --bg-card-elevated: #1e1e1e;
+  --border-subtle: #333333;
+  --border-strong: #444444;
+  --text-primary: #ffffff;
+  --text-secondary: #cccccc;
+  --text-tertiary: #888888;
+  --accent: #33adff;
 }
 
 /* Enerji modu geçiş animasyonu — yalnızca tema wrapper içinde (global değil).
@@ -374,6 +419,8 @@
   *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
+    animation-delay: 0ms !important;
     transition-duration: 0.001ms !important;
+    transition-delay: 0ms !important;
   }
 }

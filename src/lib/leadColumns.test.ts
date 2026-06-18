@@ -16,6 +16,7 @@ const ALL_KEYS: LeadColumnKey[] = [
   'service',
   'tier',
   'value',
+  'source',
   'actions',
 ]
 

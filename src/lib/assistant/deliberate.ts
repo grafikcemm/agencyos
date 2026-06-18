@@ -93,6 +93,7 @@ export async function deliberateBusiness(
   userText: string,
   _history?: ConversationTurn[],
 ): Promise<DeliberateResult> {
+  void _history // ileride bağlam için; mevcut deliberation canlı veri dilimlerinden besleniyor
   // 1) Gerçek iş verisini paralel yükle (asla fırlatmaz).
   const slices = await loadBusinessSlices()
   const dataBlock = formatSlicesBlock(slices)

@@ -97,7 +97,7 @@ export function DailyAiBriefCard({
           setEnergyLevel(latestEnergy);
         }
       }
-    } catch {}
+    } catch { /* localStorage erişilemez (SSR/private mode) — varsayılan enerji ile devam */ }
 
     setLoading(true);
     try {

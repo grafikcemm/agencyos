@@ -34,7 +34,7 @@ export async function runHealthAgent(messages: AgentMessage[], ctx: AgentContext
       waterTarget = sport.water_target_ml ?? 3000;
       proteinTarget = sport.protein_target_g ?? 150;
     }
-  } catch {}
+  } catch { /* best-effort opsiyonel bağlam yüklemesi — hata asistanı bloklamamalı */ }
 
   const dynamicCtx = {
     ...ctx,
@@ -76,7 +76,7 @@ export async function runExecutionAgent(messages: AgentMessage[], ctx: AgentCont
         }
       });
     }
-  } catch {}
+  } catch { /* best-effort opsiyonel bağlam yüklemesi — hata asistanı bloklamamalı */ }
 
   const executionContext = `
 === GERÇEK GÖREV DURUMU ===
@@ -151,7 +151,7 @@ export async function runLibraryAgent(messages: AgentMessage[], ctx: AgentContex
     if (book) {
       activeBook = book.title;
     }
-  } catch {}
+  } catch { /* best-effort opsiyonel bağlam yüklemesi — hata asistanı bloklamamalı */ }
 
   const libraryContext = `
 === AKTİF KİTAP BAĞLAMI ===

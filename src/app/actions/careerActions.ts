@@ -2,10 +2,12 @@
 
 import { createServerSupabase } from '@/lib/supabaseServer';
 import { createClient } from '@/lib/supabase/server';
+import { assertSession } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import type { CareerSkillStatus } from '@/data/careerRoadmap';
 
 export async function toggleSkillCompletion(skillId: number, isCompleted: boolean) {
+  await assertSession();
   const supabase = createServerSupabase();
 
   const { error } = await supabase
@@ -82,6 +84,7 @@ export async function getCareerState(): Promise<{ data: CareerState; error?: str
 export async function saveCareerState(
   state: CareerState
 ): Promise<{ success: boolean; error?: string }> {
+  await assertSession();
   const supabase = createClient();
   const { error } = await supabase.from('career_state').upsert(
     {

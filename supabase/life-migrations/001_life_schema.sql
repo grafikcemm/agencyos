@@ -277,6 +277,9 @@ create table if not exists task_templates (
 -- Tek-operatör app'inde anon-server okuması gerekiyorsa anon SELECT'i koru.
 -- Doğrulanana kadar YORUMDA bırakıldı.
 --
+-- GÜNCEL: RLS kilidi artık migration 002_life_rls.sql ile yapılır (anon tam red,
+-- service_role baypas). Aşağıdaki taslak blok tarihsel referans olarak korunur.
+--
 -- do $$
 -- declare t text;
 -- begin

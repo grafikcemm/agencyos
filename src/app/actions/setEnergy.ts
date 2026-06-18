@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createServerSupabase } from "@/lib/supabaseServer";
+import { assertSession } from "@/lib/auth";
 import { z } from "zod";
 
 const schema = z.object({
@@ -9,6 +10,7 @@ const schema = z.object({
 });
 
 export async function setEnergy(input: { energy: "LOW" | "MID" | "HIGH" }) {
+  await assertSession();
   const parsed = schema.safeParse(input);
   if (!parsed.success) {
     return { success: false as const, error: "Invalid energy value" };

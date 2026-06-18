@@ -6,6 +6,7 @@ const COMMON_SORT = ['id', 'created_at', 'updated_at'] as const
 
 export const ORDER_ALLOWED: Record<string, ReadonlySet<string>> = {
   leads: new Set([...COMMON_SORT, 'score', 'potential_score', 'quality_score', 'firm_score', 'sector_score', 'status', 'name', 'wave']),
+  person_leads: new Set([...COMMON_SORT, 'person_score', 'earning_score', 'market_score', 'difficulty_score', 'expected_monthly_value_tl', 'person_tier', 'status']),
   follow_ups: new Set([...COMMON_SORT, 'follow_up_date', 'due_date', 'status']),
   projects: new Set([...COMMON_SORT, 'name', 'status']),
   playbooks: new Set([...COMMON_SORT, 'name', 'priority']),

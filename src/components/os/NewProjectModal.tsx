@@ -56,7 +56,7 @@ export function NewProjectModal() {
     <>
       <button 
         onClick={() => setIsOpen(true)}
-        className="flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-white text-[12px] font-bold hover:bg-[var(--accent-hover)] transition-all rounded-lg"
+        className="flex items-center gap-2 px-4 py-2 bg-[var(--cta-bg)] text-[var(--cta-fg)] text-[12px] font-bold hover:bg-[#e6e6e6] transition-all rounded-lg"
       >
         <Plus className="w-4 h-4" /> Yeni Proje
       </button>
@@ -122,7 +122,7 @@ export function NewProjectModal() {
               <button 
                 onClick={handleSave} 
                 disabled={loading || !selectedLead || !selectedPlaybook}
-                className="flex-1 px-4 py-2.5 bg-[var(--accent)] text-white text-sm font-bold rounded-lg hover:bg-[var(--accent-hover)] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-2.5 bg-[var(--cta-bg)] text-[var(--cta-fg)] text-sm font-bold rounded-lg hover:bg-[#e6e6e6] transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {loading ? 'Kaydediliyor...' : <><Check className="w-4 h-4" /> Projeyi Başlat</>}
               </button>

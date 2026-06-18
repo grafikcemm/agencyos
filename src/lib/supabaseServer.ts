@@ -1,9 +1,13 @@
-import { createClient } from "@supabase/supabase-js";
+import "server-only";
+import { lifeSupabaseAdmin } from "@/lib/lifeSupabaseAdmin";
 
 // Feed The Goat (Yaşam OS) — server-side client (server actions + RSC).
-// Tek kullanıcılı app, auth yok; anon key kullanır. İkinci Supabase projesi (xcqrk…).
+//
+// GÜVENLİK: Eskiden anon key (NEXT_PUBLIC) kullanıyordu; Life tablolarında RLS
+// `allow_all to public` olduğu için aynı anon anahtar tarayıcıdan REST üzerinden
+// tüm tabloları okuyup yazabiliyordu. Artık service-role client'a delege ediyor
+// (yalnızca server, `server-only` ile bundle'a sızmaz). Anon erişimi migration
+// 002_life_rls ile kilitlenir. Mutasyon yetkisi `assertSession` ile korunur.
 export function createServerSupabase() {
-  const url = process.env.NEXT_PUBLIC_LIFE_SUPABASE_URL!;
-  const key = process.env.NEXT_PUBLIC_LIFE_SUPABASE_ANON_KEY!;
-  return createClient(url, key);
+  return lifeSupabaseAdmin;
 }

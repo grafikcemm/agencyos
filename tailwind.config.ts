@@ -45,21 +45,28 @@ const config: Config = {
         timeline: 'var(--timeline-line)',
       },
       fontFamily: {
-        sans: ['"Helvetica Neue"', 'Helvetica', 'var(--font-inter-tight)', 'Arial', 'sans-serif'],
-        display: ['"Helvetica Neue"', 'Helvetica', 'var(--font-inter-tight)', 'Arial', 'sans-serif'],
-        serif: ['var(--font-instrument-serif)', 'serif'],
+        sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+        display: ['var(--font-display)', 'var(--font-inter-tight)', 'system-ui', 'sans-serif'],
         mono: ['var(--font-mono)', 'monospace'],
       },
       borderRadius: {
+        // Framer granular yarıçap skalası
+        'xs': '4px',
+        'sm': '6px',
+        'md': '10px',
+        'lg': '15px',
+        'xl': '20px',
         '2xl': '20px',
+        'xxl': '30px',
         'card': 'var(--radius-card)',
-        'pill': 'var(--radius-pill)',
+        'pill': '100px',
+        'full': '9999px',
       },
       boxShadow: {
-        // Apple disiplini: kart = hairline; "elevated" = hafif yumuşak gölge;
-        // güçlü drop yalnızca product imgesi için (--shadow-product, inline).
-        'card': '0 0 0 1px rgba(0, 0, 0, 0.05)',
-        'elevated': '0 4px 24px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04)',
+        // Framer disiplini: kart = light hairline; "elevated" = yumuşak siyah
+        // drop + üst light-edge; güçlü drop yalnız product imgesi (inline).
+        'card': '0 0 0 1px rgba(255, 255, 255, 0.06)',
+        'elevated': '0 8px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08)',
         'soft': 'var(--shadow-soft)',
         'hairline': 'var(--shadow-hairline)',
         'product': 'var(--shadow-product)',

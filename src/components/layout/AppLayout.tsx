@@ -92,7 +92,7 @@ export function AppLayout({ children }: AppLayoutProps) {
                 className="glass-pill w-full text-xs py-2 pl-9 pr-3.5 outline-none focus:border-[var(--accent)] text-[var(--text-secondary)] placeholder:text-[var(--text-muted)] transition-all"
               />
             </div>
-            <button className="w-9 h-9 flex items-center justify-center glass-pill text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all relative">
+            <button type="button" aria-label="Bildirimler" className="w-9 h-9 flex items-center justify-center glass-pill text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-all relative">
               <Bell className="w-4 h-4" />
               <div className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-[var(--accent)] shadow-[0_0_6px_var(--accent-glow)]" />
             </button>

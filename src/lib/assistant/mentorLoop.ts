@@ -11,6 +11,7 @@
 // Mevcut OpenRouter client + reminder lifecycle KORUNUR.
 // ─────────────────────────────────────────────────────────────────────────────
 import { callOpenRouter } from "@/lib/assistant/llm";
+import { escapeTelegramHtml } from "@/lib/telegramHtml";
 import { buildMentorSystemPrompt } from "./prompts";
 import { loadAssistantLiveContext } from "./liveContext";
 import type { AgentType } from "./agents";
@@ -192,21 +193,21 @@ export function morningCommitmentQuestion(): string {
 }
 
 export function commitmentTimeQuestion(commitment: string): string {
-  return `Tamam: <b>${commitment}</b>. Bunu kaçta yapıyorsun? (örn: 14:00 veya "öğleden sonra") — o saatte hatırlatırım, üstüne gelmem.`;
+  return `Tamam: <b>${escapeTelegramHtml(commitment)}</b>. Bunu kaçta yapıyorsun? (örn: 14:00 veya "öğleden sonra") — o saatte hatırlatırım, üstüne gelmem.`;
 }
 
 export function commitmentSetConfirmation(commitment: string, doAt: string | null): string {
-  const when = doAt ? ` (${doAt})` : "";
-  return `Anlaştık. Tek kilit: <b>${commitment}</b>${when}. Gerisi bonus. Akşam sadece bunu soracağım.`;
+  const when = doAt ? ` (${escapeTelegramHtml(doAt)})` : "";
+  return `Anlaştık. Tek kilit: <b>${escapeTelegramHtml(commitment)}</b>${when}. Gerisi bonus. Akşam sadece bunu soracağım.`;
 }
 
 export function eveningRecallQuestion(commitment: string): string {
-  return `Akşam yoklaması Cem. Sabah dediğin tek şey: <b>${commitment}</b> — oldu mu?\n\nCevapla: tamam / olmadı`;
+  return `Akşam yoklaması Cem. Sabah dediğin tek şey: <b>${escapeTelegramHtml(commitment)}</b> — oldu mu?\n\nCevapla: tamam / olmadı`;
 }
 
 export async function eveningDoneCelebration(commitment: string): Promise<string> {
   await recordMemory("win", commitment.slice(0, 80), { text: commitment }, 0.15);
-  return `Helal olsun. <b>${commitment}</b> tamamsa bugün kazanılmış gündür. Tek söz verdin, tuttun — sistem bu işte. 🎯`;
+  return `Helal olsun. <b>${escapeTelegramHtml(commitment)}</b> tamamsa bugün kazanılmış gündür. Tek söz verdin, tuttun — sistem bu işte. 🎯`;
 }
 
 export function eveningMissedCuriousQuestion(): string {

@@ -5,26 +5,26 @@ import { Slot } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  // Apple pill grammar: tam-pill yarıçap, sıkı tracking, scale(0.95) bas-durumu,
-  // kırmızı focus halkası. Tek aksan = marka kırmızısı.
+  // Framer pill grammar: tam-pill yarıçap, sıkı tracking, scale(0.96) bas-durumu,
+  // mavi focus halkası. Birincil = beyaz pill; mavi yalnız link/focus.
   "group/button inline-flex shrink-0 items-center justify-center rounded-pill border border-transparent bg-clip-padding text-sm font-medium tracking-[-0.01em] whitespace-nowrap transition-all duration-150 outline-none select-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1 active:scale-[0.96] disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-2 aria-invalid:ring-destructive/30 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        // Birincil aksiyon — düz kırmızı pill (gradient yok), beyaz metin.
+        // Birincil aksiyon — BEYAZ pill, siyah metin (Framer imzası).
         default:
-          "bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] [a]:hover:bg-[var(--accent-hover)]",
-        // İkincil — ghost kırmızı pill (Apple "ghost pill").
+          "bg-[var(--cta-bg)] text-[var(--cta-fg)] hover:bg-[#e6e6e6] [a]:hover:bg-[#e6e6e6]",
+        // İkincil — hairline ghost pill (şeffaf, ince kenar).
         outline:
-          "border-[var(--accent)] bg-transparent text-[var(--accent)] hover:bg-[var(--accent-muted)] aria-expanded:bg-[var(--accent-muted)]",
-        // Pearl kapsül — nötr yüzey aksiyonu.
+          "border-[var(--border-highlight)] bg-transparent text-[var(--text-primary)] hover:bg-[var(--bg-card-hover)] aria-expanded:bg-[var(--bg-card-hover)]",
+        // Charcoal kapsül — beyaz pill'in nötr karşılığı.
         secondary:
-          "bg-[var(--bg-card-elevated)] text-[var(--text-primary)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] aria-expanded:bg-[var(--bg-card-hover)]",
+          "bg-[var(--cta-secondary-bg)] text-[var(--cta-secondary-fg)] border-[var(--border-subtle)] hover:bg-[var(--bg-card-hover)] aria-expanded:bg-[var(--bg-card-hover)]",
         // Sessiz aksiyon — şeffaf, hover'da hafif yüzey.
         ghost:
           "text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)] aria-expanded:bg-[var(--bg-card-hover)] aria-expanded:text-[var(--text-primary)]",
         destructive:
-          "bg-[var(--danger)]/10 text-[var(--danger)] hover:bg-[var(--danger)]/20 focus-visible:ring-[var(--danger)]/30",
+          "bg-[var(--danger)]/15 text-[var(--danger)] hover:bg-[var(--danger)]/25 focus-visible:ring-[var(--danger)]/40",
         link: "text-[var(--accent)] rounded-none underline-offset-4 hover:underline",
       },
       size: {

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { createServerSupabase } from '@/lib/supabaseServer';
+import { assertSession } from '@/lib/auth';
 import { format } from 'date-fns';
 
 export type DayMode = 'normal' | 'yogun' | 'dagilmis';
@@ -49,6 +50,7 @@ export async function derivePolicyState(
 }
 
 export async function setDayMode(mode: DayMode): Promise<{ error?: string }> {
+  await assertSession();
   const supabase = createServerSupabase();
   const date = today();
 
@@ -90,6 +92,7 @@ export async function setDayMode(mode: DayMode): Promise<{ error?: string }> {
 }
 
 export async function toggleHealthMinimum(key: HealthKey, value: boolean): Promise<{ error?: string }> {
+  await assertSession();
   const supabase = createServerSupabase();
   const date = today();
 
@@ -104,6 +107,7 @@ export async function toggleHealthMinimum(key: HealthKey, value: boolean): Promi
 }
 
 export async function toggleEnglishBonus(value: boolean): Promise<{ error?: string }> {
+  await assertSession();
   const supabase = createServerSupabase();
   const date = today();
 
@@ -128,6 +132,7 @@ export async function updatePolicyState(patch: {
   assistant_reason?: string;
   next_action?: string;
 }): Promise<{ error?: string }> {
+  await assertSession();
   const supabase = createServerSupabase();
   const date = today();
 

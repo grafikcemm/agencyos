@@ -88,7 +88,7 @@ export function HeroCard({
 
           <Link
             href="/pipeline"
-            className="mt-2 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
+            className="mt-2 bg-[var(--cta-bg)] hover:bg-[#e6e6e6] text-[var(--cta-fg)] px-5 py-2.5 rounded-xl text-sm font-semibold transition-all"
           >
             Pipeline&apos;ı Aç →
           </Link>

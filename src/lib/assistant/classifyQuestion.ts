@@ -79,6 +79,7 @@ export async function classifyQuestion(
   text: string,
   _history?: ConversationTurn[],
 ): Promise<ClassifyResult> {
+  void _history // ileride bağlam için; şimdilik keyword sınıflandırma history kullanmıyor
   const norm = normalizeText(text)
   const businessHits = countHits(norm, BUSINESS_KEYWORDS)
   const lifeHits = countHits(norm, LIFE_KEYWORDS)

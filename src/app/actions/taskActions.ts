@@ -1,6 +1,7 @@
 'use server'
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { assertSession } from '@/lib/auth'
 import { mirrorHabitDone } from '@/app/actions/habitActions'
 import { HABIT_SOURCE_BY_SYSTEM_TYPE } from '@/lib/habits/config'
 
@@ -11,6 +12,7 @@ export async function toggleTemplateTask(
   templateId: string,
   isCompleted: boolean
 ): Promise<{ success: boolean; error?: string }> {
+  await assertSession()
   if (!UUID_RE.test(templateId)) {
     console.warn(`toggleTemplateTask: non-UUID templateId blocked: ${templateId}`)
     return { success: false, error: 'non-UUID templateId blocked' }
@@ -53,6 +55,7 @@ export async function addActiveTask(
   title: string,
   category: 'active' | 'waiting' = 'active'
 ): Promise<{ success: boolean; error?: string }> {
+  await assertSession()
   const supabase = createClient()
   if (!title.trim()) return { success: false, error: 'Görev başlığı boş olamaz.' }
   const { error } = await supabase.from('active_tasks').insert({ title: title.trim(), category })
@@ -63,6 +66,7 @@ export async function addActiveTask(
 
 // Aktif görevi sil
 export async function deleteActiveTask(id: string): Promise<{ success: boolean; error?: string }> {
+  await assertSession()
   const supabase = createClient()
   const { error } = await supabase.from('active_tasks').delete().eq('id', id)
   if (error) return { success: false, error: error.message }
@@ -75,6 +79,7 @@ export async function toggleActiveTask(
   id: string,
   isCurrentlyDone: boolean
 ): Promise<{ success: boolean; error?: string }> {
+  await assertSession()
   const supabase = createClient()
   const { error } = await supabase
     .from('active_tasks')
@@ -89,6 +94,7 @@ export async function moveActiveTask(
   id: string,
   to: 'active' | 'waiting'
 ): Promise<{ success: boolean; error?: string }> {
+  await assertSession()
   const supabase = createClient()
   const { error } = await supabase.from('active_tasks').update({ category: to }).eq('id', id)
   if (error) return { success: false, error: error.message }
@@ -100,6 +106,7 @@ export async function toggleTaskPriority(
   id: string,
   isCurrentlyPriority: boolean
 ): Promise<{ success: boolean; error?: string }> {
+  await assertSession()
   const supabase = createClient()
   const { error } = await supabase
     .from('active_tasks')
@@ -114,6 +121,7 @@ export async function updateActiveTaskNote(
   id: string,
   note: string
 ): Promise<{ error?: string }> {
+  await assertSession()
   const supabase = createClient()
   const { error } = await supabase
     .from('active_tasks')
@@ -130,6 +138,7 @@ export async function updateActiveTask(
   id: string,
   patch: { title?: string; description?: string; due_date?: string | null }
 ): Promise<{ success: boolean; error?: string }> {
+  await assertSession()
   const supabase = createClient()
   const updates: Record<string, unknown> = {}
   if (patch.title !== undefined) {
@@ -150,6 +159,7 @@ export async function addTaskStep(
   taskId: string,
   title: string
 ): Promise<{ success: boolean; error?: string }> {
+  await assertSession()
   const supabase = createClient()
   if (!title.trim()) return { success: false, error: 'Adım başlığı boş olamaz.' }
   const { error } = await supabase
@@ -164,6 +174,7 @@ export async function toggleTaskStep(
   id: string,
   isCurrentlyDone: boolean
 ): Promise<{ success: boolean; error?: string }> {
+  await assertSession()
   const supabase = createClient()
   const { error } = await supabase
     .from('active_task_steps')
@@ -175,6 +186,7 @@ export async function toggleTaskStep(
 }
 
 export async function deleteTaskStep(id: string): Promise<{ success: boolean; error?: string }> {
+  await assertSession()
   const supabase = createClient()
   const { error } = await supabase.from('active_task_steps').delete().eq('id', id)
   if (error) return { success: false, error: error.message }

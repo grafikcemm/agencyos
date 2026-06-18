@@ -9,7 +9,7 @@ import type { EnrichedLead } from '@/lib/enrichLead'
 const COLUMNS = [
   { id: 'new', title: 'YENİ LEAD', color: 'var(--info)' },
   { id: 'contacted', title: 'İLETİŞİM', color: 'var(--warning)' },
-  { id: 'responded', title: 'YANIT', color: '#8B5CF6' },
+  { id: 'responded', title: 'YANIT', color: 'var(--cat-purple)' },
   { id: 'meeting', title: 'TOPLANTI', color: 'var(--info)' },
   { id: 'proposal', title: 'TEKLİF', color: 'var(--fire)' },
   { id: 'converted', title: 'KAZANILDI', color: 'var(--success)' },

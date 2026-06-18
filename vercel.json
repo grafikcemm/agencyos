@@ -17,6 +17,10 @@
       "schedule": "0 4 * * *"
     },
     {
+      "path": "/api/cron/person-scan",
+      "schedule": "30 3 * * *"
+    },
+    {
       "path": "/api/cron/orchestrator",
       "schedule": "0 6 * * *"
     },

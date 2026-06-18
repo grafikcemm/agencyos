@@ -17,7 +17,7 @@ interface Props {
 
 const TYPE_BADGE: Record<string, string> = {
   technical: "border-[var(--info)]/30 text-[var(--info)]",
-  personal: "border-purple-500/30 text-purple-400",
+  personal: "border-[var(--cat-purple)]/30 text-[var(--cat-purple)]",
 }
 
 export function SkillCard({

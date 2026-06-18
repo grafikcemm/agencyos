@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { assertSession } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 
 export async function finalizeDay(score: number, totalPossible = 80): Promise<{
@@ -8,6 +9,7 @@ export async function finalizeDay(score: number, totalPossible = 80): Promise<{
   streakBroken: boolean
   longestStreak: number
 }> {
+  await assertSession()
   const supabase = createClient()
   const today = new Date().toISOString().slice(0, 10)
   // totalPossible artık günün gerçek toplam puanı (antrenman günü ~100, diğer ~80).

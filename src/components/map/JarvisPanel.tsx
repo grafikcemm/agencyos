@@ -342,7 +342,7 @@ export function JarvisPanel({ leadsCount = 0, stats, onLeadsChanged }: JarvisPan
           <button
             type="submit"
             disabled={isTyping || !input.trim()}
-            className="w-10 h-10 bg-[var(--accent)] text-white rounded-lg flex items-center justify-center hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50"
+            className="w-10 h-10 bg-[var(--cta-bg)] text-[var(--cta-fg)] rounded-lg flex items-center justify-center hover:bg-[#e6e6e6] transition-colors disabled:opacity-50"
           >
             <Send className="w-4 h-4" />
           </button>

@@ -4,6 +4,7 @@ import { callLight } from '@/lib/openrouter'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
 import { requireApiAccess } from '@/lib/auth'
+import { redactForLog } from '@/lib/redact'
 
 export async function POST() {
   try {
@@ -119,8 +120,8 @@ Her alan için text kısmını kısa ve vurucu yaz, listeler için maddeleri \n�
         cleanResponse = cleanResponse.replace(/^```json\s*/, '').replace(/```$/, '').trim()
       }
       parsedJson = JSON.parse(cleanResponse)
-    } catch (e: any) {
-      console.error('API Learn: JSON Parse Error. Raw response was:', aiResponse)
+    } catch {
+      console.error('API Learn: JSON Parse Error. Raw response (redacted):', redactForLog(aiResponse))
       throw new Error('AI geçerli bir strateji JSON formatı üretmedi.')
     }
 

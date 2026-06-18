@@ -2,8 +2,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { createServerSupabase } from '@/lib/supabaseServer';
+import { assertSession } from '@/lib/auth';
 
 export async function takeSkincarePackage(packageId: string, _parentTaskId: string) {
+  await assertSession();
   void _parentTaskId; // positional param kept for caller compatibility; intentionally unused
   const today = new Date().toISOString().slice(0, 10);
   const supabase = createServerSupabase();

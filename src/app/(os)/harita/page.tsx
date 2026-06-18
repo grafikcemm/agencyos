@@ -4,13 +4,16 @@ import dynamic from 'next/dynamic'
 import { useState, useEffect, useCallback } from 'react'
 import { JarvisPanel } from '@/components/map/JarvisPanel'
 import { LeadDrawer } from '@/components/map/LeadDrawer'
-import { Search, Loader2, MapPin, Globe, Phone, Filter, ChevronDown, MessageCircle, Eye, Bot, X, Crosshair, Download, Plus, Trash2, SlidersHorizontal } from 'lucide-react'
+import { PersonLeadDrawer } from '@/components/map/PersonLeadDrawer'
+import { PersonLeadTable } from '@/components/map/PersonLeadTable'
+import { Search, Loader2, MapPin, Globe, Phone, Filter, ChevronDown, MessageCircle, Eye, Bot, X, Crosshair, Download, Plus, Trash2, SlidersHorizontal, Building2, Users, RefreshCw } from 'lucide-react'
 import { Lead } from '@/lib/types'
 import { enrichLeads, EnrichedLead } from '@/lib/enrichLead'
 import { matchesCity, citySlugify } from '@/lib/geo'
 import { TR_PROVINCES, districtsOf } from '@/lib/trGeo'
 import { LEAD_COLUMNS, DEFAULT_VISIBLE, COLUMN_STORAGE_KEY } from '@/lib/leadColumns'
 import type { LeadColumnKey } from '@/lib/leadColumns'
+import type { PersonLead } from '@/lib/personLeads/types'
 import { fetchSettings, saveSetting } from '@/lib/repositories/settings'
 import type { CircleArea } from '@/components/map/LeadMap'
 
@@ -165,24 +168,61 @@ export default function HaritaPage() {
   // Drawer
   const [selectedLead, setSelectedLead] = useState<EnrichedLead | null>(null)
 
+  // Görünüm: işletme leadleri vs kişi/pozisyon leadleri
+  const [view, setView] = useState<'businesses' | 'people'>('businesses')
+  const [personLeads, setPersonLeads] = useState<PersonLead[]>([])
+  const [selectedPerson, setSelectedPerson] = useState<PersonLead | null>(null)
+  const [personScanning, setPersonScanning] = useState(false)
+  const [personMessage, setPersonMessage] = useState('')
+
   // Mobile JARVIS overlay
   const [jarvisOpen, setJarvisOpen] = useState(false)
 
   const fetchLeads = useCallback(async () => {
     try {
-      const res = await fetch('/api/db/leads?order=quality_score')
+      // Arşivlenmiş leadleri server-side hariç tut (neStatus) + bounded fetch (limit).
+      const res = await fetch('/api/db/leads?order=quality_score&neStatus=archived&limit=1000')
       const json = await res.json()
       const data = Array.isArray(json) ? json : (json.data ?? [])
-      // Enrich leads
-      const enriched = enrichLeads(data)
+      const enriched = enrichLeads(data as Lead[])
       setAllLeads(enriched)
     } catch {
       console.error('Lead fetch error')
     }
   }, [])
 
+  const fetchPersonLeads = useCallback(async () => {
+    try {
+      const res = await fetch('/api/db/person_leads?order=person_score&neStatus=dismissed&limit=1000')
+      const json = await res.json()
+      const data = Array.isArray(json) ? json : (json.data ?? [])
+      setPersonLeads(data as PersonLead[])
+    } catch {
+      console.error('Person lead fetch error')
+    }
+  }, [])
+
   // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { fetchLeads() }, [fetchLeads])
+  useEffect(() => { fetchLeads(); fetchPersonLeads() }, [fetchLeads, fetchPersonLeads])
+
+  // Kişi taramasını manuel tetikle (Apollo People Search).
+  const handlePersonScan = async () => {
+    if (personScanning) return
+    setPersonScanning(true)
+    setPersonMessage('')
+    try {
+      const res = await fetch('/api/person-leads/scan', { method: 'POST' })
+      const data = await res.json()
+      if (data.skipped) setPersonMessage(data.message ?? 'Atlandı.')
+      else if (data.success) setPersonMessage(`${data.inserted ?? 0} yeni kişi${data.rateLimited ? ' (kredi limiti)' : ''}.`)
+      else setPersonMessage(data.error ?? 'Tarama başarısız.')
+      await fetchPersonLeads()
+    } catch {
+      setPersonMessage('Tarama hatası.')
+    } finally {
+      setPersonScanning(false)
+    }
+  }
 
   // Kayıtlı işletme tipleri (settings JSON) — mount'ta yükle.
   useEffect(() => {
@@ -444,6 +484,14 @@ export default function HaritaPage() {
         )
       case 'value':
         return <td key={key} className="px-4 py-3 text-right num font-bold text-[var(--text-primary)] whitespace-nowrap">{monthlyVal > 0 ? `${formatTL(monthlyVal)}/ay` : '-'}</td>
+      case 'source':
+        return (
+          <td key={key} className="px-4 py-3 whitespace-nowrap">
+            <span className="inline-flex items-center gap-1 text-[9px] font-bold tracking-wider px-2 py-0.5 rounded-full border border-[var(--border-subtle)] text-[var(--text-muted)]">
+              <MapPin className="w-2.5 h-2.5" /> Google Maps
+            </span>
+          </td>
+        )
       case 'actions':
         return (
           <td key={key} className="px-4 py-3 whitespace-nowrap" title={lead.next_action}>
@@ -818,42 +866,79 @@ export default function HaritaPage() {
           <div className="h-[260px] border-t border-[var(--border-subtle)] bg-[var(--glass-bg)] backdrop-blur-md flex flex-col overflow-hidden shrink-0">
             <div className="px-4 py-2 border-b border-[var(--border-subtle)] flex items-center justify-between shrink-0 bg-[var(--bg-elevated)]">
               <div className="flex items-center gap-3">
-                <span className="text-[10px] font-black tracking-widest text-[var(--text-primary)] uppercase">
-                  Lead Radar ({filteredLeads.filter(l => !l.disqualification_reason).length} uygun
-                  {filteredLeads.filter(l => !!l.disqualification_reason).length > 0
-                    ? ` · ${filteredLeads.filter(l => !!l.disqualification_reason).length} elenmiş`
-                    : ''})
-                </span>
-                {filteredLeads.filter(l => !l.disqualification_reason).length >= 3 && (
-                  <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded">
-                    ↑ Top 5 üstte
+                {/* Görünüm toggle: İşletmeler / Kişiler */}
+                <div className="flex items-center rounded-lg border border-[var(--border-subtle)] overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setView('businesses')}
+                    className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold tracking-wider transition-all ${view === 'businesses' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'}`}
+                  >
+                    <Building2 className="w-3 h-3" /> İşletmeler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setView('people')}
+                    className={`flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold tracking-wider transition-all ${view === 'people' ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'}`}
+                  >
+                    <Users className="w-3 h-3" /> Kişiler
+                  </button>
+                </div>
+                {view === 'businesses' ? (
+                  <span className="text-[10px] font-black tracking-widest text-[var(--text-primary)] uppercase">
+                    {filteredLeads.filter(l => !l.disqualification_reason).length} uygun
+                    {filteredLeads.filter(l => !!l.disqualification_reason).length > 0
+                      ? ` · ${filteredLeads.filter(l => !!l.disqualification_reason).length} elenmiş`
+                      : ''}
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-black tracking-widest text-[var(--text-primary)] uppercase">
+                    {personLeads.length} kişi
                   </span>
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <div className="relative">
-                  <button type="button" onClick={() => setShowColMenu(v => !v)} className="flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--border-subtle)] text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all">
-                    <SlidersHorizontal className="w-3 h-3" /> Sütunlar
-                  </button>
-                  {showColMenu && (
-                    <div className="absolute right-0 top-full mt-1 z-20 w-44 max-h-64 overflow-y-auto rounded-lg border border-[var(--border-highlight)] bg-[var(--bg-elevated)] shadow-xl p-1.5 scrollbar-thin">
-                      {LEAD_COLUMNS.map(col => (
-                        <label key={col.key} className={`flex items-center gap-2 px-2 py-1.5 rounded text-[11px] hover:bg-[var(--bg-surface)] ${col.alwaysOn ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                          <input type="checkbox" checked={visibleCols.includes(col.key)} disabled={col.alwaysOn} onChange={() => { if (!col.alwaysOn) toggleCol(col.key) }} className="accent-[var(--accent)]" />
-                          <span className="text-[var(--text-secondary)]">{col.label}</span>
-                        </label>
-                      ))}
+                {view === 'people' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={handlePersonScan}
+                      disabled={personScanning}
+                      className="flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--border-subtle)] text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all disabled:opacity-40"
+                    >
+                      {personScanning ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />} Kişi Tara
+                    </button>
+                    {personMessage && <span className="text-[10px] text-[var(--text-secondary)]">{personMessage}</span>}
+                  </>
+                )}
+                {view === 'businesses' && (
+                  <>
+                    <div className="relative">
+                      <button type="button" onClick={() => setShowColMenu(v => !v)} className="flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--border-subtle)] text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all">
+                        <SlidersHorizontal className="w-3 h-3" /> Sütunlar
+                      </button>
+                      {showColMenu && (
+                        <div className="absolute right-0 top-full mt-1 z-20 w-44 max-h-64 overflow-y-auto rounded-lg border border-[var(--border-highlight)] bg-[var(--bg-elevated)] shadow-xl p-1.5 scrollbar-thin">
+                          {LEAD_COLUMNS.map(col => (
+                            <label key={col.key} className={`flex items-center gap-2 px-2 py-1.5 rounded text-[11px] hover:bg-[var(--bg-surface)] ${col.alwaysOn ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                              <input type="checkbox" checked={visibleCols.includes(col.key)} disabled={col.alwaysOn} onChange={() => { if (!col.alwaysOn) toggleCol(col.key) }} className="accent-[var(--accent)]" />
+                              <span className="text-[var(--text-secondary)]">{col.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                <button type="button" onClick={exportCsv} disabled={filteredLeads.length === 0} className="flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--border-subtle)] text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all disabled:opacity-40">
-                  <Download className="w-3 h-3" /> CSV
-                </button>
+                    <button type="button" onClick={exportCsv} disabled={filteredLeads.length === 0} className="flex items-center gap-1 px-2 py-1 rounded-md border border-[var(--border-subtle)] text-[10px] font-bold text-[var(--text-muted)] hover:text-[var(--accent)] hover:border-[var(--accent)] transition-all disabled:opacity-40">
+                      <Download className="w-3 h-3" /> CSV
+                    </button>
+                  </>
+                )}
                 <span className="hidden md:inline text-[10px] text-[var(--text-muted)]">Seçerek detay açın.</span>
               </div>
             </div>
             <div className="flex-1 overflow-y-auto scrollbar-thin">
-              {filteredLeads.length === 0 ? (
+              {view === 'people' ? (
+                <PersonLeadTable people={personLeads} onSelect={setSelectedPerson} />
+              ) : filteredLeads.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full p-8 text-center">
                   <span className="text-xl mb-2">🎯</span>
                   <p className="text-xs font-bold text-[var(--text-secondary)]">Uyumlu lead bulunamadı.</p>
@@ -1002,6 +1087,14 @@ export default function HaritaPage() {
         <LeadDrawer
           lead={selectedLead}
           onClose={() => setSelectedLead(null)}
+        />
+      )}
+
+      {/* Person Lead Drawer */}
+      {selectedPerson && (
+        <PersonLeadDrawer
+          person={selectedPerson}
+          onClose={() => setSelectedPerson(null)}
         />
       )}
     </div>
