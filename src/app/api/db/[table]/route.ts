@@ -23,6 +23,33 @@ function tableGuard(table: string, write = false): NextResponse | null {
   return null
 }
 
+// Tablo-başına yazılabilir alan allowlist'i. Kolon seti KESİN bilinen tablolar için
+// tanımlı — bilinmeyen alanlar yazımdan ÖNCE atılır (service-role ile keyfi kolon
+// mutasyonunu engeller). Listesi olmayan tablolar yalnız yapısal sanitize'den geçer
+// (leads gibi çok kolonlu/akışkan şemalarda meşru yazımı kırmamak için kasıtlı).
+const WRITE_FIELDS: Record<string, Set<string>> = {
+  person_leads: new Set([
+    'source', 'purpose', 'preset_id', 'b2b_filter_label', 'apollo_person_id', 'full_name',
+    'title', 'seniority', 'linkedin_url', 'email', 'email_status', 'phone', 'company_name',
+    'company_domain', 'company_industry', 'company_size', 'city', 'country', 'difficulty_score',
+    'market_score', 'earning_score', 'person_score', 'person_tier', 'expected_monthly_value_tl',
+    'why_now', 'next_action', 'status', 'notes', 'updated_at',
+  ]),
+  settings: new Set(['key', 'value', 'updated_at']),
+}
+
+// id'yi koruyarak (PATCH eq) gövdeyi allowlist'e indirger. Listesi olmayan tabloda
+// gövde aynen döner.
+function applyFieldAllowlist(table: string, body: Record<string, unknown>): Record<string, unknown> {
+  const allow = WRITE_FIELDS[table]
+  if (!allow) return body
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(body)) {
+    if (k === 'id' || allow.has(k)) out[k] = v
+  }
+  return out
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function withTimeout(promise: PromiseLike<any>, ms: number = TIMEOUT_MS): Promise<any> {
   return new Promise((resolve, reject) => {
@@ -110,7 +137,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ table: 
     const guard = tableGuard(table, true)
     if (guard) return guard
 
-    const body = sanitizeWriteBody(await req.json())
+    const body = applyFieldAllowlist(table, sanitizeWriteBody(await req.json()))
     const { data, error } = await withTimeout(supabaseAdmin.from(table).insert(body).select())
     if (error) throw error
     return NextResponse.json(data)
@@ -134,8 +161,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ table:
     const guard = tableGuard(table, true)
     if (guard) return guard
 
-    const { id, ...updates } = sanitizeWriteBody(await req.json())
+    const { id, ...rawUpdates } = sanitizeWriteBody(await req.json())
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
+    const updates = applyFieldAllowlist(table, rawUpdates)
 
     // Pipeline gatekeeper: leads → 'proposal' geçişi için discovery alanları zorunlu.
     // Eksik alanlar updates'te yoksa mevcut kayıttan tamamlanır (merge).

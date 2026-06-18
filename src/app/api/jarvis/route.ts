@@ -4,25 +4,7 @@ import { writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { requireApiAccess } from '@/lib/auth'
 import { getKnowledgeDoc, getKnowledgeDocs } from '@/lib/knowledge'
-import { z } from 'zod'
-
-// --- Tool argument validation (LLM tool-call güvenliği) ---
-// Tool şemasındaki enum'lar model'e verilen TALİMAT'tır; runtime zorlama DEĞİL.
-// Model yanlış/enjekte argüman üretirse service-role mutasyonlarına ham gider.
-// Aşağıdaki şemalar destructive/para/status değiştiren tool'ları runtime'da doğrular.
-const LEAD_STAGES = ['new', 'contacted', 'responded', 'meeting', 'proposal', 'converted', 'lost'] as const
-
-const TOOL_ARG_SCHEMAS: Record<string, z.ZodTypeAny> = {
-  update_lead_stage: z.object({
-    lead_id: z.string().min(1),
-    stage: z.enum(LEAD_STAGES),
-  }),
-  create_project: z.object({
-    lead_id: z.string().min(1),
-    title: z.string().min(1).max(200),
-    revenue_tl: z.number().min(0).max(10_000_000).optional(),
-  }),
-}
+import { TOOL_ARG_SCHEMAS } from '@/lib/jarvis/toolSchemas'
 
 // --- Knowledge injection ---
 

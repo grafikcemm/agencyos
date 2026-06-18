@@ -61,9 +61,12 @@
   --bg-card-hover: #242424;
   --border-strong: #3a3a3a;
 
-  /* ─ Accent: TEK mavi (#0099FF) = link / focus / seçim. ASLA dolgu değil.
+  /* ─ Accent: TEK mavi (#0099FF) = İNTERAKTİF aksan (link / focus / seçim). ASLA dolgu değil.
        Birincil CTA beyaz pill (--cta-* token'larından). --accent-yellow
-       ARTIK mavi alias'ı (geriye-dönük: MoneyRulesPanel + HabitTracker). ─ */
+       ARTIK mavi alias'ı (geriye-dönük: MoneyRulesPanel + HabitTracker).
+       NOT: Aşağıdaki --spot-* paleti AYRI bir DEKORATİF kimlik sistemidir (spotlight
+       kartları) — interaktif durumlarda (link/focus/CTA dolgu) KULLANILMAZ. İki sistem
+       kapsam olarak ayrıktır; "tek mavi" kuralı yalnız interaktif aksanı bağlar. ─ */
   --accent: #0099ff;
   --accent-yellow: var(--accent);
   --accent-green: #30d158;
@@ -124,7 +127,8 @@
   --glass-bg: rgba(20, 20, 20, 0.72);
   --glass-blur: 20px;
 
-  /* ─ Gradient spotlight imza token'ları ─ */
+  /* ─ Gradient spotlight imza token'ları — DEKORATİF kimlik paleti (spotlight kartları).
+       İnteraktif aksan DEĞİL: link/focus/seçim/CTA dolgu için --accent (mavi) kullan. ─ */
   --spot-violet: #6a4cf5;
   --spot-magenta: #d44df0;
   --spot-orange: #ff7a3d;
