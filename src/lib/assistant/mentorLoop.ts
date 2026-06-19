@@ -13,7 +13,7 @@
 import { callOpenRouter } from "@/lib/assistant/llm";
 import { escapeTelegramHtml } from "@/lib/telegramHtml";
 import { buildMentorSystemPrompt } from "./prompts";
-import { buildTechniqueBlock } from "./techniqueRetrieval";
+import { buildTechniqueBlock, selectTechniques } from "./techniqueRetrieval";
 import { loadAssistantLiveContext } from "./liveContext";
 import type { AgentType } from "./agents";
 import { routeMessageToAgent } from "./agents";
@@ -84,6 +84,13 @@ export async function runMentorFreeText(
   } catch {
     techniqueBlock = "";
   }
+
+  // Uzun-vadeli öğrenme: eşleşen tema'yı desen-hafızasına say (occurrences ↑ →
+  // getTopMemories ile mentor Cem'in tekrarlayan temalarını zamanla görür). best-effort.
+  try {
+    const topTheme = selectTechniques(userText, 1)[0];
+    if (topTheme) await recordMemory("note", `tema:${topTheme.id}`, { title: topTheme.title }, 0.05);
+  } catch { /* non-critical */ }
 
   const fullSystem = [systemPrompt, factsBlock, techniqueBlock]
     .filter((p) => p && p.trim().length > 0)
