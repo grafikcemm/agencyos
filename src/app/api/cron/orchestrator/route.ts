@@ -7,7 +7,8 @@ export const maxDuration = 60;
 import { getDueReminder } from '@/lib/reminderEngine';
 import { calculateLocalTodayPlan } from '@/lib/dailyOrchestrator';
 import type { ReminderType } from '@/data/orchestratorConfig';
-import type { AssistantDailyState } from '@/lib/dailyOrchestrator';
+import type { AssistantDailyState, UnifiedTodayPlan } from '@/lib/dailyOrchestrator';
+import { buildMorningBriefingBlock } from '@/lib/assistant/morningBriefing';
 import { getIstanbulDateAndDay } from '@/lib/assistant/timezone';
 import { getCommitment, setCommitment, logConversationTurn } from '@/lib/assistant/memory';
 import { morningCommitmentQuestion, eveningRecallQuestion, sanitizeForTelegram } from '@/lib/assistant/mentorLoop';
@@ -216,6 +217,9 @@ export async function GET(req: Request): Promise<NextResponse> {
 
   const state = await getOrCreateDailyState(today);
 
+  // Sabah brifingi için plan'ı handler kapsamında tut (varsa daily_v2'den, yoksa aşağıda kurulur).
+  let morningPlan: UnifiedTodayPlan | null = (state.today_plan_json as UnifiedTodayPlan | null) ?? null;
+
   // Build plan if not already done for morning check-in
   if (due === 'morning_checkin' && !state.today_plan_json) {
     const { data: activeTasks } = await supabaseAdmin
@@ -254,6 +258,7 @@ export async function GET(req: Request): Promise<NextResponse> {
     await supabaseAdmin
       .from('daily_v2')
       .upsert({ date: today, today_plan_json: plan, updated_at: new Date().toISOString() }, { onConflict: 'date' });
+    morningPlan = plan;
   }
 
   // Cem'in anlık gerçek verisini cron'un service-role client'ı ile yükle
@@ -269,7 +274,15 @@ export async function GET(req: Request): Promise<NextResponse> {
     timeOfDay,
   });
 
-  const message = await buildReminderMessage(due, today, state, live);
+  let message = await buildReminderMessage(due, today, state, live);
+
+  // Sabah mesajına brifingi (aktif görevler + öneriler + aranacak müşteriler) önden ekle.
+  // best-effort: brifing boşsa/patlasa enerji-taahhüt sorusu yine tek başına gider.
+  if (due === 'morning_checkin' && message) {
+    const briefing = await buildMorningBriefingBlock({ plan: morningPlan });
+    if (briefing.trim()) message = `${briefing}\n\n${message}`;
+  }
+
   if (!message) {
     // Bilinmeyen reminder tipi boş mesaj üretti — boş gönderme (Telegram 400) ve
     // reminder'ı "gönderildi" diye işaretleme.

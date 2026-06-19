@@ -73,3 +73,5 @@ next-env.d.ts
 # Yerel arastirma/guncelleme materyali
 agencyos guncelleme/
 agencyos g*ncelleme/
+
+.vercel
