@@ -14,6 +14,7 @@ import { callOpenRouter } from "@/lib/assistant/llm";
 import { escapeTelegramHtml } from "@/lib/telegramHtml";
 import { buildMentorSystemPrompt } from "./prompts";
 import { buildTechniqueBlock, selectTechniques } from "./techniqueRetrieval";
+import { buildKnowledgeBlock } from "./knowledgeRetrieval";
 import { loadAssistantLiveContext } from "./liveContext";
 import type { AgentType } from "./agents";
 import { routeMessageToAgent } from "./agents";
@@ -92,7 +93,15 @@ export async function runMentorFreeText(
     if (topTheme) await recordMemory("note", `tema:${topTheme.id}`, { title: topTheme.title }, 0.05);
   } catch { /* non-critical */ }
 
-  const fullSystem = [systemPrompt, factsBlock, techniqueBlock]
+  // Semantik bilgi retrieval — manüellerden ilgili pasaj (best-effort, eşleşme yoksa boş).
+  let knowledgeBlock = "";
+  try {
+    knowledgeBlock = await buildKnowledgeBlock(userText);
+  } catch {
+    knowledgeBlock = "";
+  }
+
+  const fullSystem = [systemPrompt, factsBlock, techniqueBlock, knowledgeBlock]
     .filter((p) => p && p.trim().length > 0)
     .join("\n\n");
 
