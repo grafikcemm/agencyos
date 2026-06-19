@@ -13,6 +13,7 @@
 import { callOpenRouter } from "@/lib/assistant/llm";
 import { escapeTelegramHtml } from "@/lib/telegramHtml";
 import { buildMentorSystemPrompt } from "./prompts";
+import { buildTechniqueBlock } from "./techniqueRetrieval";
 import { loadAssistantLiveContext } from "./liveContext";
 import type { AgentType } from "./agents";
 import { routeMessageToAgent } from "./agents";
@@ -76,7 +77,17 @@ export async function runMentorFreeText(
     systemPrompt = "";
   }
 
-  const fullSystem = factsBlock ? `${systemPrompt}\n\n${factsBlock}` : systemPrompt;
+  // Durum-eşleşmeli terapötik teknik enjeksiyonu (best-effort, eşleşme yoksa boş).
+  let techniqueBlock = "";
+  try {
+    techniqueBlock = buildTechniqueBlock(userText);
+  } catch {
+    techniqueBlock = "";
+  }
+
+  const fullSystem = [systemPrompt, factsBlock, techniqueBlock]
+    .filter((p) => p && p.trim().length > 0)
+    .join("\n\n");
 
   // Geçmiş bağlam (eski→yeni).
   const history = await getRecentConversation(10);
