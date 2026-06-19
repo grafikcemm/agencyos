@@ -186,6 +186,18 @@ export function microStartAck(): string {
   return "İşte bu. En zor kısım başlamaktı, onu geçtin. 5 dakika sadece bak — devamı çoğu zaman kendi gelir. 💪";
 }
 
+/** Meta/yetenek sorusuna ("ne yapabilirsin?") deterministik, doğru yanıt. */
+export function capabilitiesReply(): string {
+  return [
+    "Buradayım Cem — hem ajans hem günlük hayat tarafında yanındayım.",
+    "",
+    "<b>Konuşarak:</b> aklındakini yaz — odak, takılma, kafa karışıklığı, iş kararı, motivasyon. Düşünmene yardım ederim, öğüt yağdırmam.",
+    "<b>İş:</b> müşteri/lead, kimi arayayım, pipeline, teklif → veriyle cevap veririm.",
+    "<b>Komutlar:</b> /plan /durum /saglik /finans /kitap /ritimler /shutdown",
+    "<b>Hızlı:</b> enerji (düşük/orta/yüksek), 'tamam' / 'pas' / 'ertele', 'bugün ne yiyeyim'",
+  ].join("\n");
+}
+
 // ── Sabah taahhüt / akşam geri-çağırma metinleri ─────────────────────────────
 
 export function morningCommitmentQuestion(): string {

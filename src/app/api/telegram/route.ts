@@ -22,7 +22,9 @@ import {
   commitmentTimeQuestion,
   commitmentSetConfirmation,
   eveningDoneCelebration,
+  capabilitiesReply,
 } from '@/lib/assistant/mentorLoop';
+import { classifyMessageIntent } from '@/lib/assistant/intent';
 import { classifyQuestion } from '@/lib/assistant/classifyQuestion';
 import { deliberateBusiness } from '@/lib/assistant/deliberate';
 
@@ -669,19 +671,33 @@ export async function POST(req: Request): Promise<NextResponse> {
       }
 
       default: {
-        // ── Taahhüt döngüsü (sabah) + LLM serbest-metin fallback ──────────────
+        // ── Intent guard + taahhüt döngüsü (sabah) + LLM serbest-metin fallback ──
         const commitment = await getCommitment(today);
+        const msgIntent = classifyMessageIntent(text);
 
-        // 3. adım: taahhüt var, saat yok → bu mesaj saat cevabı.
-        if (commitment && commitment.commitment && !commitment.do_at && !commitment.asked_evening) {
-          const timeHint = parseTimeHint(text) ?? text.trim().slice(0, 40);
-          await setCommitment(today, { do_at: timeHint });
-          await reply(commitmentSetConfirmation(commitment.commitment, timeHint), today, 'commitment_time_set');
+        // Meta/yetenek sorusu → deterministik yanıt; taahhüt akışını ASLA tetikleme.
+        if (msgIntent === 'meta') {
+          await reply(capabilitiesReply(), today, 'meta');
           break;
         }
 
-        // 2. adım: enerji alındı (placeholder satır var), taahhüt yok → bu mesaj taahhüt.
-        if (commitment && !commitment.commitment && !commitment.asked_evening && text.trim().length > 2) {
+        // 3. adım: taahhüt var, saat yok → bu mesaj saat cevabı OLABİLİR.
+        // Yalnızca gerçek saat/taahhüt cümlesi yakala; selam/soru/sohbet garbage do_at olmasın.
+        if (commitment && commitment.commitment && !commitment.do_at && !commitment.asked_evening) {
+          const th = parseTimeHint(text);
+          if (th || msgIntent === 'commitment_candidate') {
+            const timeHint = th ?? text.trim().slice(0, 40);
+            await setCommitment(today, { do_at: timeHint });
+            await reply(commitmentSetConfirmation(commitment.commitment, timeHint), today, 'commitment_time_set');
+            break;
+          }
+          // saat/taahhüt değil → akışı bozmadan aşağıdaki mentor yoluna düş.
+        }
+
+        // 2. adım: placeholder var, taahhüt yok → bu mesaj taahhüt OLABİLİR.
+        // GUARD: yalnızca gerçek taahhüt cümlesi yakalanır. Selam/soru/sohbet taahhüt OLMAZ
+        // ("Selam" → taahhüt sanma bug'ının kökü buydu).
+        if (commitment && !commitment.commitment && !commitment.asked_evening && msgIntent === 'commitment_candidate') {
           const commitmentText = text.trim().slice(0, 200);
           await setCommitment(today, { commitment: commitmentText, status: 'pending' });
           await reply(commitmentTimeQuestion(commitmentText), today, 'commitment_captured');

@@ -59,13 +59,22 @@ function countHits(haystack: string, needles: string[]): number {
  * Belirsiz mesajlarda tek ucuz LLM çağrısı ile yön kararı verir.
  * Hata/anlaşılmaz çıktı → null (çağıran default'a düşer).
  */
-async function llmTieBreaker(text: string): Promise<QuestionRoute | null> {
+/** Son birkaç turu kısa bağlam bloğuna çevirir (tie-breaker'ın takip sorularını anlaması için). */
+function formatHistory(history?: ConversationTurn[]): string {
+  if (!history || history.length === 0) return ''
+  const recent = history.slice(-4)
+  const lines = recent.map((t) => `${t.role === 'user' ? 'Cem' : 'Asistan'}: ${t.message}`)
+  return `\n\nÖnceki konuşma (bağlam — takip sorusu olabilir):\n${lines.join('\n')}`
+}
+
+async function llmTieBreaker(text: string, history?: ConversationTurn[]): Promise<QuestionRoute | null> {
   const system =
     'Bir mesajın işle mi (müşteri, lead, satış, pipeline, ajans) yoksa kişisel hayatla mı ' +
-    '(öğün, rutin, sağlık, ders, motivasyon) ilgili olduğunu sınıflandırırsın. ' +
+    '(öğün, rutin, sağlık, ders, motivasyon, duygu) ilgili olduğunu sınıflandırırsın. ' +
+    'Mesaj kısa bir takip sorusuysa ("peki ya o?", "ne zaman?") önceki konuşmaya göre karar ver. ' +
     'SADECE tek kelime yanıtla: BUSINESS veya LIFE.'
   try {
-    const raw = await callLight(system, text, 24)
+    const raw = await callLight(system, `${text}${formatHistory(history)}`, 24)
     const upper = (raw ?? '').toUpperCase()
     if (upper.includes('BUSINESS')) return 'business_deliberate'
     if (upper.includes('LIFE')) return 'life_quick'
@@ -77,9 +86,8 @@ async function llmTieBreaker(text: string): Promise<QuestionRoute | null> {
 
 export async function classifyQuestion(
   text: string,
-  _history?: ConversationTurn[],
+  history?: ConversationTurn[],
 ): Promise<ClassifyResult> {
-  void _history // ileride bağlam için; şimdilik keyword sınıflandırma history kullanmıyor
   const norm = normalizeText(text)
   const businessHits = countHits(norm, BUSINESS_KEYWORDS)
   const lifeHits = countHits(norm, LIFE_KEYWORDS)
@@ -93,8 +101,8 @@ export async function classifyQuestion(
     return { route: 'life_quick', reason: `keyword:life(${lifeHits})`, confidence: 0.9 }
   }
 
-  // Belirsiz (ikisi de 0, ya da ikisi de >0) → LLM tie-breaker.
-  const tie = await llmTieBreaker(text)
+  // Belirsiz (ikisi de 0, ya da ikisi de >0) → LLM tie-breaker (geçmiş bağlamıyla).
+  const tie = await llmTieBreaker(text, history)
   if (tie) {
     return { route: tie, reason: 'llm_tiebreaker', confidence: 0.6 }
   }
