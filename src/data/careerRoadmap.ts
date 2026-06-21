@@ -11,11 +11,23 @@ export type CareerSkillStatus =
 
 export type CareerSkillPriority = "now" | "next" | "later" | "archive"
 
+// İsimli + tıklanır kaynak. Belirsiz arama terimi yerine doğrudan eriştirir.
+export type CareerResourceKind = "course" | "youtube" | "channel" | "doc" | "book" | "tool"
+
+export interface CareerResourceLink {
+  title: string
+  url: string
+  kind?: CareerResourceKind
+  free?: boolean
+  note?: string
+}
+
 export interface CareerSkillResource {
   courseSearchTerms?: string[]
   youtubeSearchTerms?: string[]
   docs?: string[]
   savedCoursesNote?: string
+  links?: CareerResourceLink[]
 }
 
 export interface CareerSkill {
@@ -71,9 +83,14 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "En az 3 tamamlanmış motion çalışması portfolyoya ekle.",
         ],
         resources: {
+          links: [
+            { title: "School of Motion", url: "https://www.schoolofmotion.com", kind: "course", free: false, note: "Mentor destekli, sektör standardı motion eğitimi (Animation Bootcamp)." },
+            { title: "Motion Design School — Motion Beast", url: "https://motiondesign.school/products/motion-beast", kind: "course", free: false, note: "Daha ucuz, proje bazlı başlangıç. AE temellerini hızlı geçer." },
+            { title: "Hasancan Keleş (YouTube)", url: "https://www.youtube.com/@hasancankeles", kind: "youtube", free: true, note: "Türkçe AE — kayıtlı eğitim. Modül modül bitir." },
+          ],
           courseSearchTerms: ["Hasancan Keleş After Effects", "Adobe After Effects motion design Türkçe"],
           youtubeSearchTerms: ["After Effects motion design beginner", "After Effects reels tutorial"],
-          savedCoursesNote: "Hasancan Keleş eğitimi kayıtlı.",
+          savedCoursesNote: "Hasancan Keleş eğitimi kayıtlı. Amaç: AI video çıktısını polish'lemek, tam motion-designer olmak değil.",
         },
         practiceProjects: [
           "15 saniyelik sosyal medya reklamı için motion intro yap.",
@@ -108,6 +125,10 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "5 kısa video editleyerek pratik yap.",
         ],
         resources: {
+          links: [
+            { title: "Adobe — Premiere Pro Tutorials", url: "https://helpx.adobe.com/premiere-pro/tutorials.html", kind: "doc", free: true, note: "Resmi: sequence, renk, ses miksaj, export — modüler." },
+            { title: "Hasancan Keleş (YouTube)", url: "https://www.youtube.com/@hasancankeles", kind: "youtube", free: true, note: "Türkçe kurgu — kesme, ritim, ses sync." },
+          ],
           courseSearchTerms: ["Hasancan Keleş Premiere Pro", "Premiere Pro video editing Türkçe"],
           youtubeSearchTerms: ["Premiere Pro tutorial beginners", "Premiere Pro reels editing"],
           savedCoursesNote: "Hasancan Keleş eğitimi kayıtlı.",
@@ -144,6 +165,12 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "Çıktıyı Premiere/After Effects'te toparlayıp yayına hazır teslim et.",
         ],
         resources: {
+          links: [
+            { title: "Nick St. Pierre (Maven)", url: "https://maven.com/nick-st-pierre", kind: "course", free: false, note: "Sektörün en çok atıf alan Midjourney uzmanı. 'Additive Prompting' framework'ü." },
+            { title: "Theoretically Media (YouTube)", url: "https://www.youtube.com/@TheoreticallyMedia", kind: "youtube", free: true, note: "Runway/Veo/Kling/Luma — prodüksiyonda ne işe yarar, ne hype." },
+            { title: "Curious Refuge", url: "https://www.curiousrefuge.com", kind: "course", free: false, note: "En prestijli AI filmmaking okulu (Advanced AI Filmmaking)." },
+            { title: "Midjourney Docs", url: "https://docs.midjourney.com", kind: "doc", free: true },
+          ],
           courseSearchTerms: ["Midjourney advanced workflow", "Runway Gen-3 Kling AI video production"],
           youtubeSearchTerms: ["Flux prompt to production", "AI ad creative Runway Kling pipeline"],
           docs: ["docs.midjourney.com", "runwayml.com"],
@@ -180,6 +207,10 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "1 iyileştirme önerisi raporu yaz.",
         ],
         resources: {
+          links: [
+            { title: "Meta Blueprint", url: "https://www.facebook.com/business/learn", kind: "course", free: true, note: "Reklam metrikleri (CTR/CPM/ROAS) resmi ücretsiz eğitim." },
+            { title: "Google Skillshop", url: "https://skillshop.exceedlms.com", kind: "course", free: true, note: "Google Ads ölçümleme temelleri." },
+          ],
           youtubeSearchTerms: ["CTR CPA ROAS explained", "Facebook Ads creative metrics", "hook rate video ads"],
           courseSearchTerms: ["performance creative advertising", "media buying creative optimization"],
         },
@@ -207,6 +238,9 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "3 farklı marka için kısa konumlandırma analizi yaz.",
         ],
         resources: {
+          links: [
+            { title: "Refactoring UI", url: "https://www.refactoringui.com", kind: "book", free: false, note: "Tasarımcı/builder için en pratik görsel hiyerarşi + tipografi kaynağı." },
+          ],
           courseSearchTerms: ["brand positioning fundamentals", "brand strategy visual identity"],
           youtubeSearchTerms: ["branding fundamentals türkçe", "marka konumlandırma nedir"],
         },
@@ -237,6 +271,11 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "1 mini sistem kur (araçları bir araya getiren küçük flow).",
         ],
         resources: {
+          links: [
+            { title: "Supabase Docs — RLS & API Keys", url: "https://supabase.com/docs/guides/database/postgres/row-level-security", kind: "doc", free: true, note: "KRİTİK güvenlik: service_role sadece server-side, her tabloda RLS. Geçmiş key sızıntının dersi." },
+            { title: "Anthropic — MCP / Claude kursu", url: "https://anthropic.skilljar.com", kind: "course", free: true, note: "Claude skills yaptın — en doğal uzantın." },
+            { title: "Vercel Docs", url: "https://vercel.com/docs", kind: "doc", free: true },
+          ],
           youtubeSearchTerms: ["Notion advanced features", "Vercel deployment guide", "Supabase beginner tutorial"],
         },
         practiceProjects: [
@@ -264,6 +303,10 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "Öğrendiğin 1 şeyi sisteme uygula.",
         ],
         resources: {
+          links: [
+            { title: "Building a Second Brain — Tiago Forte", url: "https://www.buildingasecondbrain.com", kind: "book", free: false, note: "Öğrenme + not sistemi." },
+            { title: "Ali Abdaal (YouTube)", url: "https://www.youtube.com/@aliabdaal", kind: "youtube", free: true, note: "Öğrenmeyi öğrenme, sistem kurma." },
+          ],
           youtubeSearchTerms: ["weekly learning system", "monthly retrospective productivity"],
         },
         practiceProjects: ["4 haftalık öğrenme notu al.", "1 aylık retro dökümanı oluştur."],
@@ -289,6 +332,10 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "3 fikri görselleştir.",
         ],
         resources: {
+          links: [
+            { title: "Steal Like an Artist — Austin Kleon", url: "https://austinkleon.com/steal/", kind: "book", free: false, note: "Özgün fikir + ilham disiplini." },
+            { title: "IDEO — Design Kit", url: "https://www.designkit.org/methods", kind: "doc", free: true, note: "Yaratıcı yöntemler / lateral düşünme." },
+          ],
           courseSearchTerms: ["lateral thinking exercises", "creative thinking design"],
           youtubeSearchTerms: ["konsept üretimi nasıl yapılır", "lateral thinking Edward de Bono"],
         },
@@ -299,6 +346,45 @@ export const CAREER_ROADMAP: CareerLevel[] = [
         ],
         defaultStatus: "not_started",
         priority: "later",
+      },
+      {
+        id: "web-literacy",
+        title: "Web Okuryazarlığı (HTML/CSS/JS + Git)",
+        technicalName: "Web Literacy & Version Control",
+        type: "technical",
+        shortDescription:
+          "Ürettiğin arayüzün nasıl çalıştığını anlamak: HTML/CSS/JS temeli + Git/GitHub rutini.",
+        whyLearn:
+          "Vibecoding'i 'şans eseri çalışan' olmaktan çıkarıp kontrol edebildiğin üretime çevirir. Kodun nasıl çalıştığını anlamadan ürettiğin şeyi onaramazsın.",
+        relevanceToCem:
+          "Zaten app shipliyorsun ama bazen ne olduğunu anlamadan. Bu katman, AI'ın yazdığı kodu okuyup düzeltebilmeni ve Git ile güvenle çalışmanı sağlar.",
+        howToLearn: [
+          "MDN Learn Web Development'tan HTML→CSS→JS sırasını takip et.",
+          "freeCodeCamp Responsive Web Design sertifikasını bitir.",
+          "GitHub Skills ile commit/branch/PR rutinini kur.",
+          "Mevcut bir app'ini Git ile branch açıp düzenle, PR ile birleştir.",
+        ],
+        resources: {
+          links: [
+            { title: "MDN — Learn Web Development", url: "https://developer.mozilla.org/en-US/docs/Learn", kind: "doc", free: true, note: "Başlangıçtan rahat seviyeye HTML/CSS/JS." },
+            { title: "freeCodeCamp — Responsive Web Design", url: "https://www.freecodecamp.org/learn/2022/responsive-web-design/", kind: "course", free: true },
+            { title: "GitHub Skills", url: "https://skills.github.com", kind: "course", free: true, note: "Git/GitHub rutinini pratikle kur." },
+            { title: "CS50x — Harvard", url: "https://cs50.harvard.edu/x/", kind: "course", free: true, note: "Programlama mantığını sıfırdan istersen." },
+          ],
+        },
+        practiceProjects: [
+          "Tek sayfalık responsive landing page'i elde HTML/CSS ile yaz.",
+          "Bir app'ini Git branch + PR akışıyla düzenle.",
+        ],
+        completionProof: [
+          "1 responsive sayfa elle kodlandı.",
+          "En az 1 branch + PR ile değişiklik birleştirildi.",
+        ],
+        ifAlreadyKnown: [
+          "Bir AI-üretimli component'i baştan sona okuyup açıkla; bir güvenlik/erişilebilirlik hatasını bul ve düzelt.",
+        ],
+        defaultStatus: "not_started",
+        priority: "next",
       },
       // Archived
       {
@@ -389,6 +475,10 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "Feed The Goat veya benzer üründe UI revizyonu uygula.",
         ],
         resources: {
+          links: [
+            { title: "Google UX Design Certificate", url: "https://www.coursera.org/professional-certificates/google-ux-design", kind: "course", free: false, note: "Senin seviyene: ilk 4 modülü bitir, sonra günlük UX challenge pratiğine geç." },
+            { title: "Figma — Resource Library", url: "https://www.figma.com/resource-library/", kind: "course", free: true, note: "Design for beginners + prototyping. Uygulama tarafı." },
+          ],
           courseSearchTerms: ["UI UX design beginner course", "Figma UI design fundamentals"],
           youtubeSearchTerms: ["UI UX design tutorial", "Figma beginner tutorial"],
         },
@@ -418,6 +508,10 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "1 küçük Python script yaz.",
         ],
         resources: {
+          links: [
+            { title: "CS50P — Harvard Python", url: "https://cs50.harvard.edu/python/", kind: "course", free: true, note: "Programlama mantığını sıfırdan oturtmak için en sağlam ücretsiz set." },
+            { title: "Python for Everybody", url: "https://www.py4e.com", kind: "course", free: true, note: "Daha yumuşak giriş — Dr. Chuck." },
+          ],
           courseSearchTerms: ["Python AI automation beginners", "Python scripting for creatives"],
           youtubeSearchTerms: ["Python AI workflow tutorial", "Python beginners automation"],
         },
@@ -451,6 +545,10 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "Statik + video reklamı tek bir kampanya seti olarak teslim formatına sok.",
         ],
         resources: {
+          links: [
+            { title: "Curious Refuge — AI Advertising", url: "https://www.curiousrefuge.com", kind: "course", free: false, note: "Ticari AI reklam prodüksiyonu için hedefli kurs." },
+            { title: "PJ Ace (Genre.ai) Newsletter", url: "https://pjace.beehiiv.com", kind: "doc", free: true, note: "AI-native reklam ajansı kurucusu — Veo 3 + reklam iş akışları." },
+          ],
           courseSearchTerms: ["AI UGC ads creative", "performance ad creative direct response"],
           youtubeSearchTerms: ["HeyGen UGC ad", "AI avatar ad creative hook variations"],
         },
@@ -484,6 +582,10 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "1 video anlatım denemesi çek.",
         ],
         resources: {
+          links: [
+            { title: "Mennan Şahin / Diksiyon TV (YouTube)", url: "https://www.youtube.com/@DiksiyonTV", kind: "youtube", free: true, note: "TRT spikeri — İstanbul Türkçesi, nefes, ses tonu. TasarımRotası konuşmandaki alana doğrudan." },
+            { title: "TRT Akademi", url: "https://www.trtakademi.net", kind: "course", free: true, note: "Etkili ve Güzel Konuşma sertifikalı program." },
+          ],
           youtubeSearchTerms: ["diksiyon egzersizleri", "ses kontrolü nasıl öğrenilir", "public speaking kamera"],
         },
         practiceProjects: ["5 kısa konuşma kaydı al.", "1 kamera karşısı anlatım denemesi çek."],
@@ -508,6 +610,9 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "Hizmetlerini 'zaman sat' yerine 'sistem sat' perspektifinden yeniden fiyatlandır.",
         ],
         resources: {
+          links: [
+            { title: "Profit First — Mike Michalowicz", url: "https://mikemichalowicz.com/profit-first/", kind: "book", free: false, note: "Kreatif işlerde yaygın, nakit-akış basitliği." },
+          ],
           youtubeSearchTerms: ["LTV CAC explained freelance", "pricing strategy for creatives", "value based pricing"],
         },
         practiceProjects: ["LTV/CAC kısa notu yaz.", "1 hizmet paketi için yeni fiyatlandırma mantığı oluştur."],
@@ -533,6 +638,10 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "1 içerik senaryosu hikaye yapısıyla yaz.",
         ],
         resources: {
+          links: [
+            { title: "Building a StoryBrand — Donald Miller", url: "https://storybrand.com", kind: "book", free: false, note: "Marka mesajı netleştirme çerçevesi." },
+            { title: "Talk Like TED — Carmine Gallo", url: "https://www.carminegallo.com", kind: "book", free: false, note: "Sunum/pitch klasiği." },
+          ],
           courseSearchTerms: ["storytelling for content creators", "narrative design"],
           youtubeSearchTerms: ["storytelling techniques content creator", "hikaye anlatımı içerik"],
         },
@@ -543,6 +652,119 @@ export const CAREER_ROADMAP: CareerLevel[] = [
         ],
         defaultStatus: "not_started",
         priority: "later",
+      },
+      {
+        id: "ux-research-usability",
+        title: "UX Araştırma & Kullanılabilirlik",
+        technicalName: "UX Research, Usability & IA",
+        type: "technical",
+        shortDescription:
+          "Kullanıcı araştırması, usability test, bilgi mimarisi ve wireframe→prototip akışı — UI/UX'i 'uzmanlık' yapan çekirdek.",
+        whyLearn:
+          "UI/UX'i sıradan görsel üreticiden ayıran şey güzel ekran değil, doğru kararı veren araştırma + test. İşe alımda en aranan katman bu.",
+        relevanceToCem:
+          "Feed The Goat ve müşteri ürünlerinde 'neden bu tasarım' sorusuna kanıtla cevap verebilmek seni junior'dan ayırır.",
+        howToLearn: [
+          "Google UX Certificate'ın ilk 4 modülünü bitir (persona, journey, wireframe, usability).",
+          "Figma Learn 'Design for beginners' ile uygulama tarafını pekiştir.",
+          "1 üründe 3 kullanıcıyla mini usability testi yap, bulguları dökümante et.",
+          "1 vaka çalışmasını problem→karar→sonuç olarak yaz.",
+        ],
+        resources: {
+          links: [
+            { title: "Google UX Design Certificate", url: "https://www.coursera.org/professional-certificates/google-ux-design", kind: "course", free: false, note: "İlk 4 modül yeterli, sonra pratiğe geç." },
+            { title: "Figma — Design for beginners", url: "https://www.figma.com/resource-library/", kind: "course", free: true },
+            { title: "IxDF — User Research", url: "https://www.interaction-design.org/courses", kind: "course", free: false, note: "Daha sistematik ikinci katman." },
+            { title: "Nielsen Norman Group", url: "https://www.nngroup.com/articles/", kind: "doc", free: true, note: "Usability'nin otorite kaynağı." },
+          ],
+        },
+        practiceProjects: [
+          "1 ürün için kullanıcı akışı + wireframe + hi-fi prototip üret.",
+          "3 kişilik usability testi yap, bulgu raporu yaz.",
+        ],
+        completionProof: [
+          "1 uçtan uca vaka çalışması (araştırma→prototip→test) portfolyoda.",
+          "1 usability test raporu yazıldı.",
+        ],
+        ifAlreadyKnown: [
+          "Gerçek bir üründe A/B veya tree-test kur, kararı veriyle savun.",
+        ],
+        defaultStatus: "not_started",
+        priority: "now",
+      },
+      {
+        id: "design-systems",
+        title: "Tasarım Sistemleri",
+        technicalName: "Design Systems",
+        type: "technical",
+        shortDescription:
+          "Token, component ve library mantığı — ölçeklenebilir, tutarlı tasarım üretimi.",
+        whyLearn:
+          "Figma araştırması 'systems thinking'i işe alımda yükselen beceri sayıyor. Sistem kuran tasarımcı, tek tek ekran çizenden katbekat değerli.",
+        relevanceToCem:
+          "Hem Figma'da hem kodda (shadcn/Tailwind token) tutarlı sistem kurmak, ajans işlerini ve kendi app'lerini hızlandırır.",
+        howToLearn: [
+          "Figma Design Systems eğitimini bitir (styles, components, libraries).",
+          "Refactoring UI ile görsel hiyerarşi + spacing + renk disiplinini oturt.",
+          "1 marka için mini design system kur (renk, tip, buton/form/card state'leri).",
+          "Aynı sistemi kodda token olarak eşle (CSS değişkenleri / shadcn).",
+        ],
+        resources: {
+          links: [
+            { title: "Figma — Design Systems", url: "https://www.figma.com/resource-library/design-systems/", kind: "course", free: true },
+            { title: "Refactoring UI", url: "https://www.refactoringui.com", kind: "book", free: false, note: "Token/hiyerarşi/spacing pratiği." },
+            { title: "shadcn/ui", url: "https://ui.shadcn.com", kind: "doc", free: true, note: "Kod tarafında component/token örneği." },
+          ],
+        },
+        practiceProjects: [
+          "1 mini design system (renk, tip, spacing, buton/form/card/modal/empty state).",
+          "Sistemi koda token olarak eşle.",
+        ],
+        completionProof: [
+          "1 yayınlanmış design system dosyası (Figma + kod token eşlemesi).",
+        ],
+        ifAlreadyKnown: [
+          "Bir ürünün dağınık stillerini tek sisteme konsolide et.",
+        ],
+        defaultStatus: "not_started",
+        priority: "next",
+      },
+      {
+        id: "accessibility-wcag",
+        title: "Erişilebilirlik (WCAG 2.2)",
+        technicalName: "Web Accessibility / WCAG 2.2",
+        type: "technical",
+        shortDescription:
+          "Klavye, kontrast, ARIA ve WCAG 2.2 ile herkesin kullanabildiği arayüz üretme.",
+        whyLearn:
+          "Erişilebilirlik sadece etik değil; kalite + iş faydası ve WCAG 2.2 uluslararası standart. Bu farkındalık seni amatörden ayırır, çoğu kurumsal işte zorunlu.",
+        relevanceToCem:
+          "Müşteri/SaaS işlerinde 'erişilebilir tasarlıyorum' demek hem fark yaratır hem kurumsal kapı açar.",
+        howToLearn: [
+          "W3C WAI Tutorials ile temel ilkeleri öğren (kontrast, klavye, alt text, form).",
+          "MDN Accessibility bölümünü tara.",
+          "axe DevTools ile bir sayfayı tara, hataları düzelt.",
+          "Bir tasarımı klavye-only ve kontrast ölçütleriyle denetle.",
+        ],
+        resources: {
+          links: [
+            { title: "W3C WAI — Tutorials", url: "https://www.w3.org/WAI/tutorials/", kind: "doc", free: true, note: "Erişilebilirliğin resmi kaynağı." },
+            { title: "MDN — Accessibility", url: "https://developer.mozilla.org/en-US/docs/Web/Accessibility", kind: "doc", free: true },
+            { title: "axe DevTools", url: "https://www.deque.com/axe/devtools/", kind: "tool", free: true, note: "Otomatik erişilebilirlik denetimi." },
+          ],
+        },
+        practiceProjects: [
+          "1 sayfayı axe ile denetle, tüm kritik hataları gider.",
+          "Bir formu klavye + ekran okuyucu uyumlu hale getir.",
+        ],
+        completionProof: [
+          "1 sayfa WCAG 2.2 AA kontrol listesinden geçti.",
+        ],
+        ifAlreadyKnown: [
+          "Bir design system'e erişilebilirlik kuralları (kontrast token, focus state) göm.",
+        ],
+        defaultStatus: "not_started",
+        priority: "next",
       },
       // Archived
       {
@@ -810,6 +1032,80 @@ export const CAREER_ROADMAP: CareerLevel[] = [
         defaultStatus: "not_started",
         priority: "now",
       },
+      {
+        id: "portfolio-case-study",
+        title: "Portfolyo & Vaka Anlatımı",
+        technicalName: "Portfolio & Case Study Writing",
+        type: "technical",
+        shortDescription:
+          "İşi 'ekran' değil 'çözüm' olarak anlatan, problem→karar→sonuç yapısıyla yazılmış vaka portfolyosu.",
+        whyLearn:
+          "İşe alım ve müşteri kararı portfolyoyla verilir. Seni 'ekran yapan'dan 'çıktıyı düşünen'e taşıyan şey, işin kendisi değil nasıl anlatıldığı.",
+        relevanceToCem:
+          "6 yıllık iş var ama dağınık. 3 güçlü vaka (brand+landing, ürün UI/UX, motion/içerik) seni anında aranan yapar.",
+        howToLearn: [
+          "Her vakada şu soruları yanıtla: problem neydi, neden bu karar, hangi metrik/hipotez, AI'ı nerede kullandın, insan kararı nerede.",
+          "3 pakete indir: brand+landing, ürün UI/UX, motion/içerik dağıtımı.",
+          "Önce/sonra ve karar gerekçesini görselle göster.",
+          "grafikcem.com / portfolyo sayfasında yayınla.",
+        ],
+        resources: {
+          links: [
+            { title: "Google UX — Portfolyo modülü", url: "https://www.coursera.org/professional-certificates/google-ux-design", kind: "course", free: false, note: "Vaka çalışması yapısını öğretir." },
+            { title: "Refactoring UI", url: "https://www.refactoringui.com", kind: "book", free: false, note: "Vaka görsellerini profesyonel sunmak için." },
+          ],
+        },
+        practiceProjects: [
+          "3 vaka çalışması yaz (problem→karar→sonuç).",
+          "Portfolyo sayfasını 3 pakete göre yeniden düzenle.",
+        ],
+        completionProof: [
+          "3 yayınlanmış vaka çalışması.",
+          "Her vakada en az 1 metrik/hipotez ve AI-rol açıklaması var.",
+        ],
+        ifAlreadyKnown: [
+          "Bir vakayı LinkedIn/içerik formatında dağıt; gelen geri bildirimi ölç.",
+        ],
+        defaultStatus: "not_started",
+        priority: "now",
+      },
+      {
+        id: "product-metrics",
+        title: "Ürün Metriği & Dönüşüm Analizi",
+        technicalName: "Product Metrics & Conversion Analysis",
+        type: "technical",
+        shortDescription:
+          "Funnel, dönüşüm, retention ve temel ürün metriklerini okuyup tasarım kararına bağlama.",
+        whyLearn:
+          "AI çağında fark, güzel ekran değil çıktıyı ölçmek. Metrik okuyan tasarımcı 'sanat' değil 'sonuç' satar — ücret primi buradan gelir.",
+        relevanceToCem:
+          "Performans kreatif ve SaaS işlerinde 'şu tasarım dönüşümü %X artırdı' diyebilmek seni doğrudan aranan yapar.",
+        howToLearn: [
+          "Temel metrikleri öğren: dönüşüm, funnel, retention, aktivasyon.",
+          "Mixpanel/GA4 ile bir üründe 1 funnel kur ve oku.",
+          "Bir tasarım değişikliğini metrikle önce/sonra karşılaştır.",
+        ],
+        resources: {
+          links: [
+            { title: "Mixpanel — Product Analytics Guide", url: "https://mixpanel.com/blog/", kind: "doc", free: true, note: "Funnel/retention temelleri." },
+            { title: "Google Analytics 4 — Yardım", url: "https://support.google.com/analytics", kind: "doc", free: true },
+            { title: "Lenny's Newsletter", url: "https://www.lennysnewsletter.com", kind: "doc", free: true, note: "Ürün/growth metrik sezgisi." },
+          ],
+        },
+        practiceProjects: [
+          "1 üründe funnel kur, dönüşüm noktalarını raporla.",
+          "1 tasarım A/B'sini metrikle değerlendir.",
+        ],
+        completionProof: [
+          "1 funnel raporu yazıldı.",
+          "1 tasarım kararı metrikle savunuldu.",
+        ],
+        ifAlreadyKnown: [
+          "Bir portfolyo vakasına gerçek metrik (önce/sonra) ekle.",
+        ],
+        defaultStatus: "not_started",
+        priority: "next",
+      },
       // Archived
       {
         id: "linkedin-authority-archived",
@@ -936,6 +1232,10 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "1 teklif şablonu oluştur.",
         ],
         resources: {
+          links: [
+            { title: "Never Split the Difference — Chris Voss", url: "https://www.blackswanltd.com", kind: "book", free: false, note: "Taktiksel empati, calibrated questions — retainer pazarlığı." },
+            { title: "Gap Selling — Keenan", url: "https://salesgrowth.com", kind: "book", free: false, note: "Müşteri 'gap'ini bulup hizmeti köprü konumlama — discovery + teklif." },
+          ],
           youtubeSearchTerms: ["freelance satış müzakere", "how to handle price objections freelance"],
         },
         practiceProjects: [
@@ -1325,6 +1625,10 @@ export const CAREER_ROADMAP: CareerLevel[] = [
           "Browser otomasyon tool'u entegre et."
         ],
         resources: {
+          links: [
+            { title: "Anthropic — Introduction to MCP", url: "https://anthropic.skilljar.com", kind: "course", free: true, note: "Python SDK ile MCP server/client; tools/resources/prompts." },
+            { title: "modelcontextprotocol.io", url: "https://modelcontextprotocol.io", kind: "doc", free: true, note: "Resmi spec + tutorials." },
+          ],
           courseSearchTerms: ["Model Context Protocol tutorial", "MCP server guide"],
           youtubeSearchTerms: ["MCP Anthropic setup", "Claude Code MCP tools"]
         },
@@ -1441,6 +1745,14 @@ export const CAREER_ROADMAP: CareerLevel[] = [
     ]
   }
 ]
+
+export function getSkillById(id: string): CareerSkill | undefined {
+  for (const level of CAREER_ROADMAP) {
+    const found = level.skills.find(s => s.id === id)
+    if (found) return found
+  }
+  return undefined
+}
 
 export function getActiveSkills(level: CareerLevel): CareerSkill[] {
   return level.skills.filter(s => s.priority !== "archive")

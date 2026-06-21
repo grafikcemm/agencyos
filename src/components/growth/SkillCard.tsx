@@ -20,6 +20,24 @@ const TYPE_BADGE: Record<string, string> = {
   personal: "border-[var(--cat-purple)]/30 text-[var(--cat-purple)]",
 }
 
+const PRIORITY_META: Record<string, { label: string; cls: string }> = {
+  now: { label: "şimdi", cls: "text-[var(--accent)] border-[var(--accent)]/30 bg-[var(--accent)]/5" },
+  next: { label: "sonra", cls: "text-[var(--info)] border-[var(--info)]/30 bg-[var(--info)]/5" },
+  later: { label: "ileride", cls: "text-[var(--text-muted)] border-[var(--border-subtle)]" },
+  archive: { label: "arşiv", cls: "text-[var(--text-tertiary)] border-[var(--border-subtle)]" },
+}
+
+// Bilgi durumunu tek renk noktasıyla özetler (kart başlığında hızlı tarama).
+const STATUS_DOT: Record<string, string> = {
+  not_started: "bg-[var(--text-tertiary)]",
+  active: "bg-[var(--accent)]",
+  in_progress: "bg-[var(--accent)]",
+  known: "bg-[var(--info)]",
+  needs_practice: "bg-[var(--cat-purple)]",
+  completed: "bg-[var(--success)]",
+  archived: "bg-[var(--text-tertiary)]",
+}
+
 export function SkillCard({
   skill,
   levelId,
@@ -33,6 +51,9 @@ export function SkillCard({
   const [open, setOpen] = useState(false)
 
   const badgeClass = TYPE_BADGE[skill.type] ?? "border-[var(--border-subtle)] text-[var(--text-muted)]"
+  const priority = PRIORITY_META[skill.priority] ?? PRIORITY_META.later
+  const statusDot = STATUS_DOT[currentStatus] ?? STATUS_DOT.not_started
+  const linkCount = skill.resources.links?.length ?? 0
 
   return (
     <div
@@ -46,10 +67,11 @@ export function SkillCard({
     >
       <button
         onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
         className="w-full flex items-start justify-between p-3 text-left gap-3"
       >
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
+          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
             {isActiveFocus && (
               <span className="text-[9px] font-mono text-[var(--accent)] bg-[var(--accent)]/10 border border-[var(--accent)]/30 px-1.5 py-0.5 rounded">
                 ODAK
@@ -60,11 +82,31 @@ export function SkillCard({
                 ✓
               </span>
             )}
+            {!isCompleted && (
+              <span className={`text-[9px] font-mono border px-1.5 py-0.5 rounded ${priority.cls}`}>
+                {priority.label}
+              </span>
+            )}
             <span className={`text-[9px] font-mono border px-1.5 py-0.5 rounded ${badgeClass}`}>
               {skill.type === "technical" ? "teknik" : "kişisel"}
             </span>
+            {linkCount > 0 && (
+              <span
+                className="text-[9px] font-mono text-[var(--text-tertiary)] flex items-center gap-0.5"
+                aria-label={`${linkCount} kaynak linki`}
+              >
+                <span aria-hidden="true">▦</span>
+                {linkCount}
+              </span>
+            )}
           </div>
-          <p className="text-sm font-display text-[var(--text-primary)] truncate">{skill.title}</p>
+          <div className="flex items-center gap-2">
+            <span
+              className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot}`}
+              aria-hidden="true"
+            />
+            <p className="text-sm font-display text-[var(--text-primary)] truncate">{skill.title}</p>
+          </div>
           {!open && (
             <p className="text-xs text-[var(--text-muted)] font-sans mt-0.5 line-clamp-1">
               {skill.shortDescription}

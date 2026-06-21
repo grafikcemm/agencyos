@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useCareerState } from "@/hooks/useCareerState"
 import { GrowthLadderHero } from "./GrowthLadderHero"
 import { ActiveFocusCard } from "./ActiveFocusCard"
+import { FocusResourcesPanel } from "./FocusResourcesPanel"
 import { LevelRoadmap } from "./LevelRoadmap"
 import { ArchivedCareerItems } from "./ArchivedCareerItems"
 import { GrafikcemPlan } from "./GrafikcemPlan"
@@ -53,6 +54,8 @@ export function GrowthPage({}: { uiMode: 'koruma' | 'denge' | 'atak' }) {
         activeLevelId={activeLevelId}
         onClear={clearActiveFocus}
       />
+
+      <FocusResourcesPanel activeFocusSkillId={activeFocusSkillId} />
 
       {/* AI Recommendation Banner when no active focus */}
       {!activeFocusSkillId && recommendedSkill && (

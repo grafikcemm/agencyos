@@ -21,6 +21,12 @@ export function GrowthLadderHero({ activeLevelId, completedSkillIds }: Props) {
 
   const overallPct = totalSkills > 0 ? Math.round((completedCount / totalSkills) * 100) : 0
 
+  // İsimli (tıklanır) kaynak sayısı — "hangi kurs/video" kanıtı.
+  const totalLinks = CAREER_ROADMAP.reduce(
+    (acc, l) => acc + l.skills.reduce((s, sk) => s + (sk.resources.links?.length ?? 0), 0),
+    0,
+  )
+
   const activeLevel = CAREER_ROADMAP.find(l => l.id === activeLevelId) ?? null
 
   return (
@@ -37,7 +43,19 @@ export function GrowthLadderHero({ activeLevelId, completedSkillIds }: Props) {
         <div className="text-right">
           <span className="text-2xl font-mono font-bold text-[var(--accent)]">{overallPct}%</span>
           <p className="text-xs text-[var(--text-muted)] font-mono">{completedCount}/{totalSkills} skill</p>
+          <p className="text-[10px] text-[var(--text-tertiary)] font-mono mt-0.5">▦ {totalLinks} kaynak linki</p>
         </div>
+      </div>
+
+      {/* T-şekil kimlik şeridi — nötr çerçeve (öncelik/veri değiştirmez). */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <span className="text-[10px] font-mono px-2 py-1 rounded border border-[var(--accent)]/25 bg-[var(--accent)]/5 text-[var(--accent)]">
+          Dikey · AI-native kreatif üretim
+        </span>
+        <span className="text-[var(--text-tertiary)] font-mono text-[10px]" aria-hidden="true">×</span>
+        <span className="text-[10px] font-mono px-2 py-1 rounded border border-[var(--info)]/25 bg-[var(--info)]/5 text-[var(--info)]">
+          Yatay · UI/UX + vibecoding
+        </span>
       </div>
 
       <div className="flex items-end gap-2 mt-4">

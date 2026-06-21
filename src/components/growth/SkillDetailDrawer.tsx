@@ -3,6 +3,7 @@
 import { useState } from "react"
 import type { CareerSkill, CareerSkillStatus } from "@/data/careerRoadmap"
 import { KnowledgeStatusSelector } from "./KnowledgeStatusSelector"
+import { ResourceLink } from "./ResourceLink"
 import { addActiveTask } from "@/app/actions/taskActions"
 
 interface Props {
@@ -23,10 +24,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div className="border-t border-[var(--border-subtle)]">
       <button
         onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
         className="w-full flex items-center justify-between py-2.5 text-xs font-mono text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
       >
         <span className="uppercase tracking-widest">{title}</span>
-        <span className="text-[var(--text-tertiary)]">{open ? "−" : "+"}</span>
+        <span className="text-[var(--text-tertiary)]" aria-hidden="true">{open ? "−" : "+"}</span>
       </button>
       {open && <div className="pb-3">{children}</div>}
     </div>
@@ -60,11 +62,13 @@ export function SkillDetailDrawer({
     }
   }
 
-  const hasResources =
+  const hasLinks = (skill.resources.links?.length ?? 0) > 0
+  const hasSearchTerms =
     (skill.resources.courseSearchTerms?.length ?? 0) > 0 ||
     (skill.resources.youtubeSearchTerms?.length ?? 0) > 0 ||
     (skill.resources.docs?.length ?? 0) > 0 ||
     !!skill.resources.savedCoursesNote
+  const hasResources = hasLinks || hasSearchTerms
 
   return (
     <div className="px-4 pb-4 border-t border-[#1f1f1f] mt-2">
@@ -157,6 +161,43 @@ export function SkillDetailDrawer({
         </button>
       </div>
 
+      {hasResources && (
+        <div className="py-3 border-t border-[var(--border-subtle)]">
+          <p className="text-[10px] font-mono text-[var(--text-muted)] uppercase tracking-widest mb-2">
+            Kaynaklar
+          </p>
+          {hasLinks && (
+            <div className="space-y-0.5 mb-2">
+              {/* hasLinks guard yukarıda links.length > 0 garantiler */}
+              {skill.resources.links!.map(link => (
+                <ResourceLink key={link.url} link={link} />
+              ))}
+            </div>
+          )}
+          {hasSearchTerms && (
+            <div className="space-y-1">
+              {(skill.resources.courseSearchTerms?.length ?? 0) > 0 && (
+                <p className="text-[10px] text-[var(--text-tertiary)] font-sans">
+                  <span className="font-mono text-[var(--text-muted)]">Kurs ara: </span>
+                  {skill.resources.courseSearchTerms?.join(" · ")}
+                </p>
+              )}
+              {(skill.resources.youtubeSearchTerms?.length ?? 0) > 0 && (
+                <p className="text-[10px] text-[var(--text-tertiary)] font-sans">
+                  <span className="font-mono text-[var(--text-muted)]">YouTube ara: </span>
+                  {skill.resources.youtubeSearchTerms?.join(" · ")}
+                </p>
+              )}
+              {skill.resources.savedCoursesNote && (
+                <p className="text-[10px] text-[var(--text-muted)] font-sans italic">
+                  {skill.resources.savedCoursesNote}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {skill.howToLearn.length > 0 && (
         <Section title="Nasıl Öğrenilir">
           <ol className="space-y-1.5 mt-1">
@@ -193,43 +234,6 @@ export function SkillDetailDrawer({
               </li>
             ))}
           </ul>
-        </Section>
-      )}
-
-      {hasResources && (
-        <Section title="Kaynaklar">
-          <div className="space-y-2 mt-1">
-            {(skill.resources.courseSearchTerms?.length ?? 0) > 0 && (
-              <div>
-                <p className="text-[10px] font-mono text-[var(--text-muted)] mb-1">Kurs Aramaları</p>
-                {skill.resources.courseSearchTerms!.map((r, i) => (
-                  <p key={i} className="text-xs text-[var(--text-secondary)] font-sans">{r}</p>
-                ))}
-              </div>
-            )}
-            {(skill.resources.youtubeSearchTerms?.length ?? 0) > 0 && (
-              <div>
-                <p className="text-[10px] font-mono text-[var(--text-muted)] mb-1">YouTube Aramaları</p>
-                {skill.resources.youtubeSearchTerms!.map((r, i) => (
-                  <p key={i} className="text-xs text-[var(--text-secondary)] font-sans">{r}</p>
-                ))}
-              </div>
-            )}
-            {(skill.resources.docs?.length ?? 0) > 0 && (
-              <div>
-                <p className="text-[10px] font-mono text-[var(--text-muted)] mb-1">Dökümanlar</p>
-                {skill.resources.docs!.map((r, i) => (
-                  <p key={i} className="text-xs text-[var(--text-secondary)] font-sans">{r}</p>
-                ))}
-              </div>
-            )}
-            {skill.resources.savedCoursesNote && (
-              <div>
-                <p className="text-[10px] font-mono text-[var(--text-muted)] mb-1">Not</p>
-                <p className="text-xs text-[var(--text-secondary)] font-sans">{skill.resources.savedCoursesNote}</p>
-              </div>
-            )}
-          </div>
         </Section>
       )}
 
