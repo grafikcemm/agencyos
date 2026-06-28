@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import { MoreHorizontal, Calendar, MapPin, Zap } from 'lucide-react'
 import { LeadModal } from './LeadModal'
 import { Badge } from '@/components/ui/badge'
+import { CATEGORY_DISPLAY } from '@/lib/customerCategory'
+import type { CustomerCategory } from '@/lib/types'
 import type { EnrichedLead } from '@/lib/enrichLead'
 
 const COLUMNS = [
@@ -190,6 +192,11 @@ export function KanbanBoard() {
                       <Badge variant={(lead.quality_score || lead.potential_score) >= 60 ? 'success' : 'default'}>
                         {lead.quality_score || lead.potential_score || 0} OBP
                       </Badge>
+                      {lead.customer_category && CATEGORY_DISPLAY[lead.customer_category as CustomerCategory] && (
+                        <Badge variant={CATEGORY_DISPLAY[lead.customer_category as CustomerCategory].variant}>
+                          {CATEGORY_DISPLAY[lead.customer_category as CustomerCategory].service}
+                        </Badge>
+                      )}
                       {lead.priority === 'high' && <Badge variant="warning">YÜKSEK</Badge>}
                     </div>
 

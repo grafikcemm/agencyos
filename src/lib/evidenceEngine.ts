@@ -1,6 +1,9 @@
 // Evidence Engine — website fetch + regex signals. No LLM.
 // Called server-side during scan to populate evidence fields on a lead.
 
+import { isEsnafAIFit } from './customerCategory'
+import type { WebsiteQualityBand } from './types'
+
 export interface EvidenceSignals {
   has_real_website: boolean
   has_whatsapp: boolean
@@ -11,6 +14,11 @@ export interface EvidenceSignals {
   is_slow_or_dead: boolean
   // Lead'in kendi sitesinde kariyer/işe-alım sinyali → büyüme + kreatif kapasite ihtiyacı.
   has_job_signal: boolean
+  // Web sitesi kalite bandı — 'none' (site yok/ölü), 'poor' (var ama kötü tasarım),
+  // 'ok'. "Site var ama kötü" sinyali; daha önce hiç yakalanmıyordu.
+  website_quality_band: WebsiteQualityBand
+  // Sitede sosyal medya (Instagram/FB/TikTok/LinkedIn/X/YouTube) bağlantısı var mı.
+  has_social_link: boolean
 }
 
 export interface EvidenceResult extends EvidenceSignals {
@@ -62,7 +70,39 @@ export function extractEmails(html: string): string[] {
   })
 }
 
-function extractSignals(html: string, url: string): Omit<EvidenceSignals, 'has_ads_signal' | 'is_slow_or_dead'> {
+// Sitede sosyal medya bağlantısı işareti.
+const SOCIAL_LINK_RE = /instagram\.com|facebook\.com|fb\.com|twitter\.com|x\.com|tiktok\.com|youtube\.com|linkedin\.com/i
+
+// "Site var ama kötü" tespiti — zaten çekilmiş HTML'den, deterministik. ≥2 kötü
+// tasarım işareti → 'poor', aksi halde 'ok'. (Site yok/ölü durumu çağıran tarafta
+// 'none' olarak ayarlanır; bu fonksiyon yalnız yüklenen siteler için çağrılır.)
+// `now` enjekte edilir → telif-yılı işareti testte sabitlenebilir (determinism).
+function computeWebsiteQualityBand(html: string, url: string, now: Date): WebsiteQualityBand {
+  let bad = 0
+  // Mobil değil — viewport meta yok.
+  if (!/<meta[^>]+name=["']?viewport/i.test(html)) bad++
+  // Eski telif yılı (2'den fazla yıl geride).
+  const copyrightMatch = html.match(/(?:©|copyright|telif)[^0-9]{0,12}(20\d{2})/i)
+  if (copyrightMatch) {
+    const year = parseInt(copyrightMatch[1], 10)
+    if (year < now.getFullYear() - 2) bad++
+  }
+  // Hazır site-builder izi (özelleştirilmemiş şablon sinyali).
+  if (/wix\.com|wixstatic|godaddy|weebly|squarespace|webnode|zyrosite/i.test(html)) bad++
+  // SSL yok (http-only).
+  if (url.startsWith('http://')) bad++
+  // Çok küçük sayfa (içerik yok denecek kadar).
+  if (html.length < 1500) bad++
+  // Doldurulmamış şablon/demo işareti.
+  if (/lorem ipsum|template demo|powered by|untitled|default home/i.test(html)) bad++
+  return bad >= 2 ? 'poor' : 'ok'
+}
+
+export function extractSignals(
+  html: string,
+  url: string,
+  now: Date = new Date(),
+): Omit<EvidenceSignals, 'has_ads_signal' | 'is_slow_or_dead'> {
   const lower = html.toLowerCase()
 
   const has_real_website = !isSocialOnlyUrl(url)
@@ -81,7 +121,10 @@ function extractSignals(html: string, url: string): Omit<EvidenceSignals, 'has_a
   const has_job_signal =
     /kariyer|açık pozisyon|acik pozisyon|ekibimize katıl|ekibimize katil|iş ilan|is ilan|bize katıl|join our team|careers|we['’\s]?re hiring|open position/i.test(lower)
 
-  return { has_real_website, has_whatsapp, has_form, has_online_booking, instagram_as_site, has_job_signal }
+  const has_social_link = SOCIAL_LINK_RE.test(html)
+  const website_quality_band = computeWebsiteQualityBand(html, url, now)
+
+  return { has_real_website, has_whatsapp, has_form, has_online_booking, instagram_as_site, has_job_signal, has_social_link, website_quality_band }
 }
 
 async function fetchWebsite(url: string, timeoutMs = 4000): Promise<{ html: string; ok: boolean }> {
@@ -127,7 +170,14 @@ function buildPainAndProof(ctx: BuildContext): {
     pain.push('Web sitesi yok')
   } else {
     proof.push('Web sitesi mevcut')
-    if (ctx.signals.is_slow_or_dead) pain.push('Web sitesi yavaş veya erişilemiyor')
+    if (ctx.signals.is_slow_or_dead) {
+      pain.push('Web sitesi yavaş veya erişilemiyor')
+    } else if (ctx.signals.website_quality_band === 'poor') {
+      pain.push('Web sitesi var ama tasarımı eski/zayıf — yenileme fırsatı')
+    }
+    if (ctx.verified && !ctx.signals.has_social_link) {
+      pain.push('Sitede sosyal medya bağlantısı yok — zayıf sosyal varlık')
+    }
   }
 
   // Absence of WhatsApp/form/booking is a verified fact only when the site
@@ -177,9 +227,11 @@ function buildPainAndProof(ctx: BuildContext): {
 
   const disqualification_reason: string | null = null
 
+  // NOT: 'sağlam bir temele sahip' substring'i korunuyor — daily-scan kalite
+  // kapısı (route.ts) bu jenerik fallback'i bu ifadeyle reddediyor.
   const why_now = pain.length > 0
     ? `${ctx.businessName} şu an müşteri kaybediyor: ${pain.slice(0, 2).join('; ')}.`
-    : `${ctx.businessName} sağlam bir temele sahip; bir sonraki büyüme adımı için AI çözümü değerlendirebilir.`
+    : `${ctx.businessName} sağlam bir temele sahip; net bir tasarım/web problemi öne çıkmıyor.`
 
   return { pain_signals: pain, proof_points: proof, why_now, disqualification_reason }
 }
@@ -211,12 +263,10 @@ function selectOffer(sector: string, signals: EvidenceSignals, businessName: str
 
   const isHealthClinic = /diş|klinik|estetik|doktor|sağlık|fizyoterapi|göz|plastik/.test(s)
   const isBeauty = /güzellik|kuaför|berber|nail|tırnak|spa/.test(s)
-  // Tweet-validated "esnaf" verticals: small businesses losing ~2h/day to
-  // repetitive WhatsApp/Instagram answering — prime AI sales assistant targets.
-  const isEsnafAIFit = isBeauty || isHealthClinic ||
-    /emlak|mobilya|butik|oto yıkama|oto kuaför|spor salonu|fitness|pilates|kafe|restoran/.test(s)
 
-  if (isEsnafAIFit && !signals.has_whatsapp && !signals.has_online_booking) {
+  // "Esnaf AI uygunluğu" tek kaynaktan (customerCategory) gelir → kategori motoru
+  // ve teklif seçimi AYNI tanımı kullanır; AI yalnız bu segmente pitchlenir.
+  if (isEsnafAIFit(sector) && !signals.has_whatsapp && !signals.has_online_booking) {
     return {
       recommended_offer_id: 'ai_sales_assistant',
       recommended_offer_name: 'AI Satış Asistanı (WhatsApp/Instagram)',
@@ -292,6 +342,10 @@ export async function runEvidenceEngine(params: {
     instagram_as_site: false,
     is_slow_or_dead: false,
     has_job_signal: false,
+    // Default 'none': site yok/doğrulanamadı. Yüklenen sitelerde extractSignals
+    // bunu 'poor'/'ok' ile override eder.
+    website_quality_band: 'none',
+    has_social_link: false,
   }
   let evidence_verified = false
   let found_email: string | null = null
@@ -306,7 +360,7 @@ export async function runEvidenceEngine(params: {
         signals.is_slow_or_dead = true
         signals.has_real_website = true
       } else {
-        const extracted = extractSignals(html, website)
+        const extracted = extractSignals(html, website, new Date())
         signals = { ...signals, ...extracted }
         evidence_verified = true
         found_email = extractEmails(html)[0] ?? null

@@ -2,7 +2,8 @@
 // Pure rule-based, no LLM, deterministic and fast.
 
 import { matchSectorProfile } from './sectorPriority'
-import type { Lead } from './types'
+import { deriveCustomerCategory } from './customerCategory'
+import type { CustomerCategory, Lead, WebsiteQualityBand } from './types'
 import type { EvidenceSignals } from './evidenceEngine'
 
 export type LeadTier = 'A' | 'B' | 'C' | 'D'
@@ -32,6 +33,13 @@ export interface QualityResult {
   objection_risks: string[]
   next_action_priority: NextActionPriority
   normalized_sector: string
+  // Müşteri (ihtiyaç) kategorisi — hangi tasarım hizmetinin pitchleneceğini belirler.
+  // lead_tier'a dik; AI yalnız 'otomasyon_fit' kategorisinde önerilir.
+  customer_category: CustomerCategory
+  website_quality_band: WebsiteQualityBand
+  recommended_offer_id: string
+  recommended_service_name: string
+  category_reasons: string[]
 }
 
 export interface QualityInput {
@@ -97,6 +105,9 @@ export function runQualityEngine({ lead, evidence }: QualityInput): QualityResul
     pain += 30; qualReasons.push('Web sitesi yok / sadece Instagram')
   } else if (evidence.is_slow_or_dead) {
     pain += 18; qualReasons.push('Web sitesi erişilemiyor')
+  } else if (evidence.website_quality_band === 'poor') {
+    // "Site var ama kötü" — daha önce hiç sayılmıyordu; tasarım fırsatı.
+    pain += 15; qualReasons.push('Web sitesi var ama tasarımı zayıf')
   }
   if (!evidence.has_whatsapp) { pain += 15; qualReasons.push('WhatsApp kanalı yok') }
   if (!evidence.has_form) pain += 8
@@ -205,15 +216,37 @@ export function runQualityEngine({ lead, evidence }: QualityInput): QualityResul
   const expected_offer_value_tl = offerRef.setup
   const expected_monthly_value_tl = offerRef.monthly
 
+  // Müşteri (ihtiyaç) kategorisi — hangi tasarım hizmetinin pitchleneceğini belirler.
+  // AI dili yalnız 'otomasyon_fit' kategorisinde kullanılır.
+  const category = deriveCustomerCategory({
+    sector: lead.sector,
+    has_real_website: evidence.has_real_website,
+    instagram_as_site: evidence.instagram_as_site,
+    website_quality_band: evidence.website_quality_band,
+    has_social_link: evidence.has_social_link,
+    has_whatsapp: evidence.has_whatsapp,
+    has_online_booking: evidence.has_online_booking,
+    has_form: evidence.has_form,
+    has_ads_signal: evidence.has_ads_signal,
+    rating: lead.rating,
+    review_count: lead.review_count,
+  })
+  const isAutomation = category.customer_category === 'otomasyon_fit'
+
   // Conversion angle
   const mainPain = !evidence.has_real_website || evidence.instagram_as_site
     ? 'dijital varlık eksikliği'
+    : evidence.website_quality_band === 'poor' ? 'eski/zayıf web sitesi'
     : !evidence.has_whatsapp ? 'WhatsApp kanalı yokluğu'
     : !evidence.has_online_booking && profile.id === 'health_clinic' ? 'randevu sistemi eksikliği'
     : (lead.rating ?? 5) < 4.0 ? 'düşük Google puanı'
     : 'müşteri dönüşüm altyapısı boşluğu'
 
-  const conversion_angle = `${profile.displayName} için ${mainPain} — AI ile hızlı ROI`
+  // AI yerine kategoriye uygun TASARIM hizmeti ile çerçevele.
+  const angleSuffix = isAutomation
+    ? 'AI satış asistanı ile hızlı kazanım'
+    : `${category.recommended_service_name} ile hızlı kazanım`
+  const conversion_angle = `${profile.displayName} için ${mainPain} — ${angleSuffix}`
 
   const topReasons = qualReasons.slice(0, 3).join(', ')
 
@@ -234,8 +267,12 @@ export function runQualityEngine({ lead, evidence }: QualityInput): QualityResul
     roiConnection = "Müşteri edinme potansiyeli yüksek bir sektörel yapıda olmasına rağmen dijital dönüşüm altyapısının geliştirilmesi gerekiyor."
   }
 
+  // Kapanış cümlesi: AI yerine kategoriye uygun tasarım hizmeti (otomasyon hariç).
+  const closeLine = isAutomation
+    ? 'AI satış asistanı ile bu eksikler giderildiğinde, kaçan müşteri doğrudan ciroya döner.'
+    : `${category.recommended_service_name} ile bu eksikler giderildiğinde, doğrudan ciro artışı sağlanacaktır.`
   const why_this_will_convert = topReasons
-    ? `${lead.business_name ?? 'Bu işletme'}, ${topReasons} nedeniyle yüksek potansiyel taşıyor. ${roiConnection} AI entegrasyonu sayesinde bu eksikler giderildiğinde, doğrudan ciro artışı sağlanacaktır.`
+    ? `${lead.business_name ?? 'Bu işletme'}, ${topReasons} nedeniyle yüksek potansiyel taşıyor. ${roiConnection} ${closeLine}`
     : `${profile.displayName} sektöründe ajans hizmetine açık bir işletme.`
 
   const first_30_seconds_pitch = buildPitch(lead, evidence, profile.displayName, mainPain)
@@ -250,6 +287,11 @@ export function runQualityEngine({ lead, evidence }: QualityInput): QualityResul
     conversion_angle, why_this_will_convert, expected_offer_value_tl,
     expected_monthly_value_tl, best_channel, first_30_seconds_pitch,
     objection_risks, next_action_priority, normalized_sector,
+    customer_category: category.customer_category,
+    website_quality_band: evidence.website_quality_band,
+    recommended_offer_id: category.recommended_offer_id,
+    recommended_service_name: category.recommended_service_name,
+    category_reasons: category.category_reasons,
   }
 }
 
@@ -262,6 +304,8 @@ function buildPitch(
   const name = lead.business_name ?? 'Merhaba'
   if (!evidence.has_real_website || evidence.instagram_as_site)
     return `${name}, merhaba — dijital varlığınız henüz çok sınırlı, sadece Instagram var. Biz ${sectorName} için web sitesi ve müşteri hattı kuruyoruz. 5 dakikanız var mı?`
+  if (evidence.website_quality_band === 'poor')
+    return `${name}, merhaba — web siteniz var ama tasarımı güncel değil; ilk izlenimde müşteri kaybettiriyor. ${sectorName} için modern, mobil uyumlu bir yenileme yapıyoruz. 5 dakikanız var mı?`
   if (!evidence.has_whatsapp)
     return `${name}, merhaba — WhatsApp hattınız aktif değil. Müşteriler mesaj atıp dönüş alamıyor. Biz bunu 1 haftada çözüyoruz. 5 dakika konuşabilir miyiz?`
   if (!evidence.has_online_booking)

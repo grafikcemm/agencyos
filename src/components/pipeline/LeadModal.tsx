@@ -14,7 +14,12 @@ function buildScripts(lead: EnrichedLead) {
   const noWeb = !lead.has_website
   const score = lead.quality_score || lead.potential_score || 50
   const rating = lead.rating ? `${lead.rating} yıldız` : 'iyi bir puan'
-  const service = noWeb ? 'Logo + Web Sitesi + Sosyal Medya' : 'Sosyal Medya Yönetimi + AI Görsel'
+  // AI yalnız otomasyon_fit kategorisinde; aksi halde tasarım-odaklı hizmet.
+  const isAutomation = lead.customer_category === 'otomasyon_fit'
+  const service = lead.recommended_offer_name
+    || (noWeb ? 'Logo + Web Sitesi + Sosyal Medya'
+      : isAutomation ? 'AI Satış Asistanı + Sosyal Medya'
+      : 'Sosyal Medya Tasarımı + Marka Görselleri')
   const value = score >= 80 ? '8.000–15.000₺' : score >= 60 ? '5.000–10.000₺' : '3.000–6.000₺'
 
   const call = `Merhaba, ${b} ile mi görüşüyorum? İyi günler, ben GrafikCem Studio'dan arıyorum.
@@ -45,7 +50,9 @@ ${noWeb
 🎯 Size özel hazırladıklarımız:
 ${noWeb
     ? '• Logo & Web Sitesi Tasarımı\n• Instagram Şablon Seti\n• Google İşletmem Optimizasyonu'
-    : '• Aylık Sosyal Medya Yönetimi\n• AI Destekli Görsel Üretimi\n• İçerik Stratejisi & Planlama'
+    : isAutomation
+      ? '• AI Satış Asistanı (WhatsApp/Instagram)\n• Sosyal Medya Tasarımı\n• İçerik Stratejisi & Planlama'
+      : '• Aylık Sosyal Medya Tasarımı\n• Marka Görselleri & Şablon Seti\n• İçerik Stratejisi & Planlama'
 }
 
 💰 Tahmini yatırım: ${value}

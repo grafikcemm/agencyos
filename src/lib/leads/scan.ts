@@ -224,6 +224,11 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
       has_ads_signal: evidence.has_ads_signal,
       instagram_as_site: evidence.instagram_as_site,
       has_job_signal: evidence.has_job_signal,
+      has_social_link: evidence.has_social_link,
+      // Müşteri (ihtiyaç) kategorisi + web kalite bandı (migration 031)
+      customer_category: qualityResult.customer_category,
+      website_quality_band: qualityResult.website_quality_band,
+      category_reasons: qualityResult.category_reasons,
       // Evidence intelligence
       why_now: evidence.why_now,
       pain_signals: evidence.pain_signals,

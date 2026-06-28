@@ -13,6 +13,8 @@ const STRONG_EVIDENCE: EvidenceSignals = {
   instagram_as_site: false,
   is_slow_or_dead: false,
   has_job_signal: false,
+  website_quality_band: 'ok',
+  has_social_link: true,
 }
 
 const baseInput = {

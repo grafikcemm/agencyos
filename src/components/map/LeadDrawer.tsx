@@ -4,7 +4,8 @@ import { useMemo, useState, useEffect } from 'react'
 import { X, Phone, Globe, MapPin, Star, Zap, FileText, Briefcase, Copy, MessageCircle, Mail, RefreshCw } from 'lucide-react'
 import { enrichLead, EnrichedLead } from '@/lib/enrichLead'
 import { buildProposal } from '@/lib/proposalBuilder'
-import type { Lead, Proposal } from '@/lib/types'
+import { CATEGORY_DISPLAY } from '@/lib/customerCategory'
+import type { CustomerCategory, Lead, Proposal } from '@/lib/types'
 
 interface LeadDrawerProps {
   lead: Partial<Lead> & { id: string; business_name: string }
@@ -25,6 +26,16 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 function formatTL(n: number): string {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', maximumFractionDigits: 0 }).format(n || 0)
+}
+
+// Müşteri kategorisi rozet sınıfları — CATEGORY_DISPLAY.variant → Tailwind/CSS-var.
+const CATEGORY_BADGE_CLASS: Record<string, string> = {
+  danger: 'bg-[var(--danger)]/10 text-[var(--danger)] border-[var(--danger)]/30',
+  warning: 'bg-[var(--warning)]/10 text-[var(--warning)] border-[var(--warning)]/30',
+  info: 'bg-[var(--info)]/10 text-[var(--info)] border-[var(--info)]/30',
+  success: 'bg-[var(--success)]/10 text-[var(--success)] border-[var(--success)]/30',
+  muted: 'bg-[var(--text-muted)]/10 text-[var(--text-muted)] border-[var(--text-muted)]/20',
+  default: 'bg-[var(--accent)]/10 text-[var(--accent)] border-[var(--accent)]/30',
 }
 
 // Normalize a Turkish phone to wa.me digits (e.g. "0534 887 14 35" -> "905348871435").
@@ -307,6 +318,18 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
                   Dönüşüm tahmini: <span className="font-bold text-[var(--accent)]">~%{lead.conversion_probability}</span>
                 </span>
               )}
+            </div>
+          )}
+
+          {/* MÜŞTERİ KATEGORİSİ — neden hedefimiz + hangi tasarım hizmetini satmalıyız */}
+          {lead.customer_category && CATEGORY_DISPLAY[lead.customer_category as CustomerCategory] && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`text-[10px] font-black tracking-widest uppercase px-2 py-1 rounded border ${CATEGORY_BADGE_CLASS[CATEGORY_DISPLAY[lead.customer_category as CustomerCategory].variant] ?? CATEGORY_BADGE_CLASS.default}`}>
+                {CATEGORY_DISPLAY[lead.customer_category as CustomerCategory].label}
+              </span>
+              <span className="text-[11px] font-semibold text-[var(--text-muted)]">
+                Önerilen hizmet: <span className="font-bold text-[var(--text-primary)]">{CATEGORY_DISPLAY[lead.customer_category as CustomerCategory].service}</span>
+              </span>
             </div>
           )}
 

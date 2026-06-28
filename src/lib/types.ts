@@ -18,6 +18,21 @@ export type Difficulty = 'low' | 'medium' | 'high'
 
 export type Priority = 'low' | 'normal' | 'high'
 
+// Müşteri (ihtiyaç) kategorisi — "bu işletme NEDEN hedefimiz, hangi tasarım
+// hizmetini satmalıyız" boyutu. lead_tier (A/B/C/D) kalite boyutuna DİKTİR.
+// AI hizmeti yalnız 'otomasyon_fit' kategorisinde önerilir; varsayılan değil.
+export type CustomerCategory =
+  | 'web_yok'        // web sitesi yok / sadece Instagram → Web Tasarım
+  | 'web_kotu'       // site var ama tasarım/kalite zayıf → Web Yenileme
+  | 'donusum_dusuk'  // reklam var ama dönüşüm hunisi yok → Landing/UX (nadir)
+  | 'marka_daginik'  // düşük puan + az yorum → Marka Kimliği
+  | 'sosyal_zayif'   // site var ama sosyal medya zayıf → Sosyal Medya Tasarımı
+  | 'otomasyon_fit'  // esnaf + WhatsApp/randevu yok → AI Satış Asistanı
+  | 'genel_tasarim'  // fallback → Sosyal Medya / Görsel Tasarım (asla AI değil)
+
+// Web sitesi kalite bandı — 'none' (site yok/ölü), 'poor' (var ama kötü), 'ok'.
+export type WebsiteQualityBand = 'none' | 'poor' | 'ok'
+
 export interface LeadScoreBreakdown {
   sectorFit: number
   budgetPotential: number
@@ -97,6 +112,12 @@ export interface Lead {
   instagram_as_site?: boolean
   has_job_signal?: boolean
   branch_count?: number
+
+  // Müşteri (ihtiyaç) kategorisi — tasarım-odaklı sınıflandırma (migration 031).
+  customer_category?: CustomerCategory | string | null
+  website_quality_band?: WebsiteQualityBand | string | null
+  category_reasons?: string[]
+  has_social_link?: boolean
 
   // V3 scoring sub-scores
   evidence_score?: number

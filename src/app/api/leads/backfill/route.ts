@@ -8,6 +8,7 @@ import { runEvidenceEngine } from '@/lib/evidenceEngine'
 import { calculateLeadScoreV3 } from '@/lib/leadScoringV3'
 import { runQualityEngine } from '@/lib/highQualityLeadEngine'
 import { requireApiAccess } from '@/lib/auth'
+import type { WebsiteQualityBand } from '@/lib/types'
 
 interface RawLead {
   id: string
@@ -44,6 +45,8 @@ interface RawLead {
   has_ads_signal?: boolean
   instagram_as_site?: boolean
   has_job_signal?: boolean
+  website_quality_band?: string | null
+  has_social_link?: boolean
   disqualification_reason?: string | null
   sales_angle?: string | null
   first_message?: string | null
@@ -187,6 +190,11 @@ export async function POST(req: Request) {
             instagram_as_site: lead.instagram_as_site ?? false,
             has_job_signal: lead.has_job_signal ?? false,
             is_slow_or_dead: false,
+            // Cached: site bu turda yeniden ölçülmedi. Stored band varsa kullan; yoksa
+            // gerçek site → 'ok' (web_yok'a yanlış düşmesin), aksi halde 'none'.
+            website_quality_band: (lead.website_quality_band as WebsiteQualityBand) ??
+              ((lead.has_real_website ?? !!lead.website) && !(lead.instagram_as_site ?? false) ? 'ok' : 'none'),
+            has_social_link: lead.has_social_link ?? false,
             why_now: lead.why_now!,
             pain_signals: lead.pain_signals!,
             proof_points: lead.proof_points || [],
@@ -265,6 +273,11 @@ export async function POST(req: Request) {
           has_ads_signal: evidence.has_ads_signal,
           instagram_as_site: evidence.instagram_as_site,
           has_job_signal: evidence.has_job_signal,
+          has_social_link: evidence.has_social_link,
+          // Müşteri (ihtiyaç) kategorisi + web kalite bandı (migration 031)
+          customer_category: qualityResult.customer_category,
+          website_quality_band: qualityResult.website_quality_band,
+          category_reasons: qualityResult.category_reasons,
           why_now: evidence.why_now,
           pain_signals: evidence.pain_signals,
           proof_points: evidence.proof_points,

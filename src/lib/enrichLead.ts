@@ -1,11 +1,12 @@
 // Raw lead (DB) → enriched Lead for UI.
 // DB-stored fields always take precedence — no client-side overwriting.
 
-import { Lead } from './types'
+import { Lead, WebsiteQualityBand } from './types'
 import { calculateLeadScoreV3 } from './leadScoringV3'
 import { recommendOffersForLead, estimateLeadValue, reconcileOffers } from './offerMatching'
 import { computeNextAction, NextAction, stageAgeDays } from './nextActionEngine'
 import { runQualityEngine } from './highQualityLeadEngine'
+import { deriveCustomerCategory } from './customerCategory'
 import type { EvidenceSignals } from './evidenceEngine'
 
 export interface EnrichedLead extends Lead {
@@ -14,8 +15,9 @@ export interface EnrichedLead extends Lead {
 }
 
 function toEvidenceSignals(raw: Partial<Lead>): EvidenceSignals {
+  const hasRealWebsite = raw.has_real_website ?? raw.has_website ?? false
   return {
-    has_real_website: raw.has_real_website ?? raw.has_website ?? false,
+    has_real_website: hasRealWebsite,
     has_whatsapp: raw.has_whatsapp ?? false,
     has_form: raw.has_form ?? false,
     has_online_booking: raw.has_online_booking ?? false,
@@ -23,6 +25,10 @@ function toEvidenceSignals(raw: Partial<Lead>): EvidenceSignals {
     instagram_as_site: raw.instagram_as_site ?? false,
     is_slow_or_dead: false,
     has_job_signal: raw.has_job_signal ?? false,
+    // Read-time: site kalitesi yeniden ölçülmez. Stored band varsa kullan; yoksa
+    // gerçek site → 'ok' (site yokken web_yok'a düşmesin), aksi halde 'none'.
+    website_quality_band: (raw.website_quality_band as WebsiteQualityBand) ?? (hasRealWebsite ? 'ok' : 'none'),
+    has_social_link: raw.has_social_link ?? false,
   }
 }
 
@@ -83,6 +89,22 @@ export function enrichLead(raw: Partial<Lead> & { id: string; business_name: str
   const action = computeNextAction({ ...raw, potential_score })
   const age = stageAgeDays(raw)
 
+  // Müşteri kategorisi — DB-first; eski/kategorisiz satırlarda evidence'tan türet
+  // (UI rozeti boş kalmasın). Read-time fallback; deterministik.
+  const customer_category = raw.customer_category ?? deriveCustomerCategory({
+    sector: raw.sector,
+    has_real_website: evidence.has_real_website,
+    instagram_as_site: evidence.instagram_as_site,
+    website_quality_band: evidence.website_quality_band,
+    has_social_link: evidence.has_social_link,
+    has_whatsapp: evidence.has_whatsapp,
+    has_online_booking: evidence.has_online_booking,
+    has_form: evidence.has_form,
+    has_ads_signal: evidence.has_ads_signal,
+    rating: raw.rating,
+    review_count: raw.review_count,
+  }).customer_category
+
   return {
     ...(raw as Lead),
     id: raw.id,
@@ -98,6 +120,8 @@ export function enrichLead(raw: Partial<Lead> & { id: string; business_name: str
     has_form: evidence.has_form,
     has_online_booking: evidence.has_online_booking,
     has_ads_signal: evidence.has_ads_signal,
+    has_social_link: evidence.has_social_link,
+    customer_category,
     scores: {
       sectorFit: scoreResult.fit_score,
       budgetPotential: scoreResult.money_score,

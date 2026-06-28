@@ -350,8 +350,14 @@ async function handleScan(req: Request) {
             enrichment_status: 'done',
             last_quality_scored_at: new Date().toISOString(),
             last_enriched_at: new Date().toISOString(),
-            recommended_offer_name: qr.expected_monthly_value_tl ? 'Web Tasarım / AI Entegrasyon' : null,
-            recommended_offer_id: 'review_engine',
+            // Kategori-odaklı teklif (sabit "Web Tasarım / AI Entegrasyon" yerine).
+            recommended_offer_name: qr.recommended_service_name,
+            recommended_offer_id: qr.recommended_offer_id,
+            // Müşteri (ihtiyaç) kategorisi + web kalite bandı (migration 031).
+            customer_category: qr.customer_category,
+            website_quality_band: qr.website_quality_band,
+            category_reasons: qr.category_reasons,
+            has_social_link: evidence.has_social_link,
           }
 
           if (!isDryRun) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { extractEmails, runEvidenceEngine } from './evidenceEngine'
+import { extractEmails, extractSignals, runEvidenceEngine } from './evidenceEngine'
 
 describe('extractEmails', () => {
   it('extracts mailto and plain-text emails, lowercased and deduped', () => {
@@ -74,5 +74,48 @@ describe('runEvidenceEngine — websitesiz/Instagram lead (ağ erişimi yok)', (
     const whatsappPain = result.pain_signals.find(p => p.includes('WhatsApp'))
     expect(whatsappPain).toBeDefined()
     expect(whatsappPain).toContain('tespit edilemedi')
+  })
+})
+
+// Determinism: now enjekte edilir → telif-yılı işareti testte sabitlenir.
+const NOW = new Date('2026-06-28T00:00:00Z')
+const FILLER = 'x'.repeat(2000) // tiny-page (<1500) işaretini önler
+
+describe('extractSignals — website_quality_band', () => {
+  it("ok: viewport var, https, dolgun sayfa, kötü işaret yok → 'ok'", () => {
+    const html = `<html><head><meta name="viewport" content="width=device-width"></head><body>${FILLER}</body></html>`
+    expect(extractSignals(html, 'https://ornek.com', NOW).website_quality_band).toBe('ok')
+  })
+
+  it("poor: viewport yok + http-only (2 işaret) → 'poor'", () => {
+    const html = `<html><head></head><body>${FILLER}</body></html>`
+    expect(extractSignals(html, 'http://ornek.com', NOW).website_quality_band).toBe('poor')
+  })
+
+  it("poor: eski telif yılı + viewport yok → 'poor' (now sabit 2026)", () => {
+    const html = `<html><head></head><body>© 2018 Ornek${FILLER}</body></html>`
+    expect(extractSignals(html, 'https://ornek.com', NOW).website_quality_band).toBe('poor')
+  })
+
+  it('ok: yeni telif yılı tek başına bandı düşürmez', () => {
+    const html = `<html><head><meta name="viewport" content="width=device-width"></head><body>© 2026 Ornek${FILLER}</body></html>`
+    expect(extractSignals(html, 'https://ornek.com', NOW).website_quality_band).toBe('ok')
+  })
+
+  it("poor: site-builder izi + viewport yok → 'poor'", () => {
+    const html = `<html><head></head><body>Made with wix.com${FILLER}</body></html>`
+    expect(extractSignals(html, 'https://ornek.com', NOW).website_quality_band).toBe('poor')
+  })
+})
+
+describe('extractSignals — has_social_link', () => {
+  it('Instagram bağlantısı varsa true', () => {
+    const html = `<html><body><a href="https://instagram.com/ornek">IG</a>${FILLER}</body></html>`
+    expect(extractSignals(html, 'https://ornek.com', NOW).has_social_link).toBe(true)
+  })
+
+  it('sosyal bağlantı yoksa false', () => {
+    const html = `<html><body>${FILLER}</body></html>`
+    expect(extractSignals(html, 'https://ornek.com', NOW).has_social_link).toBe(false)
   })
 })

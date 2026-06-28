@@ -25,8 +25,8 @@ export const COLD_EMAIL_TEMPLATES: Record<ColdEmailTemplateId, ColdEmailTemplate
       'Karşılıklılık ilkesi: önce değer ver, sonra düşük baskılı CTA.',
     skeleton:
       'Merhaba, {kanal} tarafınızda kısa bir inceleme yaptım. Özellikle {somut_gözlem} ' +
-      'marka dilini biraz dağıtıyor. Sosyal medya tasarımı ve AI destekli görsel/video üretimini ' +
-      'tek akışta çıkarıyorum. İsterseniz satış görüşmesi değil, 3 maddelik kısa bir mini-audit gönderebilirim. Uygun musunuz?',
+      'marka dilini biraz dağıtıyor. Sosyal medya tasarımı, marka görselleri ve web/landing ' +
+      'düzenini tek akışta toparlıyorum. İsterseniz satış görüşmesi değil, 3 maddelik kısa bir mini-audit gönderebilirim. Uygun musunuz?',
   },
   launch: {
     id: 'launch',
