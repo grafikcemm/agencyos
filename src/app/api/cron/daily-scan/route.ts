@@ -6,6 +6,7 @@ import { runEvidenceEngine } from '@/lib/evidenceEngine'
 import { guardCronEnv, notifyOps } from '@/lib/env'
 import { loadSectorEngagement } from '@/lib/sectorRotation'
 import { buildDailyTargetPlan, loadCityEngagement } from '@/lib/cityTargeting'
+import { isMissingCategoryColumnError, stripCategoryKeys } from '@/lib/leads/categoryPersist'
 
 export async function GET(req: Request) {
   return handleScan(req)
@@ -361,11 +362,23 @@ async function handleScan(req: Request) {
           }
 
           if (!isDryRun) {
-            const { data: inserted, error: insertErr } = await supabaseAdmin
+            let { data: inserted, error: insertErr } = await supabaseAdmin
               .from('leads')
               .insert(leadData)
               .select('id')
               .single()
+
+            // Migration 031 yoksa kategori kolonları PGRST204 verir → atıp tekrar dene.
+            if (insertErr && isMissingCategoryColumnError(insertErr)) {
+              console.warn('[DAILY CRON] kategori kolonları yok (migration 031 bekliyor) — onlarsız yazılıyor.')
+              const retry = await supabaseAdmin
+                .from('leads')
+                .insert(stripCategoryKeys(leadData))
+                .select('id')
+                .single()
+              inserted = retry.data
+              insertErr = retry.error
+            }
 
             if (insertErr) {
               console.error(`[DAILY CRON] DB Insert error for ${d.name}:`, insertErr.message)
@@ -377,7 +390,8 @@ async function handleScan(req: Request) {
             }
 
             acceptedLeads.push({
-              id: inserted.id,
+              // insertErr guard'ı (continue) geçildi → inserted garanti non-null.
+              id: inserted!.id,
               name: d.name,
               sector: cleanSector,
               district: loc.district,

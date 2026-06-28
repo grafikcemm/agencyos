@@ -8,6 +8,7 @@ import { runEvidenceEngine } from '@/lib/evidenceEngine'
 import { calculateLeadScoreV3 } from '@/lib/leadScoringV3'
 import { runQualityEngine } from '@/lib/highQualityLeadEngine'
 import { requireApiAccess } from '@/lib/auth'
+import { isMissingCategoryColumnError, stripCategoryKeys } from '@/lib/leads/categoryPersist'
 import type { WebsiteQualityBand } from '@/lib/types'
 
 interface RawLead {
@@ -246,7 +247,7 @@ export async function POST(req: Request) {
           evidence,
         })
 
-        const { error: updateErr } = await supabaseAdmin.from('leads').update({
+        const updatePayload = {
           business_name: cleanBusinessName,
           city: loc.city || lead.city,
           sector: cleanSector || lead.sector,
@@ -308,7 +309,15 @@ export async function POST(req: Request) {
           last_quality_scored_at: new Date().toISOString(),
           enrichment_status: 'done',
           last_enriched_at: new Date().toISOString(),
-        }).eq('id', lead.id)
+        }
+        let { error: updateErr } = await supabaseAdmin.from('leads').update(updatePayload).eq('id', lead.id)
+
+        // Migration 031 yoksa kategori kolonları PGRST204 verir → atıp tekrar dene.
+        if (updateErr && isMissingCategoryColumnError(updateErr)) {
+          console.warn(`Backfill: kategori kolonları yok (migration 031 bekliyor) — ${lead.id} onlarsız yazılıyor.`)
+          const retry = await supabaseAdmin.from('leads').update(stripCategoryKeys(updatePayload)).eq('id', lead.id)
+          updateErr = retry.error
+        }
 
         if (updateErr) errors.push(`${lead.id}: ${updateErr.message}`)
         else processed++

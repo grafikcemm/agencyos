@@ -8,6 +8,7 @@ import { normalizeLocation, normalizeSector } from '@/lib/geo'
 import { runEvidenceEngine } from '@/lib/evidenceEngine'
 import { calculateLeadScoreV3 } from '@/lib/leadScoringV3'
 import { runQualityEngine } from '@/lib/highQualityLeadEngine'
+import { isMissingCategoryColumnError, stripCategoryKeys } from '@/lib/leads/categoryPersist'
 
 export interface ScanParams {
   sector: string
@@ -269,9 +270,18 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
       payload.email = evidence.found_email
     }
 
-    const { error } = await supabaseAdmin
+    let { error } = await supabaseAdmin
       .from('leads')
       .upsert(payload, { onConflict: 'google_place_id', ignoreDuplicates: false })
+
+    // Migration 031 yoksa kategori kolonları PGRST204 verir → onları atıp tekrar dene.
+    if (error && isMissingCategoryColumnError(error)) {
+      console.warn('Scan: kategori kolonları yok (migration 031 bekliyor) — onlarsız yazılıyor.')
+      const retry = await supabaseAdmin
+        .from('leads')
+        .upsert(stripCategoryKeys(payload), { onConflict: 'google_place_id', ignoreDuplicates: false })
+      error = retry.error
+    }
 
     if (!error) {
       if (existing) updatedCount++
