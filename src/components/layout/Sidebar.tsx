@@ -17,7 +17,6 @@ import {
   Package,
   Target,
   Compass,
-  Sun,
   TrendingUp,
   GraduationCap,
   Wallet,
@@ -32,7 +31,6 @@ const NAV_GROUPS = [
   {
     title: 'YAŞAM',
     items: [
-      { label: 'Günlük',    icon: Sun,           href: '/gunluk' },
       { label: 'Gelişim',   icon: TrendingUp,    href: '/gelisim' },
       { label: 'Akademi',   icon: GraduationCap, href: '/akademi' },
       { label: 'Kütüphane', icon: BookOpen,      href: '/kutuphane' },

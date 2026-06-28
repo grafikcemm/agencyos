@@ -27,12 +27,24 @@ import {
 import { classifyMessageIntent } from '@/lib/assistant/intent';
 import { classifyQuestion } from '@/lib/assistant/classifyQuestion';
 import { deliberateBusiness } from '@/lib/assistant/deliberate';
+import { runJarvis } from '@/lib/jarvis/engine';
 
 // OpenRouter reasoning modelleri yavaş — 25s LLM timeout'una alan tanı (Vercel).
 export const maxDuration = 60;
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID ?? '';
+
+// Serbest mesaj eylemsel bir görev/üretim isteği mi? (Jarvis araç motoruna yönlendir.)
+// İmperatif/üretim fiilleri — hayat sohbetini yutmamak için yeterince spesifik.
+const ACTIONABLE_TASK_RE =
+  /(olu[sş]tur|haz[ıi]rla|tasla[gğ]|\bpitch\b|\btara\b|analiz et|carousel|\bbrief\b|listele|ara[sş]t[ıi]r|g[oö]rev\s+(?:ekle|olu[sş]tur|kaydet)|takip et|kimi aray|i[cç]erik\s+[uü]ret)/i;
+
+function isActionableTask(text: string): boolean {
+  const t = text.trim();
+  if (t.length < 4) return false;
+  return ACTIONABLE_TASK_RE.test(t.toLowerCase());
+}
 
 interface DailyV2State {
   date: string;
@@ -611,10 +623,10 @@ export async function POST(req: Request): Promise<NextResponse> {
         const dayBonuses: Record<number, string> = {
           1: '<b>Pazartesi bonusları:</b>\n- İngilizce: Günlük kelime (20 dk)\n- Antrenman: Upper A',
           2: '<b>Salı bonusları:</b>\n- İngilizce: Ana ders (35–45 dk)\n- Antrenman: Lower A',
-          3: '<b>Çarşamba bonusları:</b>\n- İngilizce: Dinleme + shadowing (25 dk)',
+          3: '<b>Çarşamba bonusları:</b>\n- İngilizce: Dinleme + shadowing (25 dk)\n- Antrenman: Kondisyon + Core + Havuz',
           4: '<b>Perşembe bonusları:</b>\n- İngilizce: Writing (30 dk)\n- Antrenman: Upper B',
-          5: '<b>Cuma bonusları:</b>\n- İngilizce: Kelime tekrar (20–25 dk)',
-          6: '<b>Cumartesi bonusları:</b>\n- İngilizce: Hafif okuma / dinleme (20 dk)\n- Antrenman: Lower B',
+          5: '<b>Cuma bonusları:</b>\n- İngilizce: Kelime tekrar (20–25 dk)\n- Antrenman: Lower B',
+          6: '<b>Cumartesi bonusları:</b>\n- İngilizce: Hafif okuma / dinleme (20 dk)\n- Antrenman: Lower B + Metabolik',
           0: '<b>Pazar bonusları:</b>\n- İngilizce: Haftalık tekrar + mini konuşma (35–45 dk)',
         };
         await sendTelegram(dayBonuses[dow] ?? 'Bugün bonus bilgisi yok.');
@@ -710,6 +722,20 @@ export async function POST(req: Request): Promise<NextResponse> {
           await updateDailyState(today, { energy: energyWord });
           // morning check-in canlıysa taahhüt sorusuna ilerle (gated).
           if (await maybeAdvanceMorningCommitment(today)) break;
+        }
+
+        // ── Eylemsel görev / üretim isteği → Jarvis araç motoru (GERÇEKTEN yapar) ──
+        // "müşteri mesaj taslağı oluştur", "X için pitch yaz", "yurtdışı iş araştır" gibi.
+        // Jarvis doğru aracı seçer; tool yoksa create_task ile görevi kaydeder/yanıtlar.
+        if (isActionableTask(text)) {
+          try {
+            const { reply: jReply } = await runJarvis(text);
+            await replyGuaranteed(jReply || GRACEFUL_TR_FALLBACK, today, 'jarvis');
+          } catch (err) {
+            console.error('[telegram] jarvis failed', err);
+            await replyGuaranteed(GRACEFUL_TR_FALLBACK, today, 'jarvis_error');
+          }
+          break;
         }
 
         // ── Akıllı yönlendirme: hayat (hızlı mentor) vs iş (çok-ajanlı kurul) ──

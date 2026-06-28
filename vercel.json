@@ -22,11 +22,19 @@
     },
     {
       "path": "/api/cron/orchestrator",
-      "schedule": "0 6 * * *"
+      "schedule": "30 5 * * *"
     },
     {
       "path": "/api/cron/orchestrator",
-      "schedule": "0 17 * * *"
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/cron/orchestrator",
+      "schedule": "30 16 * * *"
+    },
+    {
+      "path": "/api/cron/orchestrator",
+      "schedule": "30 19 * * *"
     },
     {
       "path": "/api/cron/weekly-retro",

@@ -69,24 +69,3 @@ export async function setHabitValue(
     return { ok: false, error: e instanceof Error ? e.message : 'habit log yazılamadı' }
   }
 }
-
-/**
- * Günlük (FTG) tamamlamalarından mirror — binary alışkanlıklar (saz/spor/ingilizce/vitamin).
- * Idempotent: UNIQUE(habit_key,date) upsert. done=false → log silinir.
- * Günlük'te tik atınca ilgili zincir otomatik büyür (kullanıcı çift iş yapmaz).
- */
-export async function mirrorHabitDone(key: string, date: string, done: boolean): Promise<void> {
-  await assertSession()
-  const supabase = createServerSupabase()
-  try {
-    if (done) {
-      await supabase
-        .from('habit_logs')
-        .upsert({ habit_key: key, date, value: 1 }, { onConflict: 'habit_key,date' })
-    } else {
-      await supabase.from('habit_logs').delete().eq('habit_key', key).eq('date', date)
-    }
-  } catch {
-    // mirror best-effort — Günlük akışını bozma
-  }
-}

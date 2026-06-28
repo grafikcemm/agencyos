@@ -65,14 +65,20 @@ export const HABIT_KEY_VITAMIN = 'vitamin'
 export type HabitGroup = 'is' | 'saglik' | 'rutinler'
 
 export const HABIT_GROUP_BY_KEY: Record<string, HabitGroup> = {
+  // İş
   musteri: 'is',
+  x_post: 'is',
+  // Sağlık
   beslenme: 'saglik',
   su: 'saglik',
   vitamin: 'saglik',
-  spor: 'saglik',
-  saz: 'rutinler',
-  ingilizce: 'rutinler',
+  dis: 'saglik',
+  spor: 'saglik', // arşiv
+  // Rutinler
   buz: 'rutinler',
+  nemlendirici: 'rutinler',
+  ingilizce: 'rutinler',
+  saz: 'rutinler', // arşiv
 }
 
 export const HABIT_GROUP_META: Record<HabitGroup, { label: string; order: number }> = {
@@ -84,4 +90,13 @@ export const HABIT_GROUP_META: Record<HabitGroup, { label: string; order: number
 /** Bilinmeyen key → 'rutinler' fallback. */
 export function groupForHabit(key: string): HabitGroup {
   return HABIT_GROUP_BY_KEY[key] ?? 'rutinler'
+}
+
+// ── Çekirdek alışkanlıklar (ADHD-koruyucu) ───────────────────────────────────
+// Bunların hepsi bugün yapıldıysa GÜN TAM BAŞARILI sayılır — diğerleri bonus.
+// Aşırı yüklenmeyi önler: önce en kritik birkaç şeyi sabitle.
+export const CORE_HABIT_KEYS = ['beslenme', 'su', 'vitamin'] as const
+
+export function isCoreHabit(key: string): boolean {
+  return (CORE_HABIT_KEYS as readonly string[]).includes(key)
 }

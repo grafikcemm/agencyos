@@ -158,10 +158,10 @@ async function buildReminderMessage(
     const dayRhythms: Record<number, string> = {
       1: '- İngilizce günlük kelime (8–10 kelime)\n- Antrenman: Upper A',
       2: '- İngilizce Mikro Temas (Fielse, 5–8 kelime)\n- Koşu bandı 20 dk\n- Antrenman: Lower A',
-      3: '- İngilizce: Dinleme + shadowing (25 dk)',
+      3: '- İngilizce: Dinleme + shadowing (25 dk)\n- Antrenman: Kondisyon + Core + Havuz',
       4: '- İngilizce Ana Çalışma (40–60 dk)\n- Koşu bandı 20 dk\n- Antrenman: Upper B',
-      5: '- İngilizce günlük kelime\n- Antrenman: Upper B (80–95 dk)',
-      6: '- İngilizce: Hafif okuma / dinleme (20 dk)\n- Antrenman: Lower B',
+      5: '- İngilizce günlük kelime\n- Antrenman: Lower B',
+      6: '- İngilizce: Hafif okuma / dinleme (20 dk)\n- Antrenman: Lower B + Metabolik',
       0: '- İngilizce: Haftalık tekrar + mini konuşma (35–45 dk)',
     };
     const rhythmDetail = dayRhythms[dow] ?? 'Bugün programlanmış ritim yok.';

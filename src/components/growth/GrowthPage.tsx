@@ -2,18 +2,27 @@
 
 import { useState } from "react"
 import { useCareerState } from "@/hooks/useCareerState"
+import { FocusHero } from "./FocusHero"
 import { GrowthLadderHero } from "./GrowthLadderHero"
-import { ActiveFocusCard } from "./ActiveFocusCard"
-import { FocusResourcesPanel } from "./FocusResourcesPanel"
-import { LevelRoadmap } from "./LevelRoadmap"
+import { SkillTracks } from "./SkillTracks"
+import { SkillCard } from "./SkillCard"
 import { ArchivedCareerItems } from "./ArchivedCareerItems"
-import { GrafikcemPlan } from "./GrafikcemPlan"
-import { CAREER_ROADMAP, getActiveSkills } from "@/data/careerRoadmap"
+import {
+  getAllActiveSkills,
+  getSkillById,
+  STRATEGIC_INSURANCE_SKILLS,
+  BACKLOG_PROJECTS,
+  type CareerSkill,
+} from "@/data/careerRoadmap"
+
+// Odak/persist için grup kimliği (eski levelId yerine). active_level_id'de tutulur.
+function skillGroupId(skill: CareerSkill): string {
+  return skill.category === "kalici" ? "kalici" : skill.subgroup ?? "teknik"
+}
 
 export function GrowthPage({}: { uiMode: 'koruma' | 'denge' | 'atak' }) {
   const {
     hydrated,
-    activeLevelId,
     activeFocusSkillId,
     completedSkillIds,
     setActiveFocus,
@@ -23,122 +32,137 @@ export function GrowthPage({}: { uiMode: 'koruma' | 'denge' | 'atak' }) {
     getSkillStatus,
   } = useCareerState()
 
-  const [showGrafikcemPlan, setShowGrafikcemPlan] = useState(false)
-  const [showFullLadder, setShowFullLadder] = useState(false)
+  const [showAllPlan, setShowAllPlan] = useState(false)
 
   if (!hydrated) {
     return (
       <div className="p-4">
-        <div className="h-24 bg-dark-card border border-dark-border rounded-card shadow-soft animate-pulse" />
+        <div className="h-32 bg-dark-card border border-dark-border rounded-card shadow-soft animate-pulse" />
       </div>
     )
   }
 
-  // Determine recommendation if no active focus
-  const activeLevel = CAREER_ROADMAP.find(level => {
-    const activeSkills = getActiveSkills(level)
-    return activeSkills.some(s => !completedSkillIds.includes(s.id))
-  }) || CAREER_ROADMAP[0]
-
-  const recommendedSkill = getActiveSkills(activeLevel).find(s => !completedSkillIds.includes(s.id))
+  const focusedSkill = activeFocusSkillId ? getSkillById(activeFocusSkillId) ?? null : null
+  // Öneri = tamamlanmamış ilk aktif beceri (sıralama şimdi → sonra → ileride).
+  const recommendedSkill = getAllActiveSkills().find(s => !completedSkillIds.includes(s.id)) ?? null
 
   return (
-    <div className="p-4 pb-10 max-w-2xl mx-auto">
-      <GrowthLadderHero
-        activeLevelId={activeLevelId || activeLevel.id}
-        completedSkillIds={completedSkillIds}
-      />
+    <div className="p-4 lg:p-6 pb-10 max-w-7xl mx-auto">
+      {/* ── ODAK MODU: açılışta ekrandaki tek şey ── */}
+      <div className="w-full">
+        <FocusHero
+          skill={focusedSkill}
+          recommendedSkill={recommendedSkill}
+          onComplete={completeSkill}
+          onClear={clearActiveFocus}
+          onPickFocus={skill => setActiveFocus(skill.id, skillGroupId(skill))}
+          onOpenPlan={() => setShowAllPlan(true)}
+        />
 
-      <ActiveFocusCard
-        activeFocusSkillId={activeFocusSkillId}
-        activeLevelId={activeLevelId}
-        onClear={clearActiveFocus}
-      />
-
-      <FocusResourcesPanel activeFocusSkillId={activeFocusSkillId} />
-
-      {/* AI Recommendation Banner when no active focus */}
-      {!activeFocusSkillId && recommendedSkill && (
-        <div className="bg-[var(--bg-base)] border border-[var(--accent)]/20 rounded-xl p-4 mb-4 animate-in fade-in slide-in-from-top-2 duration-300">
-          <p className="text-[10px] font-mono text-[var(--accent)] uppercase tracking-wider mb-1">🎯 BUGÜNÜN GELİŞİM ADIMI ÖNERİSİ</p>
-          <h3 className="text-sm font-mono font-bold text-[var(--text-primary)] mb-1">{recommendedSkill.title}</h3>
-          <p className="text-xs text-[var(--text-muted)] leading-relaxed mb-3">{recommendedSkill.shortDescription}</p>
-          <button
-            onClick={() => setActiveFocus(recommendedSkill.id, activeLevel.id)}
-            className="bg-[var(--cta-bg)] text-[var(--cta-fg)] font-mono font-bold text-xs px-3.5 py-1.5 rounded hover:bg-[#e6e6e6] transition-colors"
-          >
-            Odak Olarak Seç
-          </button>
-        </div>
-      )}
-
-      {/* Grafikcem Plan mini card connected to active focus */}
-      {activeFocusSkillId && (
-        <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-[6px] p-3 mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-xs">🎨</span>
-            <p className="text-xs font-mono text-[var(--text-secondary)]">Grafikcem Stratejik Planı</p>
-          </div>
-          <button
-            onClick={() => setShowGrafikcemPlan(!showGrafikcemPlan)}
-            className="text-xs font-mono text-[var(--accent)] hover:underline"
-          >
-            {showGrafikcemPlan ? "Kapat" : "Detayları Gör"}
-          </button>
-        </div>
-      )}
-
-      {activeFocusSkillId && showGrafikcemPlan && (
-        <div className="animate-in fade-in duration-300">
-          <GrafikcemPlan />
-        </div>
-      )}
-
-      {/* Radikal sadeleştirme (DEHB): tam merdiven varsayılan kapalı.
-          Üstte yalnızca aktif odak + öneri görünür; 47 madde buraya gizli. */}
-      <div className="mb-2">
+        {/* Tek toggle — geri kalan HER ŞEY bunun arkasında (progressive disclosure) */}
         <button
-          onClick={() => setShowFullLadder(v => !v)}
+          onClick={() => setShowAllPlan(v => !v)}
+          aria-expanded={showAllPlan}
           className="w-full flex items-center justify-between rounded-card border border-dark-border bg-dark-card shadow-soft px-4 py-3 text-left transition-colors hover:bg-dark-hover"
         >
           <div>
             <p className="text-[10px] font-mono text-text-tertiary uppercase tracking-widest">
-              Tüm Merdiven
+              Tüm Planı {showAllPlan ? "Kapat" : "Aç"}
             </p>
             <p className="text-xs font-sans text-text-tertiary mt-0.5">
-              7 seviye · tüm beceriler. {showFullLadder ? "Gizlemek için kapat." : "Sadece gerektiğinde aç."}
+              Kalıcı + Teknik (45 beceri), backlog ve arşiv. {showAllPlan ? "Odağa dönmek için kapat." : "Sadece gerektiğinde aç."}
             </p>
           </div>
-          <span className="text-text-tertiary font-mono text-sm shrink-0">
-            {showFullLadder ? "−" : "+"}
-          </span>
+          <span className="text-text-tertiary font-mono text-sm shrink-0">{showAllPlan ? "−" : "+"}</span>
         </button>
-
-        {showFullLadder && (
-          <div className="mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
-            <LevelRoadmap
-              activeFocusSkillId={activeFocusSkillId}
-              completedSkillIds={completedSkillIds}
-              getSkillStatus={getSkillStatus}
-              onStatusChange={setKnowledgeStatus}
-              onSetFocus={setActiveFocus}
-              onComplete={completeSkill}
-            />
-          </div>
-        )}
       </div>
 
-      {/* Parked & Archived items wrapped under a details toggle */}
-      <details className="group border border-[var(--border-subtle)] rounded-xl overflow-hidden mt-6 bg-[var(--bg-base)]/30">
-        <summary className="w-full flex items-center justify-between p-4 text-left font-mono text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer select-none">
-          <span>Kitaplık Deposu & Park Edilenler (Arşiv)</span>
-          <span className="text-[var(--text-tertiary)] font-mono text-sm group-open:hidden">+</span>
-          <span className="text-[var(--text-tertiary)] font-mono text-sm hidden group-open:inline">−</span>
-        </summary>
-        <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-300">
-          <ArchivedCareerItems />
+      {/* ── TÜM PLAN: progressive disclosure ── */}
+      {showAllPlan && (
+        <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="mb-4">
+            <GrowthLadderHero completedSkillIds={completedSkillIds} />
+          </div>
+
+          <SkillTracks
+            activeFocusSkillId={activeFocusSkillId}
+            completedSkillIds={completedSkillIds}
+            getSkillStatus={getSkillStatus}
+            onStatusChange={setKnowledgeStatus}
+            onSetFocus={setActiveFocus}
+            onComplete={completeSkill}
+          />
+
+          <div className="space-y-3 mt-6">
+            {/* Fiziksel Kariyer Sigortası — stratejik/ileride */}
+            <details className="group border border-[var(--border-subtle)] rounded-xl overflow-hidden bg-[var(--bg-base)]/30">
+              <summary className="w-full flex items-center justify-between p-4 text-left font-mono text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer select-none">
+                <span>🛡️ Fiziksel Kariyer Sigortası (stratejik · ileride)</span>
+                <span className="text-[var(--text-tertiary)] font-mono text-sm group-open:hidden">+</span>
+                <span className="text-[var(--text-tertiary)] font-mono text-sm hidden group-open:inline">−</span>
+              </summary>
+              <div className="px-3 pb-3 space-y-2 animate-in slide-in-from-top-2 duration-300">
+                <p className="text-[10px] text-[var(--text-tertiary)] font-sans px-1 pb-1">
+                  Şu an aktif hedef değil. Drone, hibrit prodüksiyon, photogrammetry ve alternatif kariyer opsiyonları.
+                </p>
+                {STRATEGIC_INSURANCE_SKILLS.map(skill => (
+                  <SkillCard
+                    key={skill.id}
+                    skill={skill}
+                    groupId="strategic"
+                    currentStatus={getSkillStatus(skill.id)}
+                    isCompleted={completedSkillIds.includes(skill.id)}
+                    isActiveFocus={skill.id === activeFocusSkillId}
+                    onStatusChange={setKnowledgeStatus}
+                    onSetFocus={setActiveFocus}
+                    onComplete={completeSkill}
+                  />
+                ))}
+              </div>
+            </details>
+
+            {/* Backlog / Projeler */}
+            <details className="group border border-[var(--border-subtle)] rounded-xl overflow-hidden bg-[var(--bg-base)]/30">
+              <summary className="w-full flex items-center justify-between p-4 text-left font-mono text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer select-none">
+                <span>📌 Backlog / Projeler ({BACKLOG_PROJECTS.length})</span>
+                <span className="text-[var(--text-tertiary)] font-mono text-sm group-open:hidden">+</span>
+                <span className="text-[var(--text-tertiary)] font-mono text-sm hidden group-open:inline">−</span>
+              </summary>
+              <div className="px-3 pb-3 space-y-2 animate-in slide-in-from-top-2 duration-300">
+                {BACKLOG_PROJECTS.map(project => (
+                  <div
+                    key={project.id}
+                    className="bg-dark-card border border-[var(--border-subtle)] rounded-card shadow-soft p-3"
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="text-[9px] font-mono text-[var(--text-tertiary)] border border-[var(--border-subtle)] px-1.5 py-0.5 rounded">
+                        ileride
+                      </span>
+                      <span className="text-[9px] font-mono text-[var(--text-tertiary)] border border-[var(--border-subtle)] px-1.5 py-0.5 rounded">
+                        proje
+                      </span>
+                    </div>
+                    <p className="text-sm font-display text-[var(--text-primary)]">{project.title}</p>
+                    <p className="text-xs text-[var(--text-muted)] font-sans mt-0.5">{project.note}</p>
+                  </div>
+                ))}
+              </div>
+            </details>
+
+            {/* Kitaplık Deposu & Park Edilenler (Arşiv) */}
+            <details className="group border border-[var(--border-subtle)] rounded-xl overflow-hidden bg-[var(--bg-base)]/30">
+              <summary className="w-full flex items-center justify-between p-4 text-left font-mono text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer select-none">
+                <span>Kitaplık Deposu & Park Edilenler (Arşiv)</span>
+                <span className="text-[var(--text-tertiary)] font-mono text-sm group-open:hidden">+</span>
+                <span className="text-[var(--text-tertiary)] font-mono text-sm hidden group-open:inline">−</span>
+              </summary>
+              <div className="px-4 pb-4 animate-in slide-in-from-top-2 duration-300">
+                <ArchivedCareerItems />
+              </div>
+            </details>
+          </div>
         </div>
-      </details>
+      )}
     </div>
   )
 }

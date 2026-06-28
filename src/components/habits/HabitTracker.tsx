@@ -1,55 +1,25 @@
 'use client'
 
-import { createElement, useState, useTransition } from 'react'
+import { createElement, useCallback, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import {
-  Music,
-  Salad,
-  Droplet,
-  Snowflake,
-  Pill,
-  Dumbbell,
-  Languages,
-  Phone,
-  Flame,
-  Check,
-  type LucideIcon,
-} from 'lucide-react'
+import { Flame, Check } from 'lucide-react'
 import { setHabitValue } from '@/app/actions/habitActions'
 import {
   groupForHabit,
+  isCoreHabit,
   HABIT_GROUP_META,
   type HabitGroup,
   type HabitOverviewItem,
 } from '@/lib/habits/config'
+import { computeHabitScore, pointsForHabit } from '@/lib/habits/scoring'
 import { cn } from '@/lib/utils'
-
-const ICONS: Record<string, LucideIcon> = {
-  music: Music,
-  salad: Salad,
-  droplet: Droplet,
-  snowflake: Snowflake,
-  pill: Pill,
-  dumbbell: Dumbbell,
-  languages: Languages,
-  phone: Phone,
-}
-
-function iconFor(key: string | null): LucideIcon {
-  return (key && ICONS[key]) || Flame
-}
+import { iconFor, GROUP_VISUAL } from './habitVisuals'
+import { HabitScoreHeader } from './HabitScoreHeader'
+import { HabitDetailSheet } from './HabitDetailSheet'
 
 const CADENCE_LABEL: Record<string, string> = {
   training_days: 'Antrenman günleri',
   english_days: 'İngilizce günleri',
-}
-
-// getDay 0=Pazar
-const WEEKDAY_TR = ['Pz', 'Pt', 'Sa', 'Ça', 'Pe', 'Cu', 'Ct']
-
-function weekdayShort(dateStr: string): string {
-  const d = new Date(`${dateStr}T00:00:00`)
-  return WEEKDAY_TR[d.getDay()] ?? ''
 }
 
 export function HabitTracker({ items, today }: { items: HabitOverviewItem[]; today: string }) {
@@ -57,6 +27,7 @@ export function HabitTracker({ items, today }: { items: HabitOverviewItem[]; tod
   const [, startTransition] = useTransition()
   const [local, setLocal] = useState(items)
   const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
   // server props referansı değişince (router.refresh sonrası) authoritative veriyi al
   const [lastItems, setLastItems] = useState(items)
@@ -65,8 +36,8 @@ export function HabitTracker({ items, today }: { items: HabitOverviewItem[]; tod
     setLocal(items)
   }
 
-  const dueToday = local.filter((h) => h.computed.todayStatus !== 'not_due')
-  const doneToday = dueToday.filter((h) => h.computed.todayStatus === 'done')
+  const score = computeHabitScore(local, today)
+  const selected = selectedKey ? local.find((h) => h.key === selectedKey) ?? null : null
 
   function tap(h: HabitOverviewItem) {
     if (busyKey) return
@@ -104,18 +75,23 @@ export function HabitTracker({ items, today }: { items: HabitOverviewItem[]; tod
           },
           cells: it.cells.map((c) => (c.date === today ? { ...c, value: next, done: nowDone } : c)),
         }
-      })
+      }),
     )
     setBusyKey(h.key)
     startTransition(async () => {
-      await setHabitValue(h.key, next, today)
-      setBusyKey(null)
-      router.refresh()
+      try {
+        await setHabitValue(h.key, next, today)
+        router.refresh()
+      } finally {
+        // Server action throw etse bile kartı kalıcı kilitleme.
+        setBusyKey(null)
+      }
     })
   }
 
-  // Gruplara böl, sıraya diz. Sistemsel: o gün GEREKLİ OLMAYAN (not_due) alışkanlık
-  // gizlenir — antrenman yoksa antrenman, ingilizce günü değilse ingilizce görünmez.
+  const closeSheet = useCallback(() => setSelectedKey(null), [])
+
+  // Gruplara böl. O gün GEREKLİ OLMAYAN (not_due) alışkanlık gizlenir.
   const groups = (Object.keys(HABIT_GROUP_META) as HabitGroup[])
     .sort((a, b) => HABIT_GROUP_META[a].order - HABIT_GROUP_META[b].order)
     .map((g) => ({
@@ -128,209 +104,186 @@ export function HabitTracker({ items, today }: { items: HabitOverviewItem[]; tod
     .filter((s) => s.habits.length > 0)
 
   return (
-    <div className="max-w-[760px] mx-auto px-4 sm:px-6 flex flex-col gap-9 pb-20">
-      {/* Başlık + sessiz özet */}
-      <header className="flex items-end justify-between gap-4 pt-1">
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-center gap-2.5">
-            <Flame className="w-5 h-5 text-[var(--accent)]" />
-            <h1 className="text-2xl sm:text-3xl font-semibold font-[family-name:var(--font-display)] tracking-tight text-[var(--text-primary)]">
-              Alışkanlıklar
-            </h1>
-          </div>
-          <p className="text-[13px] text-[var(--text-muted)]">
-            Küçük tutarlılık → büyük kontrol.
-          </p>
-        </div>
-        <div className="shrink-0 text-right">
-          <div className="num text-lg font-semibold text-[var(--text-primary)] leading-none">
-            {doneToday.length}/{dueToday.length}
-          </div>
-          <div className="text-[10px] font-medium uppercase tracking-widest text-[var(--text-muted)] mt-1">
-            Bugün
-          </div>
-        </div>
-      </header>
+    <div className="max-w-[760px] mx-auto px-4 sm:px-6 flex flex-col gap-8 pb-20">
+      <HabitScoreHeader score={score} />
 
-      {/* Gruplar */}
       {groups.map((section) => {
         const due = section.habits.filter((h) => h.computed.todayStatus !== 'not_due')
         const done = due.filter((h) => h.computed.todayStatus === 'done')
         return (
           <section key={section.group} className="flex flex-col">
-            <div className="flex items-baseline justify-between mb-1.5">
+            <div className="flex items-baseline justify-between mb-2">
               <h2 className="text-[11px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">
                 {section.meta.label}
               </h2>
               <span className="num text-[11px] font-medium text-[var(--text-muted)]">
-                {done.length}/{due.length || section.habits.length}
+                {done.length}/{due.length}
               </span>
             </div>
-            <div className="rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] divide-y divide-[var(--border-subtle)] overflow-hidden">
+            <div className="flex flex-col gap-2.5">
               {section.habits.map((h) => (
-                <HabitRow
+                <HabitCard
                   key={h.key}
                   habit={h}
-                  today={today}
                   busy={busyKey === h.key}
                   onTap={() => tap(h)}
+                  onOpen={() => setSelectedKey(h.key)}
                 />
               ))}
             </div>
           </section>
         )
       })}
+
+      <HabitDetailSheet habit={selected} onClose={closeSheet} />
     </div>
   )
 }
 
-function HabitRow({
+function HabitCard({
   habit,
-  today,
   busy,
   onTap,
+  onOpen,
 }: {
   habit: HabitOverviewItem
-  today: string
   busy: boolean
   onTap: () => void
+  onOpen: () => void
 }) {
+  const group = groupForHabit(habit.key)
+  const visual = GROUP_VISUAL[group]
   const Icon = iconFor(habit.icon)
   const { computed } = habit
-  const isCounter = habit.target > 1
   const hasStreak = computed.currentStreak > 0
   const cadence = CADENCE_LABEL[habit.cadence_type]
-  const last7 = habit.cells.slice(-7)
+  const isCounter = habit.target > 1
+  const isDone = habit.computed.todayStatus === 'done'
+  const points = pointsForHabit(habit.key)
+  const core = isCoreHabit(habit.key)
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3.5 hover:bg-[var(--bg-card-hover)] transition-colors duration-200">
-      {/* Sol: ikon + ad */}
-      <div className="min-w-0 flex-1 flex items-center gap-2.5">
-        {createElement(Icon, { className: 'w-4 h-4 text-[var(--text-muted)] shrink-0' })}
-        <div className="min-w-0">
-          <div className="text-sm font-medium text-[var(--text-primary)] truncate">{habit.label}</div>
-          {cadence && <div className="text-[10px] text-[var(--text-muted)] mt-0.5">{cadence}</div>}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpen()
+        }
+      }}
+      aria-label={`${habit.label} — detay`}
+      className="group cursor-pointer rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3.5 py-3 flex items-center gap-3 hover:border-[var(--border-strong)] hover:bg-[var(--bg-card-hover)] transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+    >
+      {/* İkon çipi */}
+      <span
+        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+        style={{ backgroundColor: visual.bg }}
+      >
+        {createElement(Icon, { className: 'w-5 h-5', style: { color: visual.fg } })}
+      </span>
+
+      {/* Ad + zincir/puan */}
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-[var(--text-primary)] truncate">{habit.label}</div>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span
+            className={cn(
+              'inline-flex items-center gap-1 text-[11px]',
+              hasStreak ? 'text-[var(--text-secondary)]' : 'text-[var(--text-quaternary)]',
+            )}
+          >
+            <Flame
+              className={cn('w-3 h-3', hasStreak ? 'text-[var(--fire,#fb923c)]' : 'text-[var(--text-quaternary)]')}
+            />
+            <span className="num">{computed.currentStreak}</span>
+          </span>
+          <span className="text-[var(--text-quaternary)]">·</span>
+          <span className={cn('num text-[11px]', isDone ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]')}>
+            +{points}p
+          </span>
+          {core && (
+            <>
+              <span className="text-[var(--text-quaternary)]">·</span>
+              <span
+                className="text-[9px] uppercase tracking-wide font-bold text-[var(--success,#34d399)]"
+                title="Çekirdek alışkanlık — bunları yapınca gün başarılı sayılır"
+              >
+                çekirdek
+              </span>
+            </>
+          )}
+          {cadence && (
+            <>
+              <span className="text-[var(--text-quaternary)]">·</span>
+              <span className="text-[10px] text-[var(--text-muted)]">{cadence}</span>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Sağ: 7 gün-çemberi */}
-      <div className="flex items-center gap-1 shrink-0">
-        {last7.map((c) => {
-          const isToday = c.date === today
-          return (
-            <DayCircle
-              key={c.date}
-              date={c.date}
-              due={c.due}
-              done={c.due && c.done}
-              isToday={isToday}
-              isCounter={isCounter}
-              todayValue={isToday ? habit.todayValue : 0}
-              target={habit.target}
-              label={habit.label}
-              busy={busy}
-              onTap={isToday ? onTap : undefined}
-            />
-          )
-        })}
-      </div>
-
-      {/* Streak */}
-      <div className="flex items-center gap-1 shrink-0 w-9 justify-end" aria-label={`${computed.currentStreak} gün zincir`}>
-        <Flame
-          className={cn('w-3.5 h-3.5', hasStreak ? 'text-[var(--accent)]' : 'text-[var(--text-quaternary)]')}
-        />
-        <span
-          className={cn(
-            'num text-sm font-semibold',
-            hasStreak ? 'text-[var(--text-primary)]' : 'text-[var(--text-quaternary)]',
-          )}
-        >
-          {computed.currentStreak}
-        </span>
-      </div>
+      {/* Bugün tamamlama dairesi */}
+      <TodayCircle
+        isDone={isDone}
+        isCounter={isCounter}
+        value={habit.todayValue}
+        target={habit.target}
+        busy={busy}
+        label={habit.label}
+        onTap={onTap}
+      />
     </div>
   )
 }
 
-function DayCircle({
-  date,
-  due,
-  done,
-  isToday,
+function TodayCircle({
+  isDone,
   isCounter,
-  todayValue,
+  value,
   target,
-  label,
   busy,
+  label,
   onTap,
 }: {
-  date: string
-  due: boolean
-  done: boolean
-  isToday: boolean
+  isDone: boolean
   isCounter: boolean
-  todayValue: number
+  value: number
   target: number
-  label: string
   busy: boolean
-  onTap?: () => void
+  label: string
+  onTap: () => void
 }) {
-  // Görsel durum sınıfları (Framer dark, sakin):
-  // done = yeşil dolu · bugün = mavi ring · kaçırılan = ince turuncu · boş = soluk
-  const missed = due && !done && !isToday
-
-  const circleCls = cn(
-    'w-7 h-7 rounded-full flex items-center justify-center text-[9px] num font-semibold transition-all duration-150',
-    done
-      ? 'bg-[var(--success)] text-black'
-      : isToday
-        ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
-        : missed
-          ? 'border border-[var(--fire)]/45 text-[var(--fire)]/70'
-          : due
-            ? 'border border-[var(--border-strong)] text-transparent'
-            : 'border border-[var(--border-subtle)]/60 text-transparent',
-  )
-
-  const inner = done ? (
-    isCounter ? <span className="text-black">{Math.min(todayValue || target, target)}</span> : <Check className="w-3.5 h-3.5" strokeWidth={3} />
-  ) : isToday && isCounter ? (
-    <span>{todayValue}</span>
-  ) : null
-
-  const title = `${weekdayShort(date)} ${date}${
-    due ? (done ? ' · yapıldı' : isToday ? ' · bugün' : ' · kaçırıldı') : ' · gerekli değil'
-  }`
-
-  const circle = (
-    <div className={circleCls} title={title}>
-      {inner}
-    </div>
-  )
-
+  const partial = !isDone && value > 0
   return (
-    <div className="flex flex-col items-center gap-1">
-      {onTap ? (
-        <button
-          onClick={onTap}
-          disabled={busy}
-          aria-label={`${label} · bugün işaretle`}
-          className="rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--bg-card)] active:scale-90 transition-transform duration-150 disabled:opacity-60"
-        >
-          {circle}
-        </button>
-      ) : (
-        circle
+    <button
+      onClick={(e) => {
+        e.stopPropagation()
+        onTap()
+      }}
+      disabled={busy}
+      aria-label={`${label} · bugün işaretle`}
+      aria-pressed={isDone}
+      className={cn(
+        'shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-[12px] num font-semibold transition-all duration-150 active:scale-90 disabled:opacity-60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-card)]',
+        isDone
+          ? 'bg-[var(--success,#34d399)] text-black'
+          : partial
+            ? 'border-2 border-[var(--accent)] text-[var(--accent)]'
+            : 'border-2 border-[var(--border-strong,rgba(255,255,255,0.15))] text-[var(--text-quaternary)] hover:border-[var(--accent)] hover:text-[var(--accent)]',
       )}
-      <span
-        className={cn(
-          'text-[8px] font-semibold uppercase tracking-wide',
-          isToday ? 'text-[var(--accent)]' : 'text-[var(--text-quaternary)]',
-        )}
-      >
-        {weekdayShort(date)}
-      </span>
-    </div>
+    >
+      {isDone ? (
+        isCounter ? (
+          <span>{Math.min(value || target, target)}</span>
+        ) : (
+          <Check className="w-5 h-5" strokeWidth={3} />
+        )
+      ) : isCounter ? (
+        <span>
+          {value}/{target}
+        </span>
+      ) : null}
+    </button>
   )
 }

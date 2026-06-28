@@ -30,7 +30,8 @@ export interface CareerSkillResource {
   links?: CareerResourceLink[]
 }
 
-export interface CareerSkill {
+// Becerinin ham içeriği (kategori-bağımsız). Eski "CareerSkill" şekli.
+export interface BaseSkill {
   id: string
   title: string
   technicalName?: string
@@ -47,16 +48,32 @@ export interface CareerSkill {
   priority: CareerSkillPriority
 }
 
-export interface CareerLevel {
+// Üst gruplama: 2 ana kart. "level" kavramı ikincil etikete (originLevel) düştü.
+export type SkillCategory = "kalici" | "teknik"
+export type TeknikSubgroup = "kreatif" | "ai_kaldirac" | "yazilim_temeli"
+
+// UI'ın gördüğü zenginleştirilmiş beceri. category/subgroup/order build adımında eklenir.
+export interface CareerSkill extends BaseSkill {
+  category: SkillCategory
+  subgroup?: TeknikSubgroup
+  order?: number
+  originLevel?: number
+}
+
+// Ham içerik kaynağı — yalnızca dosya-içi. UI bu yapıyı görmez (level demote edildi).
+interface RawLevel {
   id: string
   levelNumber: number
   title: string
   subtitle: string
   description: string
-  skills: CareerSkill[]
+  skills: BaseSkill[]
 }
 
-export const CAREER_ROADMAP: CareerLevel[] = [
+// ── HAM KAYNAK (dosya-içi) ───────────────────────────────────────────────────
+// Tüm beceri içerikleri burada birebir korunur. Gruplama/timing aşağıdaki
+// ENRICHMENT haritasıyla türetilir — içeriklere dokunulmaz.
+const RAW_LEVELS: RawLevel[] = [
   {
     id: "level-1",
     levelNumber: 1,
@@ -375,6 +392,7 @@ export const CAREER_ROADMAP: CareerLevel[] = [
         practiceProjects: [
           "Tek sayfalık responsive landing page'i elde HTML/CSS ile yaz.",
           "Bir app'ini Git branch + PR akışıyla düzenle.",
+          "AKTİF GÜVENLİK GÖREVİ: AgencyOS'ta service-role/anon key ve auth açığını kapat — RLS politikalarını ve client-side'da hangi key'in kullanıldığını denetle.",
         ],
         completionProof: [
           "1 responsive sayfa elle kodlandı.",
@@ -1746,20 +1764,372 @@ export const CAREER_ROADMAP: CareerLevel[] = [
   }
 ]
 
+// ── TÜRETME MOTORU ───────────────────────────────────────────────────────────
+// Ham beceriler düzleştirilir, sonra ENRICHMENT haritasıyla 2-kart modeline
+// zenginleştirilir. İçerikler değişmez; yalnızca category/subgroup/order/timing
+// eklenir. Tüm skill ID'leri korunduğu için kullanıcı ilerlemesi kayıpsız.
+
+const RAW_WITH_LEVEL: Array<{ skill: BaseSkill; levelNumber: number; levelTitle: string }> =
+  RAW_LEVELS.flatMap(level =>
+    level.skills.map(skill => ({ skill, levelNumber: level.levelNumber, levelTitle: level.title }))
+  )
+
+function typeToCategory(type: CareerSkillType): SkillCategory {
+  return type === "technical" ? "teknik" : "kalici"
+}
+
+interface Enrichment {
+  category: SkillCategory
+  subgroup?: TeknikSubgroup
+  order: number
+  priority: CareerSkillPriority // nihai timing (otoritatif — ham priority'yi ezer)
+}
+
+// ONAYLI dağılım tablosu. ŞİMDİ (now) = 4 kalem. Eski "now" olup burada now
+// olmayan her kalem "next"e indirildi.
+const ENRICHMENT: Record<string, Enrichment> = {
+  // KART A — KALICI BECERİLER
+  "offer-design-productization": { category: "kalici", order: 1, priority: "now" },
+  "continuous-learning": { category: "kalici", order: 2, priority: "now" },
+  "branding-theory": { category: "kalici", order: 3, priority: "next" },
+  "sales-negotiation": { category: "kalici", order: 4, priority: "next" },
+  "retainer-client-management": { category: "kalici", order: 5, priority: "next" },
+  "financial-literacy": { category: "kalici", order: 6, priority: "next" },
+  "product-metrics": { category: "kalici", order: 7, priority: "next" },
+  "public-speaking": { category: "kalici", order: 8, priority: "next" },
+  "outreach-networking": { category: "kalici", order: 9, priority: "next" },
+  "vibe-marketing": { category: "kalici", order: 10, priority: "next" },
+  "portfolio-case-study": { category: "kalici", order: 11, priority: "next" },
+  "diction-voice": { category: "kalici", order: 12, priority: "next" },
+  "paid-community": { category: "kalici", order: 13, priority: "next" },
+  "education-leadership": { category: "kalici", order: 14, priority: "next" },
+  "digital-literacy": { category: "kalici", order: 15, priority: "next" },
+  "creative-ops-package": { category: "kalici", order: 16, priority: "next" },
+  "storytelling": { category: "kalici", order: 17, priority: "later" },
+  "creative-thinking": { category: "kalici", order: 18, priority: "later" },
+  "legal-literacy": { category: "kalici", order: 19, priority: "later" },
+  "talent-management": { category: "kalici", order: 20, priority: "later" },
+  "systems-thinking": { category: "kalici", order: 21, priority: "later" },
+
+  // KART B1 — Kreatif & Ürün Üretimi
+  "after-effects-motion": { category: "teknik", subgroup: "kreatif", order: 1, priority: "next" },
+  "premiere-pro": { category: "teknik", subgroup: "kreatif", order: 2, priority: "next" },
+  "photoshop-editorial": { category: "teknik", subgroup: "kreatif", order: 3, priority: "next" },
+  "uiux-specialization": { category: "teknik", subgroup: "kreatif", order: 4, priority: "next" },
+  "ux-research-usability": { category: "teknik", subgroup: "kreatif", order: 5, priority: "next" },
+  "design-systems": { category: "teknik", subgroup: "kreatif", order: 6, priority: "next" },
+  "accessibility-wcag": { category: "teknik", subgroup: "kreatif", order: 7, priority: "next" },
+  "3d-basics": { category: "teknik", subgroup: "kreatif", order: 8, priority: "next" },
+  "color-visual-identity": { category: "teknik", subgroup: "kreatif", order: 9, priority: "next" },
+
+  // KART B2 — AI Kaldıracı
+  "ai-ad-ugc-creative": { category: "teknik", subgroup: "ai_kaldirac", order: 1, priority: "now" },
+  "ai-visual-direction": { category: "teknik", subgroup: "ai_kaldirac", order: 2, priority: "next" },
+  "performance-creative-reading": { category: "teknik", subgroup: "ai_kaldirac", order: 3, priority: "next" },
+  "distribution-content-engine": { category: "teknik", subgroup: "ai_kaldirac", order: 4, priority: "next" },
+  "mcp-tool-ecosystem": { category: "teknik", subgroup: "ai_kaldirac", order: 5, priority: "next" },
+  "local-model-operations": { category: "teknik", subgroup: "ai_kaldirac", order: 6, priority: "next" },
+  "lora-model-customization": { category: "teknik", subgroup: "ai_kaldirac", order: 7, priority: "next" },
+  "ml-fundamentals-builders": { category: "teknik", subgroup: "ai_kaldirac", order: 8, priority: "next" },
+  "python-ai-workflow": { category: "teknik", subgroup: "ai_kaldirac", order: 9, priority: "next" },
+
+  // KART B3 — Yazılım Temeli (sıralı yol; Adım 1 = web-literacy, şimdi)
+  "web-literacy": { category: "teknik", subgroup: "yazilim_temeli", order: 1, priority: "now" },
+}
+
+// YENİ B3 becerileri (sıralı öğrenme yolu, Adım 2-6). İçerik yeni yazıldı.
+const NEW_B3_SKILLS: CareerSkill[] = [
+  {
+    id: "js-ts-fundamentals",
+    title: "JavaScript / TypeScript Temelleri",
+    technicalName: "JavaScript & TypeScript Fundamentals",
+    type: "technical",
+    category: "teknik",
+    subgroup: "yazilim_temeli",
+    order: 2,
+    shortDescription:
+      "Değişken, fonksiyon, async/await ve temel tipler — AI'ın yazdığı kodu OKUYABİLMEK için JS/TS okuryazarlığı.",
+    whyLearn:
+      "Vibecoding'de kilitlenmenin asıl sebebi kodu okuyamamak. JS'in temel akışını ve TS tiplerini bilmek, 'neden hata veriyor' sorusunu tahminden bilgiye çevirir.",
+    relevanceToCem:
+      "AgencyOS ve Feed The Goat zaten TypeScript. Bu adım, AI'ın ürettiği fonksiyonu satır satır okuyup 'burası null olabilir' diyebilmeni sağlar — düzeltmeyi sana bırakır, AI'a değil.",
+    howToLearn: [
+      "javascript.info'dan değişkenler → fonksiyonlar → diziler/objeler → async/await sırasını takip et.",
+      "Promise ve async/await'i ayrı çalış: 'await ne bekliyor, hata nereye düşüyor'.",
+      "TypeScript Handbook'tan temel tipleri öğren: string/number/boolean, union, interface, optional (?).",
+      "AgencyOS'ta bir server action'ı aç, her satırın tipini kendi kelimelerinle açıkla.",
+    ],
+    resources: {
+      links: [
+        { title: "javascript.info", url: "https://javascript.info", kind: "doc", free: true, note: "Modern JS'in en net ücretsiz kaynağı — sırayla git." },
+        { title: "TypeScript Handbook", url: "https://www.typescriptlang.org/docs/handbook/intro.html", kind: "doc", free: true, note: "Temel tipler + everyday types bölümleri yeterli." },
+        { title: "MDN — JavaScript Guide", url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide", kind: "doc", free: true },
+      ],
+      youtubeSearchTerms: ["JavaScript async await explained", "TypeScript basics for beginners"],
+    },
+    practiceProjects: [
+      "Bir API'den veri çekip işleyen 30-40 satırlık bir async fonksiyon yaz, tiplerini elle ekle.",
+      "AgencyOS'taki gevşek tipli (any) bir yeri bul, doğru tiple değiştir.",
+    ],
+    completionProof: [
+      "async/await akışını ve hata yakalamayı bir örnekle anlatabiliyorsun.",
+      "Bir TS dosyasındaki tipleri okuyup ne ifade ettiklerini açıklayabiliyorsun.",
+    ],
+    ifAlreadyKnown: [
+      "AgencyOS'ta tipi zayıf bir modülü güçlü tiplere geçir (union/guard ekle).",
+    ],
+    defaultStatus: "not_started",
+    priority: "next",
+  },
+  {
+    id: "react-nextjs-fundamentals",
+    title: "React + Next.js Temelleri",
+    technicalName: "React & Next.js App Router Fundamentals",
+    type: "technical",
+    category: "teknik",
+    subgroup: "yazilim_temeli",
+    order: 3,
+    shortDescription:
+      "Component, props/state, server vs client component ve App Router — ürettiğin app'in iskeletini anlamak.",
+    whyLearn:
+      "AgencyOS ve diğer app'lerin tamamı React + Next.js App Router. Component'in nasıl render olduğunu ve 'use client' sınırını bilmeden hata ayıklamak körlemesine olur.",
+    relevanceToCem:
+      "Zaten Next.js app shipliyorsun. Bu adım 'bu dosya neden client, bu neden server', 'state neden güncellenmiyor' gibi günlük takıldığın yerleri çözer.",
+    howToLearn: [
+      "React docs'tan 'Describing the UI' + 'Adding Interactivity' (state, event) bölümlerini bitir.",
+      "Props ile state farkını netleştir: veri yukarıdan mı geliyor, component mi tutuyor.",
+      "Next.js docs'tan Server vs Client Components ve App Router routing'i oku.",
+      "AgencyOS'ta bir Server Component ile bir Client Component'i karşılaştır, farkı yaz.",
+    ],
+    resources: {
+      links: [
+        { title: "React — Learn", url: "https://react.dev/learn", kind: "doc", free: true, note: "Resmi, interaktif. State ve props burada oturur." },
+        { title: "Next.js — App Router Docs", url: "https://nextjs.org/docs/app", kind: "doc", free: true, note: "Server/Client component sınırı + routing." },
+      ],
+      youtubeSearchTerms: ["React useState explained", "Next.js server vs client components"],
+    },
+    practiceProjects: [
+      "Tek bir sayfada props alan + kendi state'ini tutan küçük bir component ağacı kur.",
+      "AgencyOS'ta bir client component'i izole edip neden 'use client' gerektiğini açıkla.",
+    ],
+    completionProof: [
+      "Server ve Client Component farkını kendi app'inden örnekle anlatabiliyorsun.",
+      "Bir component'in neden yeniden render olduğunu takip edebiliyorsun.",
+    ],
+    ifAlreadyKnown: [
+      "Prop drilling olan bir yeri context veya bileşim (composition) ile sadeleştir.",
+    ],
+    defaultStatus: "not_started",
+    priority: "next",
+  },
+  {
+    id: "debugging-skills",
+    title: "Hata Ayıklama (Debugging)",
+    technicalName: "Debugging: Console, Network, Stack Traces",
+    type: "technical",
+    category: "teknik",
+    subgroup: "yazilim_temeli",
+    order: 4,
+    shortDescription:
+      "Console, network sekmesi, stack trace okuma ve hatayı izole etme — 'neden çalışmıyor'ı sistematik çözmek.",
+    whyLearn:
+      "Hata ayıklama, AI'a sınırsız 'düzelt' demek yerine sorunu kendin daraltabilmektir. Stack trace okuyabilen kişi dakikalarda, okuyamayan saatlerce takılır.",
+    relevanceToCem:
+      "AgencyOS'ta bir şey patladığında AI'a tüm dosyayı atmak yerine, 'şu satırda şu hata' diyebilmek hem hızlı hem ucuz. Bağımsızlığını artırır.",
+    howToLearn: [
+      "Chrome DevTools'ta Console + Network sekmelerini tanı: hangi istek attı, ne döndü, status kodu ne.",
+      "Bir stack trace'i yukarıdan aşağı oku: hata hangi dosyada, hangi satırda başladı.",
+      "Hatayı izole et: bölerek-küçülterek sorunlu parçayı bul.",
+      "console.log yerine breakpoint kullanmayı dene.",
+    ],
+    resources: {
+      links: [
+        { title: "Chrome DevTools — Docs", url: "https://developer.chrome.com/docs/devtools", kind: "doc", free: true, note: "Console, Network, Sources (breakpoint) resmi rehber." },
+        { title: "MDN — What went wrong? Debugging JS", url: "https://developer.mozilla.org/en-US/docs/Learn/JavaScript/First_steps/What_went_wrong", kind: "doc", free: true },
+      ],
+      youtubeSearchTerms: ["Chrome DevTools debugging tutorial", "how to read a stack trace"],
+    },
+    practiceProjects: [
+      "AgencyOS'ta gerçek bir hatayı sadece DevTools + stack trace ile bulup düzelt (AI'sız).",
+      "Bir network isteğinin neden 4xx/5xx döndüğünü Network sekmesinden teşhis et.",
+    ],
+    completionProof: [
+      "Bir stack trace'i okuyup hatanın kaynağını işaret edebiliyorsun.",
+      "En az 1 bug'ı yardımsız izole edip çözdün.",
+    ],
+    ifAlreadyKnown: [
+      "Tekrar eden bir hata sınıfı için küçük bir kontrol listesi / guard ekle.",
+    ],
+    defaultStatus: "not_started",
+    priority: "later",
+  },
+  {
+    id: "sql-supabase-fundamentals",
+    title: "SQL + Supabase Temelleri",
+    technicalName: "SQL, RLS & Supabase Security",
+    type: "technical",
+    category: "teknik",
+    subgroup: "yazilim_temeli",
+    order: 5,
+    shortDescription:
+      "Tablo/sorgu mantığı, RLS politikaları ve service-role vs anon key farkı — veri katmanının GÜVENLİĞİ.",
+    whyLearn:
+      "AgencyOS verisi Supabase'de. RLS'i ve hangi key'in nerede kullanıldığını bilmemek, geçmişte yaşadığın key sızıntısı gibi gerçek güvenlik açıkları doğurur.",
+    relevanceToCem:
+      "Doğrudan kritik: service_role yalnızca server-side kalmalı, her tabloda RLS açık olmalı. Bu adım AgencyOS'taki auth/anahtar açığını kendi başına denetleyip kapatmanı sağlar.",
+    howToLearn: [
+      "Temel SQL: SELECT/INSERT/UPDATE/DELETE ve WHERE/JOIN mantığını öğren.",
+      "Supabase'de Row Level Security (RLS) nedir, policy nasıl yazılır — resmi rehberi oku.",
+      "anon key ile service_role key farkını netleştir: hangisi client'a gider, hangisi ASLA gitmez.",
+      "AgencyOS tablolarını gez: her birinde RLS açık mı, policy auth tabanlı mı denetle.",
+    ],
+    resources: {
+      links: [
+        { title: "Supabase — Row Level Security", url: "https://supabase.com/docs/guides/database/postgres/row-level-security", kind: "doc", free: true, note: "KRİTİK: service_role server-only, her tabloda RLS." },
+        { title: "Supabase — API Keys", url: "https://supabase.com/docs/guides/api/api-keys", kind: "doc", free: true, note: "anon vs service_role — nerede kullanılır." },
+        { title: "SQLBolt — Interactive SQL", url: "https://sqlbolt.com", kind: "course", free: true, note: "Sıfırdan interaktif SQL pratiği." },
+      ],
+      docs: ["supabase.com/docs/guides/database"],
+    },
+    practiceProjects: [
+      "Bir tabloya RLS açıp auth tabanlı bir policy yaz, anon key ile erişimi test et.",
+      "AgencyOS'ta service_role'ün client'a sızmadığını ve tüm tabloların RLS'li olduğunu denetle.",
+    ],
+    completionProof: [
+      "anon vs service_role farkını ve nerede kullanıldığını açıklayabiliyorsun.",
+      "En az 1 tabloya çalışan bir RLS policy yazdın.",
+    ],
+    ifAlreadyKnown: [
+      "AgencyOS'taki tüm tablolar için RLS denetim listesi çıkar, eksikleri kapat.",
+    ],
+    defaultStatus: "not_started",
+    priority: "later",
+  },
+  {
+    id: "api-auth-fundamentals",
+    title: "API & Auth Temelleri",
+    technicalName: "REST, Env/Secrets & Endpoint Security",
+    type: "technical",
+    category: "teknik",
+    subgroup: "yazilim_temeli",
+    order: 6,
+    shortDescription:
+      "REST mantığı, env/secret yönetimi ve endpoint güvenliği — dış dünyayla konuşan katmanı güvenle kurmak.",
+    whyLearn:
+      "App'lerin çoğu API çağrısı + auth üstüne kurulu. Secret'ı env'de tutmak, endpoint'i doğrulamak ve input'u doğrulamak bilinmezse veri sızar veya kötüye kullanılır.",
+    relevanceToCem:
+      "AgencyOS API route'ları ve 3. parti entegrasyonlar (Telegram, Gemini, Supabase) bu temele dayanıyor. Hangi anahtarın NEXT_PUBLIC olabileceğini, hangisinin asla olamayacağını bilmek şart.",
+    howToLearn: [
+      "REST temelleri: GET/POST/PUT/DELETE, status kodları (2xx/4xx/5xx), header/body.",
+      "Env/secret yönetimi: .env, NEXT_PUBLIC_ öneki neyi client'a açar, neyi açmaz.",
+      "Endpoint güvenliği: her route'ta auth kontrolü, input doğrulama (zod), rate limit mantığı.",
+      "AgencyOS'ta bir API route aç: auth var mı, input doğrulanıyor mu, secret nasıl okunuyor.",
+    ],
+    resources: {
+      links: [
+        { title: "MDN — HTTP Overview", url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Overview", kind: "doc", free: true, note: "REST/HTTP temelleri." },
+        { title: "Next.js — Route Handlers", url: "https://nextjs.org/docs/app/building-application/routing/route-handlers", kind: "doc", free: true, note: "App Router API endpoint'leri." },
+        { title: "OWASP API Security Top 10", url: "https://owasp.org/API-Security/editions/2023/en/0x11-t10/", kind: "doc", free: true, note: "Endpoint güvenliğinde en sık 10 hata." },
+        { title: "Zod", url: "https://zod.dev", kind: "doc", free: true, note: "Input doğrulama için şema." },
+      ],
+    },
+    practiceProjects: [
+      "Auth + zod doğrulamalı küçük bir API route yaz; geçersiz input'u net hata ile reddet.",
+      "AgencyOS'taki bir endpoint'in auth ve input doğrulamasını denetle, eksikse ekle.",
+    ],
+    completionProof: [
+      "Bir endpoint'i auth + input doğrulama ile güvene aldın.",
+      "Hangi env değişkeninin client'a açık (NEXT_PUBLIC) olabileceğini açıklayabiliyorsun.",
+    ],
+    ifAlreadyKnown: [
+      "AgencyOS API route'ları için bir güvenlik kontrol listesi (auth, validation, rate limit) çıkar.",
+    ],
+    defaultStatus: "not_started",
+    priority: "later",
+  },
+]
+
+// Ham becerileri zenginleştir (yalnızca ENRICHMENT'te olanlar = kart-içi 40 kalem).
+const ENRICHED_EXISTING: CareerSkill[] = RAW_WITH_LEVEL
+  .filter(({ skill }) => ENRICHMENT[skill.id] !== undefined)
+  .map(({ skill, levelNumber }) => {
+    const e = ENRICHMENT[skill.id]
+    return {
+      ...skill,
+      priority: e.priority,
+      category: e.category,
+      subgroup: e.subgroup,
+      order: e.order,
+      originLevel: levelNumber,
+    }
+  })
+
+// 2 ana kartın içindeki tüm beceriler (45 = 40 mevcut + 5 yeni B3).
+export const CAREER_SKILLS: CareerSkill[] = [...ENRICHED_EXISTING, ...NEW_B3_SKILLS]
+
+// Fiziksel Kariyer Sigortası — ayrı stratejik/ileride blok (dokunulmaz).
+export const STRATEGIC_INSURANCE_SKILLS: CareerSkill[] = RAW_WITH_LEVEL
+  .filter(({ levelNumber }) => levelNumber === 6)
+  .map(({ skill, levelNumber }, i) => ({
+    ...skill,
+    category: typeToCategory(skill.type),
+    order: i + 1,
+    originLevel: levelNumber,
+  }))
+
+// Backlog / Projeler — beceri değil. youtube-channel buraya taşındı.
+export interface BacklogProject {
+  id: string
+  title: string
+  note: string
+  url?: string
+}
+
+export const BACKLOG_PROJECTS: BacklogProject[] = [
+  {
+    id: "youtube-channel",
+    title: "YouTube Profesyonel Kanal",
+    note:
+      "Yapay zeka, tasarım ve teknoloji üzerine içerik kanalı. Bu bir beceri değil, proje/kanal — yol haritasında değil, backlog'da bekliyor.",
+  },
+]
+
+// Arşiv — şekil korunur (ArchivedCareerItems aynı sözleşmeyi kullanır).
+const ARCHIVED: Array<{ skill: CareerSkill; levelNumber: number; levelTitle: string }> = RAW_WITH_LEVEL
+  .filter(({ skill }) => skill.priority === "archive")
+  .map(({ skill, levelNumber, levelTitle }) => ({
+    skill: { ...skill, category: typeToCategory(skill.type), originLevel: levelNumber },
+    levelNumber,
+    levelTitle,
+  }))
+
+// ── SELECTORLAR ──────────────────────────────────────────────────────────────
+const PRIORITY_RANK: Record<CareerSkillPriority, number> = { now: 0, next: 1, later: 2, archive: 3 }
+
+function sortSkills(a: CareerSkill, b: CareerSkill): number {
+  const byPriority = PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority]
+  if (byPriority !== 0) return byPriority
+  return (a.order ?? 99) - (b.order ?? 99)
+}
+
 export function getSkillById(id: string): CareerSkill | undefined {
-  for (const level of CAREER_ROADMAP) {
-    const found = level.skills.find(s => s.id === id)
-    if (found) return found
-  }
-  return undefined
+  return CAREER_SKILLS.find(s => s.id === id) ?? STRATEGIC_INSURANCE_SKILLS.find(s => s.id === id)
 }
 
-export function getActiveSkills(level: CareerLevel): CareerSkill[] {
-  return level.skills.filter(s => s.priority !== "archive")
+export function getKaliciSkills(): CareerSkill[] {
+  return CAREER_SKILLS.filter(s => s.category === "kalici").sort(sortSkills)
 }
 
-export function getArchivedSkills(level: CareerLevel): CareerSkill[] {
-  return level.skills.filter(s => s.priority === "archive")
+export function getTeknikSkills(subgroup: TeknikSubgroup): CareerSkill[] {
+  return CAREER_SKILLS.filter(s => s.category === "teknik" && s.subgroup === subgroup).sort(sortSkills)
+}
+
+export function getAllActiveSkills(): CareerSkill[] {
+  return CAREER_SKILLS.slice().sort(sortSkills)
+}
+
+export function getNowSkills(): CareerSkill[] {
+  return getAllActiveSkills().filter(s => s.priority === "now")
 }
 
 export function getAllArchivedSkills(): Array<{
@@ -1767,11 +2137,5 @@ export function getAllArchivedSkills(): Array<{
   levelNumber: number
   levelTitle: string
 }> {
-  return CAREER_ROADMAP.flatMap(level =>
-    getArchivedSkills(level).map(skill => ({
-      skill,
-      levelNumber: level.levelNumber,
-      levelTitle: level.title,
-    }))
-  )
+  return ARCHIVED
 }

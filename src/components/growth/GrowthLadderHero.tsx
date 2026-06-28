@@ -1,33 +1,35 @@
 "use client"
 
-import { CAREER_ROADMAP } from "@/data/careerRoadmap"
+import { getKaliciSkills, getTeknikSkills, getAllActiveSkills, getNowSkills } from "@/data/careerRoadmap"
+import type { CareerSkill } from "@/data/careerRoadmap"
 
 interface Props {
-  activeLevelId: string | null
   completedSkillIds: string[]
 }
 
-// Pastel kategori aksanları — LevelRoadmap ile aynı palet (7 seviye).
-const LEVEL_COLORS = ["#FB923C", "#6AA2F0", "#2DD4BF", "#A78BFA", "#F472B6", "#6B7280", "#38BDF8"]
+// 2-kart modeli: Kalıcı + Teknik'in 3 alt grubu. Her biri bir ilerleme çubuğu.
+const GROUP_COLORS = {
+  kalici: "#A78BFA",
+  kreatif: "#6AA2F0",
+  ai: "#2DD4BF",
+  yazilim: "#FB923C",
+} as const
 
-export function GrowthLadderHero({ activeLevelId, completedSkillIds }: Props) {
-  const totalSkills = CAREER_ROADMAP.reduce((acc, l) => {
-    return acc + l.skills.filter(s => s.priority !== "archive").length
-  }, 0)
+export function GrowthLadderHero({ completedSkillIds }: Props) {
+  const allSkills = getAllActiveSkills()
+  const groups: { key: keyof typeof GROUP_COLORS; label: string; tooltip: string; skills: CareerSkill[] }[] = [
+    { key: "kalici", label: "Kalıcı", tooltip: "Kalıcı Beceriler", skills: getKaliciSkills() },
+    { key: "kreatif", label: "B1", tooltip: "Teknik · Kreatif & Ürün", skills: getTeknikSkills("kreatif") },
+    { key: "ai", label: "B2", tooltip: "Teknik · AI Kaldıracı", skills: getTeknikSkills("ai_kaldirac") },
+    { key: "yazilim", label: "B3", tooltip: "Teknik · Yazılım Temeli", skills: getTeknikSkills("yazilim_temeli") },
+  ]
 
-  const completedCount = CAREER_ROADMAP.reduce((acc, l) => {
-    return acc + l.skills.filter(s => s.priority !== "archive" && completedSkillIds.includes(s.id)).length
-  }, 0)
-
+  const totalSkills = allSkills.length
+  const completedCount = allSkills.filter(s => completedSkillIds.includes(s.id)).length
   const overallPct = totalSkills > 0 ? Math.round((completedCount / totalSkills) * 100) : 0
+  const nowCount = getNowSkills().length
 
-  // İsimli (tıklanır) kaynak sayısı — "hangi kurs/video" kanıtı.
-  const totalLinks = CAREER_ROADMAP.reduce(
-    (acc, l) => acc + l.skills.reduce((s, sk) => s + (sk.resources.links?.length ?? 0), 0),
-    0,
-  )
-
-  const activeLevel = CAREER_ROADMAP.find(l => l.id === activeLevelId) ?? null
+  const totalLinks = allSkills.reduce((acc, sk) => acc + (sk.resources.links?.length ?? 0), 0)
 
   return (
     <div className="bg-dark-card border border-dark-border rounded-card shadow-soft p-5 mb-4">
@@ -58,41 +60,43 @@ export function GrowthLadderHero({ activeLevelId, completedSkillIds }: Props) {
         </span>
       </div>
 
+      {/* Grup ilerlemesi — 4 çubuk (Kalıcı + B1/B2/B3). */}
       <div className="flex items-end gap-2 mt-4">
-        {CAREER_ROADMAP.map((level, idx) => {
-          const color = LEVEL_COLORS[idx] ?? "var(--accent)"
-          const isActive = level.id === activeLevelId
-          const activeSkills = level.skills.filter(s => s.priority !== "archive")
-          const levelDone = activeSkills.filter(s => completedSkillIds.includes(s.id)).length
-          const levelPct = activeSkills.length > 0 ? levelDone / activeSkills.length : 0
-          const stepHeight = 28 + idx * 14
+        {groups.map(group => {
+          const color = GROUP_COLORS[group.key]
+          const done = group.skills.filter(s => completedSkillIds.includes(s.id)).length
+          const pct = group.skills.length > 0 ? done / group.skills.length : 0
+          const hasNow = group.skills.some(s => s.priority === "now")
 
           return (
             <div
-              key={level.id}
+              key={group.key}
               className="flex-1 flex flex-col items-center gap-1"
-              title={`Seviye ${level.levelNumber}: ${level.title}`}
+              title={`${group.tooltip}: ${done}/${group.skills.length}`}
             >
               <div
                 className="w-full rounded-[4px] relative overflow-hidden transition-all duration-300"
                 style={{
-                  height: stepHeight,
-                  backgroundColor: isActive ? color + "20" : "var(--bg-elevated)",
-                  border: `1px solid ${isActive ? color : "var(--border-subtle)"}`,
+                  height: 56,
+                  backgroundColor: hasNow ? color + "20" : "var(--bg-elevated)",
+                  border: `1px solid ${hasNow ? color : "var(--border-subtle)"}`,
                 }}
               >
                 <div
                   className="absolute bottom-0 left-0 right-0 transition-all duration-500"
-                  style={{ height: `${levelPct * 100}%`, backgroundColor: color + "18" }}
+                  style={{ height: `${pct * 100}%`, backgroundColor: color + "30" }}
                 />
-                {isActive && (
+                {hasNow && (
                   <div className="absolute inset-0 flex items-center justify-center">
                     <span className="text-[10px] font-mono animate-bounce" style={{ color }}>●</span>
                   </div>
                 )}
               </div>
-              <span className="text-[10px] font-mono" style={{ color: isActive ? color : "var(--text-tertiary)" }}>
-                S{level.levelNumber}
+              <span
+                className="text-[10px] font-mono"
+                style={{ color: hasNow ? color : "var(--text-tertiary)" }}
+              >
+                {group.label}
               </span>
             </div>
           )
@@ -106,9 +110,9 @@ export function GrowthLadderHero({ activeLevelId, completedSkillIds }: Props) {
         />
       </div>
 
-      {activeLevel && (
+      {nowCount > 0 && (
         <p className="text-xs font-mono text-[var(--text-muted)] mt-2">
-          Aktif seviye: <span className="text-[var(--accent)]">{activeLevel.title}</span>
+          Şu an aktif: <span className="text-[var(--accent)]">{nowCount} beceri</span> (en fazla 4)
         </p>
       )}
     </div>

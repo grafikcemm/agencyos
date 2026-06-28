@@ -13,9 +13,9 @@ interface Props {
   isCompleted: boolean
   isActiveFocus: boolean
   onStatusChange: (skillId: string, status: CareerSkillStatus) => void
-  onSetFocus: (skillId: string, levelId: string) => void
+  onSetFocus: (skillId: string, groupId: string) => void
   onComplete: (skillId: string) => void
-  levelId: string
+  groupId: string
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -44,7 +44,7 @@ export function SkillDetailDrawer({
   onStatusChange,
   onSetFocus,
   onComplete,
-  levelId,
+  groupId,
 }: Props) {
   const [bridgeState, setBridgeState] = useState<"idle" | "saving" | "done" | "error">("idle")
 
@@ -139,7 +139,7 @@ export function SkillDetailDrawer({
 
       <div className="flex gap-2 py-3 border-t border-[var(--border-subtle)]">
         <button
-          onClick={() => onSetFocus(skill.id, levelId)}
+          onClick={() => onSetFocus(skill.id, groupId)}
           disabled={isActiveFocus}
           className={`flex-1 py-2 text-xs font-mono rounded transition-all border ${
             isActiveFocus

@@ -43,6 +43,12 @@ export const TOOL_ARG_SCHEMAS: Record<string, z.ZodTypeAny> = {
   draft_proposal: z.object({ lead_id: leadId, services: z.array(z.string().max(120)).max(50).optional() }),
   generate_pitch: z.object({ lead_id: leadId, service_id: z.string().max(64).optional() }),
 
+  // Görev kaydı (Life active_tasks)
+  create_task: z.object({
+    title: z.string().min(1).max(300),
+    category: z.enum(['active', 'waiting']).optional(),
+  }),
+
   // İçerik üretimi
   build_carousel_brief: z.object({ topic: z.string().min(1).max(300), slides: z.number().int().min(1).max(20).optional() }),
   build_visual_prompt: z.object({ description: z.string().min(1).max(500), style: z.string().max(60).optional() }),

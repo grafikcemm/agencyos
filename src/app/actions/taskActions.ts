@@ -2,53 +2,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { assertSession } from '@/lib/auth'
-import { mirrorHabitDone } from '@/app/actions/habitActions'
-import { HABIT_SOURCE_BY_SYSTEM_TYPE } from '@/lib/habits/config'
-
-// Template task'ı tamamla/geri al
-// v2: Sadece UUID formatındaki template_id yazılır. Fallback string ID'ler (rutin_*) engellenir.
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-export async function toggleTemplateTask(
-  templateId: string,
-  isCompleted: boolean
-): Promise<{ success: boolean; error?: string }> {
-  await assertSession()
-  if (!UUID_RE.test(templateId)) {
-    console.warn(`toggleTemplateTask: non-UUID templateId blocked: ${templateId}`)
-    return { success: false, error: 'non-UUID templateId blocked' }
-  }
-  const supabase = createClient()
-  const today = new Date().toISOString().slice(0, 10)
-
-  if (isCompleted) {
-    const { error } = await supabase
-      .from('daily_completions')
-      .delete()
-      .eq('template_id', templateId)
-      .eq('date', today)
-    if (error) return { success: false, error: error.message }
-  } else {
-    const { error } = await supabase
-      .from('daily_completions')
-      .upsert(
-        { template_id: templateId, date: today },
-        { onConflict: 'template_id,date' }
-      )
-    if (error) return { success: false, error: error.message }
-  }
-
-  // Mirror → alışkanlık zinciri (saz/spor/ingilizce). Yeni durum = !isCompleted. best-effort.
-  const { data: tpl } = await supabase
-    .from('task_templates')
-    .select('system_type')
-    .eq('id', templateId)
-    .maybeSingle()
-  const habitKey = tpl?.system_type ? HABIT_SOURCE_BY_SYSTEM_TYPE[tpl.system_type] : undefined
-  if (habitKey) await mirrorHabitDone(habitKey, today, !isCompleted)
-
-  revalidatePath('/')
-  return { success: true }
-}
 
 // Aktif görev ekle
 export async function addActiveTask(

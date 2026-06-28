@@ -6,18 +6,25 @@ import { SkillDetailDrawer } from "./SkillDetailDrawer"
 
 interface Props {
   skill: CareerSkill
-  levelId: string
+  groupId: string
   currentStatus: CareerSkillStatus
   isCompleted: boolean
   isActiveFocus: boolean
   onStatusChange: (skillId: string, status: CareerSkillStatus) => void
-  onSetFocus: (skillId: string, levelId: string) => void
+  onSetFocus: (skillId: string, groupId: string) => void
   onComplete: (skillId: string) => void
 }
 
-const TYPE_BADGE: Record<string, string> = {
-  technical: "border-[var(--info)]/30 text-[var(--info)]",
-  personal: "border-[var(--cat-purple)]/30 text-[var(--cat-purple)]",
+// Rozet artık üst kategoriden (kalıcı / teknik alt-grubu) türetilir, type'tan değil.
+const GROUP_BADGE: Record<string, { label: string; cls: string }> = {
+  kalici: { label: "Kalıcı", cls: "border-[var(--cat-purple)]/30 text-[var(--cat-purple)]" },
+  kreatif: { label: "Kreatif", cls: "border-[var(--info)]/30 text-[var(--info)]" },
+  ai_kaldirac: { label: "AI Kaldıracı", cls: "border-[var(--info)]/30 text-[var(--info)]" },
+  yazilim_temeli: { label: "Yazılım", cls: "border-[var(--info)]/30 text-[var(--info)]" },
+}
+
+function groupKey(skill: CareerSkill): string {
+  return skill.category === "kalici" ? "kalici" : skill.subgroup ?? "kreatif"
 }
 
 const PRIORITY_META: Record<string, { label: string; cls: string }> = {
@@ -40,7 +47,7 @@ const STATUS_DOT: Record<string, string> = {
 
 export function SkillCard({
   skill,
-  levelId,
+  groupId,
   currentStatus,
   isCompleted,
   isActiveFocus,
@@ -50,10 +57,11 @@ export function SkillCard({
 }: Props) {
   const [open, setOpen] = useState(false)
 
-  const badgeClass = TYPE_BADGE[skill.type] ?? "border-[var(--border-subtle)] text-[var(--text-muted)]"
+  const group = GROUP_BADGE[groupKey(skill)] ?? { label: "", cls: "border-[var(--border-subtle)] text-[var(--text-muted)]" }
   const priority = PRIORITY_META[skill.priority] ?? PRIORITY_META.later
   const statusDot = STATUS_DOT[currentStatus] ?? STATUS_DOT.not_started
   const linkCount = skill.resources.links?.length ?? 0
+  const isB3Step = skill.subgroup === "yazilim_temeli" && typeof skill.order === "number"
 
   return (
     <div
@@ -87,9 +95,14 @@ export function SkillCard({
                 {priority.label}
               </span>
             )}
-            <span className={`text-[9px] font-mono border px-1.5 py-0.5 rounded ${badgeClass}`}>
-              {skill.type === "technical" ? "teknik" : "kişisel"}
+            <span className={`text-[9px] font-mono border px-1.5 py-0.5 rounded ${group.cls}`}>
+              {group.label}
             </span>
+            {isB3Step && (
+              <span className="text-[9px] font-mono text-[var(--text-tertiary)] border border-[var(--border-subtle)] px-1.5 py-0.5 rounded">
+                Adım {skill.order}
+              </span>
+            )}
             {linkCount > 0 && (
               <span
                 className="text-[9px] font-mono text-[var(--text-tertiary)] flex items-center gap-0.5"
@@ -120,7 +133,7 @@ export function SkillCard({
 
       <SkillDetailDrawer
         skill={skill}
-        levelId={levelId}
+        groupId={groupId}
         isOpen={open}
         currentStatus={currentStatus}
         isCompleted={isCompleted}
