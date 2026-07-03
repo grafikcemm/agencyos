@@ -1,3 +1,5 @@
+import { gatewayChat, isGatewayEnabled } from "../ai/gateway";
+
 export interface OpenRouterMessage {
   role: "system" | "user" | "assistant";
   content: string;
@@ -16,6 +18,21 @@ export async function callOpenRouter(
   messages: OpenRouterMessage[],
   options: OpenRouterOptions = {}
 ): Promise<string | null> {
+  // Faz 0: AI_GATEWAY_ENABLED=true iken tek gateway'e delege et (maliyet loglanır
+  // + aylık tavana tabi olur — bu yol önceden TAKİPSİZDİ). Varsayılan KAPALI →
+  // aşağıdaki mevcut satır-içi davranış birebir korunur. Dönüş sözleşmesi aynı
+  // (string | null); gateway de başarısızlıkta null döner.
+  if (isGatewayEnabled()) {
+    const res = await gatewayChat(messages, {
+      model: options.model,
+      temperature: options.temperature,
+      maxTokens: options.maxTokens,
+      timeoutMs: options.timeoutMs,
+      operation: 'assistant_chat',
+    });
+    return res.content;
+  }
+
   const apiKey = process.env.OPENROUTER_API_KEY;
   const model = options.model ?? process.env.OPENROUTER_MODEL;
 

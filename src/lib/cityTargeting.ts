@@ -202,9 +202,18 @@ interface CityEngagementRow {
 export async function loadCityEngagement(): Promise<Map<string, SectorEngagement>> {
   const stats = new Map<string, SectorEngagement>()
   try {
-    const { data, error } = await supabaseAdmin
-      .from('sector_city_engagement_stats')
+    // Önce v2 view (migration 035): 'contacted' başarı SAYILMAZ. Yoksa eski view'a düş.
+    let { data, error } = await supabaseAdmin
+      .from('sector_city_engagement_stats_v2')
       .select('sector_key, city_key, total_leads, engaged_leads, converted_leads')
+
+    if (error) {
+      const fallback = await supabaseAdmin
+        .from('sector_city_engagement_stats')
+        .select('sector_key, city_key, total_leads, engaged_leads, converted_leads')
+      data = fallback.data
+      error = fallback.error
+    }
 
     if (error || !data) {
       if (error) console.warn('[CITY TARGETING] Engagement view okunamadı:', error.message)

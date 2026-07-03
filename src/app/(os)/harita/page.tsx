@@ -883,6 +883,10 @@ export default function HaritaPage() {
                     <Users className="w-3 h-3" /> Kişiler
                   </button>
                 </div>
+                {/* Lead Intelligence v2: günün karar-hazır fırsatları ayrı yüzeyde */}
+                <a href="/firsatlar" className="text-[10px] font-bold text-[var(--accent)] hover:underline whitespace-nowrap">
+                  Bugünün Fırsatları →
+                </a>
                 {view === 'businesses' ? (
                   <span className="text-[10px] font-black tracking-widest text-[var(--text-primary)] uppercase">
                     {filteredLeads.filter(l => !l.disqualification_reason).length} uygun

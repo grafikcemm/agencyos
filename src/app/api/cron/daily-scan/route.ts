@@ -7,6 +7,12 @@ import { guardCronEnv, notifyOps } from '@/lib/env'
 import { loadSectorEngagement } from '@/lib/sectorRotation'
 import { buildDailyTargetPlan, loadCityEngagement } from '@/lib/cityTargeting'
 import { isMissingCategoryColumnError, stripCategoryKeys } from '@/lib/leads/categoryPersist'
+import { getLeadIntelMode } from '@/lib/leadIntel/flag'
+import { runLeadIntelPipeline, PoolCandidate } from '@/lib/leadIntel/pipeline'
+
+// Lead Intelligence v2: PSI audit'leri (aday başına 10-60sn) aynı koşuda çalışır.
+// Hobby planda 300sn ancak Fluid Compute ile mümkün — deploy öncesi proje ayarını doğrula.
+export const maxDuration = 300
 
 export async function GET(req: Request) {
   return handleScan(req)
@@ -137,6 +143,11 @@ async function handleScan(req: Request) {
 
     let skippedDuplicates = 0
     const scannedQueries: string[] = []
+
+    // Lead Intelligence v2 aday havuzu: dedup'u geçen, detayları çekilmiş HER aday
+    // (eski kapının kabul VE red ettikleri). Shadow modda v2 bu havuzu bağımsız
+    // değerlendirir; active modda kabul edilenler v2 seçiminde yarışır.
+    const v2Pool: PoolCandidate[] = []
 
     let attempts = 0
     const maxAttempts = 40 // API/sonsuz döngü koruması; geniş şehir×sektör rotasyonuna izin ver
@@ -271,6 +282,23 @@ async function handleScan(req: Request) {
             evidence
           })
 
+          // v2 havuzuna ekle (kabul/red fark etmeksizin) — leadId kabulde doldurulur.
+          const poolEntry: PoolCandidate = {
+            placeId,
+            businessName: d.name,
+            sector: cleanSector,
+            city: loc.city,
+            district: loc.district,
+            phone,
+            website: d.website || null,
+            rating: d.rating || null,
+            reviewCount: d.user_ratings_total || 0,
+            qualityScore: qr.quality_score,
+            leadId: null,
+            acceptedByLegacyGate: false,
+          }
+          v2Pool.push(poolEntry)
+
           // Exclude disqualified or low tier
           if (qr.disqualification_reason) {
             rejectedLeads.push({
@@ -389,6 +417,9 @@ async function handleScan(req: Request) {
               continue
             }
 
+            poolEntry.leadId = inserted!.id
+            poolEntry.acceptedByLegacyGate = true
+
             acceptedLeads.push({
               // insertErr guard'ı (continue) geçildi → inserted garanti non-null.
               id: inserted!.id,
@@ -438,6 +469,23 @@ async function handleScan(req: Request) {
       }, { onConflict: 'key' })
     }
 
+    // Lead Intelligence v2 (settings-yönetimli; env kill-switch yalnız kapatır).
+    // off → hiç koşmaz (bugünkü davranış bit-bit aynı). shadow → yalnız gözlemler.
+    // active → seçilen kabul edilmiş lead'lere v2 kolonları yazılır. Asla cron'u düşürmez.
+    let leadIntelSummary: Record<string, unknown> | null = null
+    if (!isDryRun) {
+      try {
+        const mode = await getLeadIntelMode()
+        if (mode !== 'off') {
+          const result = await runLeadIntelPipeline({ pool: v2Pool, runDate: todayStr, mode })
+          leadIntelSummary = { ...result }
+          console.log(`[DAILY CRON] Lead Intelligence v2 (${mode}): stage=${result.stage}, assessed=${result.assessed}, selected=${result.selected.join(', ') || 'yok'}, cost=$${result.costUsd.toFixed(4)}`)
+        }
+      } catch (e) {
+        console.warn('[DAILY CRON] Lead Intelligence v2 hatası (yut):', e instanceof Error ? e.message : e)
+      }
+    }
+
     const responsePayload: Record<string, any> = {
       date: todayStr,
       targetPlan: targetPlan.map(t => `${t.cityId}:${t.sector.id}`),
@@ -445,6 +493,7 @@ async function handleScan(req: Request) {
       skippedDuplicates,
       acceptedLeads,
       rejectedLeads,
+      leadIntel: leadIntelSummary,
       nextRun: 'Yarın Sabah 08:00 (TR)'
     }
 

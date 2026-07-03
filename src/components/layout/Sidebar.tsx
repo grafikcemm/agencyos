@@ -21,7 +21,8 @@ import {
   GraduationCap,
   Wallet,
   Flame,
-  Sparkles
+  Sparkles,
+  ShieldCheck
 } from 'lucide-react'
 
 // Sidebar en tepesindeki sabit alışkanlık takibi linki (kullanıcının en kritik yüzeyi).
@@ -43,12 +44,14 @@ const NAV_GROUPS = [
       { label: 'Command Center', icon: LayoutDashboard, href: '/command-center' },
       { label: 'Asistan',        icon: Sparkles,        href: '/asistan' },
       { label: 'Ajanlar',        icon: Users,           href: '/agents' },
+      { label: 'Konsol',         icon: ShieldCheck,     href: '/konsol' },
     ]
   },
   {
     title: 'PIPELINE',
     items: [
       { label: 'Lead Radar',        icon: Map,       href: '/harita' },
+      { label: 'Bugünün Fırsatları', icon: Target,   href: '/firsatlar' },
       { label: 'Pipeline',          icon: GitMerge,  href: '/pipeline' },
       { label: 'Projeler',          icon: Briefcase, href: '/projects' },
       { label: 'Hizmetlerim',       icon: Package,   href: '/services' },

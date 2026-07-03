@@ -1,8 +1,9 @@
 import { supabaseAdmin } from './supabase'
+import { getMonthlyCapUsd } from './ai/caps'
+import { logAiCostRow } from './ai/costLog'
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 const BASE_URL = 'https://openrouter.ai/api/v1'
-const MONTHLY_COST_CAP_USD = 20
 
 type ModelTier = 'light' | 'medium' | 'heavy'
 
@@ -25,14 +26,71 @@ const OPERATION_MODEL_MAP: Record<string, { model: string; tier: ModelTier }> = 
 
   // Heavy: full proposals only — explicit user approval required before any send
   draft_proposal:      { model: 'deepseek/deepseek-v4-pro', tier: 'heavy' },
+
+  // Lead Intelligence v2 konseyi — hafif kritikler + haiku chair.
+  // Design Critic multimodal (screenshot signed URL) alır; flash-lite vision destekler.
+  lead_intel_design_critic:      { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
+  lead_intel_automation_analyst: { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
+  lead_intel_skeptic:            { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
+  lead_intel_chair:              { model: 'anthropic/claude-haiku-4-5',   tier: 'medium' },
 }
 
-// Per-million-token cost rates (USD) for accurate cost logging
-const TOKEN_RATES_PER_M: Record<string, number> = {
-  'google/gemini-2.5-flash-lite': 0.05,
-  'anthropic/claude-haiku-4-5':   0.25,
-  'deepseek/deepseek-v4-flash':   0.1,
-  'deepseek/deepseek-v4-pro':     0.5,
+// Per-million-token maliyet oranları (USD) — TAHMİNDİR, sabit gerçek değil.
+// input/output ayrık; settings tablosundaki 'ai_token_rates' JSON satırı bu
+// default'ları model bazında ezebilir (deploy gerekmez). Gerçek harcama
+// ai_cost_logs'tan izlenir.
+export interface TokenRate {
+  input: number
+  output: number
+}
+
+const TOKEN_RATES_PER_M: Record<string, TokenRate> = {
+  'google/gemini-2.5-flash-lite': { input: 0.05, output: 0.05 },
+  'anthropic/claude-haiku-4-5':   { input: 0.25, output: 0.25 },
+  'deepseek/deepseek-v4-flash':   { input: 0.1,  output: 0.1 },
+  'deepseek/deepseek-v4-pro':     { input: 0.5,  output: 0.5 },
+}
+
+const DEFAULT_RATE: TokenRate = { input: 0.1, output: 0.1 }
+
+// settings.ai_token_rates override'ı — 5 dk cache'li, hata halinde sessizce default.
+let rateOverrideCache: { rates: Record<string, TokenRate>; loadedAt: number } | null = null
+const RATE_CACHE_TTL_MS = 5 * 60 * 1000
+
+async function loadRateOverrides(): Promise<Record<string, TokenRate>> {
+  if (rateOverrideCache && Date.now() - rateOverrideCache.loadedAt < RATE_CACHE_TTL_MS) {
+    return rateOverrideCache.rates
+  }
+  try {
+    const { data } = await supabaseAdmin
+      .from('settings')
+      .select('value')
+      .eq('key', 'ai_token_rates')
+      .maybeSingle()
+    const parsed = data?.value
+    const rates: Record<string, TokenRate> = {}
+    if (parsed && typeof parsed === 'object') {
+      for (const [model, rate] of Object.entries(parsed as Record<string, unknown>)) {
+        if (
+          rate && typeof rate === 'object' &&
+          typeof (rate as TokenRate).input === 'number' &&
+          typeof (rate as TokenRate).output === 'number'
+        ) {
+          rates[model] = rate as TokenRate
+        }
+      }
+    }
+    rateOverrideCache = { rates, loadedAt: Date.now() }
+    return rates
+  } catch {
+    rateOverrideCache = { rates: {}, loadedAt: Date.now() }
+    return {}
+  }
+}
+
+export async function getTokenRate(model: string): Promise<TokenRate> {
+  const overrides = await loadRateOverrides()
+  return overrides[model] ?? TOKEN_RATES_PER_M[model] ?? DEFAULT_RATE
 }
 
 export function getModel(operation: string): { model: string; tier: ModelTier } {
@@ -40,8 +98,10 @@ export function getModel(operation: string): { model: string; tier: ModelTier } 
 }
 
 interface OpenRouterResponse {
+  id?: string
   choices: { message: { content: string; tool_calls?: ToolCall[] } }[]
-  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+  // usage.cost: OpenRouter'ın gerçek USD maliyeti (usage:{include:true} ile gelir).
+  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number; cost?: number }
   model: string
 }
 
@@ -60,16 +120,17 @@ export interface JarvisTool {
   }
 }
 
-async function getMonthlySpend(): Promise<number> {
-  const now = new Date()
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-
+// Belirli tarihten bu yana (opsiyonel operation prefix filtreli) toplam harcama.
+// Lead Intelligence günlük tavanı (budget.ts) 'lead_intel_' prefix'iyle kullanır.
+export async function getSpendSince(sinceIso: string, operationPrefix?: string): Promise<number> {
   try {
-    const { data } = await supabaseAdmin
+    let query = supabaseAdmin
       .from('ai_cost_logs')
       .select('cost_usd')
-      .gte('created_at', startOfMonth)
+      .gte('created_at', sinceIso)
+    if (operationPrefix) query = query.like('operation', `${operationPrefix}%`)
 
+    const { data } = await query
     return (data ?? []).reduce(
       (sum: number, row: { cost_usd: number }) => sum + (row.cost_usd ?? 0),
       0
@@ -79,6 +140,12 @@ async function getMonthlySpend(): Promise<number> {
   }
 }
 
+async function getMonthlySpend(): Promise<number> {
+  const now = new Date()
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  return getSpendSince(startOfMonth)
+}
+
 async function logAiCost(
   operation: string,
   modelUsed: string,
@@ -86,43 +153,54 @@ async function logAiCost(
   inputTokens: number,
   outputTokens: number,
   costUsd: number,
-  agentKey?: string
+  agentKey?: string,
+  relatedLeadId?: string | null,
+  generationId?: string | null,
+  actualCostUsd?: number | null
 ) {
-  try {
-    await supabaseAdmin.from('ai_cost_logs').insert({
-      operation,
-      model_used: modelUsed,
-      model_tier: tier,
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-      cost_usd: costUsd,
-      cost_tl: costUsd * 38,
-      agent_key: agentKey ?? null,
-      created_at: new Date().toISOString()
-    })
-  } catch (error) {
-    console.error('Error logging AI cost:', error)
-  }
+  // cost_usd DAİMA tahmini (parity); gerçek OpenRouter maliyeti actual_cost_usd'ye.
+  await logAiCostRow({
+    operation,
+    model_used: modelUsed,
+    model_tier: tier,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    cost_usd: costUsd,
+    cost_tl: costUsd * 38,
+    agent_key: agentKey ?? null,
+    related_lead_id: relatedLeadId ?? null,
+    generation_id: generationId ?? null,
+    actual_cost_usd: actualCostUsd ?? null,
+    cost_source: 'estimated',
+  })
 }
+
+// Multimodal içerik parçası (OpenRouter/OpenAI standart formatı).
+// Design Critic screenshot'ı signed URL ile image_url parçası olarak alır.
+export type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
 
 async function callOpenRouter(
   operation: string,
   tier: ModelTier,
   model: string,
   systemPrompt: string,
-  userPrompt: string,
+  userPrompt: string | ContentPart[],
   maxTokens: number = 1000,
   tools?: JarvisTool[],
-  agentKey?: string
-): Promise<{ content: string; toolCalls?: ToolCall[]; usage: { promptTokens: number; completionTokens: number } }> {
+  agentKey?: string,
+  relatedLeadId?: string | null
+): Promise<{ content: string; toolCalls?: ToolCall[]; usage: { promptTokens: number; completionTokens: number }; costUsd: number }> {
   if (!OPENROUTER_API_KEY) {
     throw new Error('OPENROUTER_API_KEY ortam değişkeni ayarlanmamış.')
   }
 
+  const monthlyCapUsd = await getMonthlyCapUsd()
   const monthlySpend = await getMonthlySpend()
-  if (monthlySpend >= MONTHLY_COST_CAP_USD) {
+  if (monthlySpend >= monthlyCapUsd) {
     throw new Error(
-      `Aylık AI maliyet limiti aşıldı ($${MONTHLY_COST_CAP_USD}). Ay sıfırlanana kadar AI kullanılamaz.`
+      `Aylık AI maliyet limiti aşıldı ($${monthlyCapUsd}). Ay sıfırlanana kadar AI kullanılamaz.`
     )
   }
 
@@ -133,7 +211,9 @@ async function callOpenRouter(
       { role: 'user', content: userPrompt }
     ],
     max_tokens: maxTokens,
-    temperature: 0.7
+    temperature: 0.7,
+    // Gerçek USD maliyeti yanıt gövdesinde döndür (gözlem; cost_usd hâlâ tahmini).
+    usage: { include: true }
   }
 
   if (tools && tools.length > 0) {
@@ -162,8 +242,15 @@ async function callOpenRouter(
   const content = message?.content ?? ''
   const toolCalls = message?.tool_calls
 
-  const ratePerM = TOKEN_RATES_PER_M[model] ?? 0.1
-  const costUsd = (data.usage.total_tokens / 1_000_000) * ratePerM
+  // input/output ayrık oranlarla maliyet (oranlar tahmindir; settings override edebilir).
+  const rate = await getTokenRate(model)
+  const costUsd =
+    (data.usage.prompt_tokens / 1_000_000) * rate.input +
+    (data.usage.completion_tokens / 1_000_000) * rate.output
+
+  // Gözlem: gerçek generation id + gerçek USD (varsa). cost_usd DEĞİŞMEZ (parity).
+  const generationId = data.id ?? null
+  const actualCostUsd = typeof data.usage.cost === 'number' ? data.usage.cost : null
 
   await logAiCost(
     operation,
@@ -172,7 +259,10 @@ async function callOpenRouter(
     data.usage.prompt_tokens,
     data.usage.completion_tokens,
     costUsd,
-    agentKey
+    agentKey,
+    relatedLeadId,
+    generationId,
+    actualCostUsd
   )
 
   return {
@@ -182,7 +272,36 @@ async function callOpenRouter(
       promptTokens: data.usage.prompt_tokens,
       completionTokens: data.usage.completion_tokens,
     },
+    costUsd,
   }
+}
+
+// Multimodal operation-aware call — Lead Intelligence konseyi için.
+// parts: metin + opsiyonel image_url (private bucket signed URL). Dönen content
+// çağıran tarafta zod ile parse edilir; burada serbest metin karar verisi DEĞİLDİR.
+// meta.agentKey sabit ajan kimliğidir; meta.relatedLeadId maliyet kaydını lead'e bağlar.
+// costUsd dönüşü: assessment-düzeyi gerçek maliyet muhasebesi (retry'lar dahil edilsin
+// diye çağıran taraf her çağrının maliyetini toplar).
+export async function callWithOperationMultimodal(
+  operation: string,
+  systemPrompt: string,
+  parts: ContentPart[],
+  maxTokens: number = 1200,
+  meta: { agentKey?: string; relatedLeadId?: string | null } = {}
+): Promise<{ content: string; usage: { promptTokens: number; completionTokens: number }; costUsd: number }> {
+  const { model, tier } = getModel(operation)
+  const result = await callOpenRouter(
+    operation,
+    tier,
+    model,
+    systemPrompt,
+    parts,
+    maxTokens,
+    undefined,
+    meta.agentKey,
+    meta.relatedLeadId
+  )
+  return { content: result.content, usage: result.usage, costUsd: result.costUsd }
 }
 
 // Operation-aware call — preferred entry point for all JARVIS tools
@@ -240,10 +359,11 @@ export async function getMonthlyAiStats(): Promise<{
   percentUsed: number
 }> {
   const spentUsd = await getMonthlySpend()
+  const capUsd = await getMonthlyCapUsd()
   return {
     spentUsd,
-    capUsd: MONTHLY_COST_CAP_USD,
-    percentUsed: Math.round((spentUsd / MONTHLY_COST_CAP_USD) * 100)
+    capUsd,
+    percentUsed: capUsd > 0 ? Math.round((spentUsd / capUsd) * 100) : 0
   }
 }
 

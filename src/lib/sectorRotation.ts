@@ -244,9 +244,19 @@ interface EngagementRow {
 export async function loadSectorEngagement(): Promise<Map<string, SectorEngagement>> {
   const stats = new Map<string, SectorEngagement>()
   try {
-    const { data, error } = await supabaseAdmin
-      .from('sector_engagement_stats')
+    // Önce v2 view (migration 035): 'contacted' başarı SAYILMAZ — yalnız gerçek satış
+    // sinyalleri (responded/meeting/proposal/converted). Yoksa (42P01) eski view'a düş.
+    let { data, error } = await supabaseAdmin
+      .from('sector_engagement_stats_v2')
       .select('sector_key, total_leads, engaged_leads, converted_leads')
+
+    if (error) {
+      const fallback = await supabaseAdmin
+        .from('sector_engagement_stats')
+        .select('sector_key, total_leads, engaged_leads, converted_leads')
+      data = fallback.data
+      error = fallback.error
+    }
 
     if (error || !data) {
       if (error) console.warn('[SECTOR ROTATION] Engagement view okunamadı:', error.message)

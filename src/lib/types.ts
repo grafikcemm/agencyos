@@ -218,6 +218,97 @@ export interface Offer {
   upsells: string[]
 }
 
+// ── Lead Intelligence v2: kanonik hizmet kataloğu (read model) ──────────────
+// Yapı kodda yaşar (src/lib/services/catalog.ts); DB yalnız fiyat/aktiflik override'ı tutar.
+
+export type ServiceDomain = 'tasarim' | 'ai_otomasyon' | 'hibrit'
+
+export type EvidenceKind =
+  | 'pagespeed'
+  | 'screenshot'
+  | 'html_signal'
+  | 'cta_analysis'
+  | 'form_analysis'
+  | 'tech_stack'
+  | 'review_signal'
+  | 'places_data'
+
+export interface ServiceFamily {
+  id: string
+  domain: ServiceDomain
+  name: string
+}
+
+export interface ServicePackage {
+  slug: string // kanonik, kebab-case, PK
+  familyId: string
+  name: string
+  description: string
+  defaultSetupPriceTl: number
+  defaultMonthlyPriceTl: number
+  deliveryDays: number
+  difficulty: Difficulty
+  // Kanıtsız %/ROI vaadi YASAK — catalog.test.ts regex ile lint'ler.
+  salesCopy: {
+    promise: string
+    antiPatterns: string[]
+    checklist: string[]
+  }
+  // Offer Matcher: bu türlerden en az biri doğrulanmış kanıt olarak mevcutsa paket önerilebilir.
+  requiredEvidenceKinds: EvidenceKind[]
+  targetSectors: string[]
+  upsellSlugs: string[]
+  legacyOfferIds: string[] // offers.ts id'leri (compatibility adapter, salt-okunur)
+  legacyPlaybookNames: string[] // playbooks tablosu / seed adları
+}
+
+// Toplanan tek kanıt parçası (lead_evidence satırının bellek karşılığı).
+export interface EvidenceItem {
+  kind: EvidenceKind
+  source: 'psi_v5' | 'html_fetch' | 'google_places'
+  url: string | null
+  summary: string
+  payload: Record<string, unknown>
+  confidence: number // 0-1
+  verified: boolean
+  // Yalnız kind='screenshot': persist ÖNCESİ geçici base64 — satıra asla yazılmaz,
+  // evidenceStore Storage'a yükleyip storage_path'e çevirir.
+  screenshot?: { mime: string; base64: string }
+}
+
+// Konsey koşusu sonucu (lead_assessments satırının bellek karşılığı).
+export interface LeadAssessmentSummary {
+  id: string
+  lead_id: string | null
+  run_date: string
+  mode: 'council' | 'deterministic'
+  shadow: boolean
+  selected: boolean
+  design_score: number | null
+  ai_score: number | null
+  evidence_count: number
+  verified_evidence_count: number
+  chair_verdict: Record<string, unknown> | null
+  cost_usd: number
+}
+
+// Panelden düzenlenebilen tek katman (service_catalog tablosu satırı).
+export interface ServiceCatalogOverride {
+  slug: string
+  setup_price_override_tl: number | null
+  monthly_price_override_tl: number | null
+  active: boolean
+}
+
+// Merge edilmiş görünüm: kod default'ları + DB override.
+export interface ResolvedServicePackage extends ServicePackage {
+  domain: ServiceDomain
+  familyName: string
+  setupPriceTl: number
+  monthlyPriceTl: number
+  active: boolean
+}
+
 export type ProposalStatus = 'draft' | 'sent' | 'accepted' | 'rejected'
 
 export interface Proposal {
