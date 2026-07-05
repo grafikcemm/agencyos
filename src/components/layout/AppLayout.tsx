@@ -22,6 +22,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/settings': 'Sistem Ayarları',
   '/asistan': 'Asistan',
   '/aliskanliklar': 'Alışkanlıklar',
+  '/gorevler': 'Aktif Görevler',
   '/gelisim': 'Gelişim',
   '/akademi': 'Akademi',
   '/kutuphane': 'Kütüphane',

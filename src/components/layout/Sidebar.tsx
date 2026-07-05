@@ -22,11 +22,16 @@ import {
   Wallet,
   Flame,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  ListChecks
 } from 'lucide-react'
 
-// Sidebar en tepesindeki sabit alışkanlık takibi linki (kullanıcının en kritik yüzeyi).
-const TOP_ITEM = { label: 'Alışkanlıklar', icon: Flame, href: '/aliskanliklar' }
+// Sidebar en tepesindeki sabit yüzeyler (kullanıcının en kritik günlük yüzeyleri):
+// Alışkanlıklar + hemen altında Aktif Görevler.
+const TOP_ITEMS = [
+  { label: 'Alışkanlıklar', icon: Flame, href: '/aliskanliklar' },
+  { label: 'Aktif Görevler', icon: ListChecks, href: '/gorevler' },
+]
 
 const NAV_GROUPS = [
   {
@@ -110,16 +115,17 @@ export function Sidebar({ isCollapsed, onToggle, onNavigate }: SidebarProps) {
 
       {/* Nav Groups */}
       <nav className="flex-1 flex flex-col gap-5 px-2 overflow-y-auto">
-        {/* EN TEPE: Alışkanlık Takibi (en kritik yüzey) */}
+        {/* EN TEPE: Alışkanlıklar + Aktif Görevler (en kritik günlük yüzeyler) */}
         <div className="flex flex-col gap-0.5 pb-1 mb-1 border-b border-[var(--border-subtle)]">
-          {(() => {
-            const isActive = pathname === TOP_ITEM.href || pathname.startsWith(TOP_ITEM.href + '/')
-            const Icon = TOP_ITEM.icon
+          {TOP_ITEMS.map((item) => {
+            const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+            const Icon = item.icon
             return (
               <Link
-                href={TOP_ITEM.href}
+                key={item.href}
+                href={item.href}
                 onClick={onNavigate}
-                title={isCollapsed ? TOP_ITEM.label : undefined}
+                title={isCollapsed ? item.label : undefined}
                 className={`flex items-center gap-3 px-2.5 py-2.5 rounded-lg transition-all duration-200 ${
                   isCollapsed ? 'justify-center' : ''
                 } ${
@@ -129,10 +135,10 @@ export function Sidebar({ isCollapsed, onToggle, onNavigate }: SidebarProps) {
                 }`}
               >
                 <Icon className={`w-[18px] h-[18px] shrink-0 transition-transform duration-200 ${isActive ? 'text-[var(--accent)] scale-110' : 'text-[var(--accent)]/70'}`} />
-                {!isCollapsed && <span className="text-[13px] font-bold truncate tracking-wide">{TOP_ITEM.label}</span>}
+                {!isCollapsed && <span className="text-[13px] font-bold truncate tracking-wide">{item.label}</span>}
               </Link>
             )
-          })()}
+          })}
         </div>
         {NAV_GROUPS.map((group) => (
           <div key={group.title}>
