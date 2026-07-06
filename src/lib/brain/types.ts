@@ -42,6 +42,12 @@ export interface PlanStep {
   permissionClass: PermissionClass
   riskLevel: RiskLevel
   dataSensitivity: DataSensitivity
+  /**
+   * Adımın kendi handler girdisi (ör. lead.score_deterministic için { evidence }).
+   * Handler'lar Goal değil adım-özel veri bekler; alan yokken goal geçirilirse
+   * arg-uyuşmazlığı step'i 'error' yapar (güvenli ama işlevsiz).
+   */
+  input?: unknown
 }
 
 export interface GateDecision {

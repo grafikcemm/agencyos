@@ -44,15 +44,11 @@ export function useCareerState() {
   const [knowledgeStatus, setKnowledgeStatusMap] = useState<Record<string, CareerSkillStatus>>({})
   const [hydrated, setHydrated] = useState(false)
 
-  // En güncel değerleri ref'te tut ki persist çağrısı stale closure kullanmasın.
-  // Render sırasında ref yazmak yasak (react-hooks/refs) — senkron effect'te yapılır.
-  const stateRef = useRef(state)
-  const knowledgeRef = useRef(knowledgeStatus)
-
-  useEffect(() => {
-    stateRef.current = state
-    knowledgeRef.current = knowledgeStatus
-  }, [state, knowledgeStatus])
+  // Persist artık setState updater'ından DEĞİL, aşağıdaki effect'ten yapılır —
+  // updater saf olmalı (StrictMode/concurrent'ta iki kez çağrılabilir; içindeki
+  // network yazımı çift Supabase upsert + commit edilmemiş state'in persist'i demekti).
+  // lastSyncedRef: hydrate'ten gelen sunucu verisini sunucuya GERİ yazmayı önler.
+  const lastSyncedRef = useRef<string | null>(null)
 
   // İlk yükleme: Supabase source of truth. Başarısız olursa localStorage yedeği.
   useEffect(() => {
@@ -116,16 +112,23 @@ export function useCareerState() {
     []
   )
 
-  const updateState = useCallback(
-    (patch: Partial<CareerRoadmapState>) => {
-      setState(prev => {
-        const next = { ...prev, ...patch }
-        persist(next, knowledgeRef.current)
-        return next
-      })
-    },
-    [persist]
-  )
+  // Değişiklikleri hydrate SONRASI tek noktadan persist et (updater'lar saf kalır).
+  useEffect(() => {
+    if (!hydrated) return
+    const snapshot = JSON.stringify({ state, knowledgeStatus })
+    if (lastSyncedRef.current === null) {
+      // Hydrate'in kendisi — sunucudan/önbellekten gelen veriyi geri yazma.
+      lastSyncedRef.current = snapshot
+      return
+    }
+    if (lastSyncedRef.current === snapshot) return
+    lastSyncedRef.current = snapshot
+    persist(state, knowledgeStatus)
+  }, [state, knowledgeStatus, hydrated, persist])
+
+  const updateState = useCallback((patch: Partial<CareerRoadmapState>) => {
+    setState(prev => ({ ...prev, ...patch }))
+  }, [])
 
   const setActiveFocus = useCallback(
     (skillId: string, levelId: string) => {
@@ -138,36 +141,24 @@ export function useCareerState() {
     updateState({ activeFocusSkillId: null, activeLevelId: null })
   }, [updateState])
 
-  const setKnowledgeStatus = useCallback(
-    (skillId: string, status: CareerSkillStatus) => {
-      setKnowledgeStatusMap(prev => {
-        const next = { ...prev, [skillId]: status }
-        persist(stateRef.current, next)
-        return next
-      })
-    },
-    [persist]
-  )
+  const setKnowledgeStatus = useCallback((skillId: string, status: CareerSkillStatus) => {
+    setKnowledgeStatusMap(prev => ({ ...prev, [skillId]: status }))
+  }, [])
 
-  const completeSkill = useCallback(
-    (skillId: string) => {
-      setState(prev => {
-        const alreadyDone = prev.completedSkillIds.includes(skillId)
-        const completedSkillIds = alreadyDone
-          ? prev.completedSkillIds.filter(id => id !== skillId)
-          : [...prev.completedSkillIds, skillId]
-        const patch: Partial<CareerRoadmapState> = { completedSkillIds }
-        if (!alreadyDone && prev.activeFocusSkillId === skillId) {
-          patch.activeFocusSkillId = null
-          patch.activeLevelId = null
-        }
-        const next = { ...prev, ...patch }
-        persist(next, knowledgeRef.current)
-        return next
-      })
-    },
-    [persist]
-  )
+  const completeSkill = useCallback((skillId: string) => {
+    setState(prev => {
+      const alreadyDone = prev.completedSkillIds.includes(skillId)
+      const completedSkillIds = alreadyDone
+        ? prev.completedSkillIds.filter(id => id !== skillId)
+        : [...prev.completedSkillIds, skillId]
+      const patch: Partial<CareerRoadmapState> = { completedSkillIds }
+      if (!alreadyDone && prev.activeFocusSkillId === skillId) {
+        patch.activeFocusSkillId = null
+        patch.activeLevelId = null
+      }
+      return { ...prev, ...patch }
+    })
+  }, [])
 
   const isSkillCompleted = useCallback(
     (skillId: string) => {

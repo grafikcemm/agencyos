@@ -7,17 +7,22 @@ import { assertSession } from '@/lib/auth'
 import { computeHabit } from '@/lib/habits/streaks'
 import { makeIsDue } from '@/lib/habits/cadence'
 import type { HabitDef, HabitOverviewItem } from '@/lib/habits/config'
+import { getIstanbulDateAndDay } from '@/lib/assistant/timezone'
 
-const HISTORY_DAYS = 120
+// Streak tarama penceresiyle (computeHabit scanDays) KİLİTLİ tutulur — log
+// penceresi taramadan kısaysa uzun zincirler sahte biçimde kesilir (120-gün cap bug'ı).
+const HISTORY_DAYS = 365
 
 function todayStr(): string {
-  return format(new Date(), 'yyyy-MM-dd')
+  // Vercel'de server saati UTC — İstanbul 00:00-03:00 arasında UTC hâlâ dünde
+  // kalır; log yanlış güne yazılırdı. reminderEngine ile aynı İstanbul çözümü.
+  return getIstanbulDateAndDay().todayStr
 }
 
 /** Tüm aktif alışkanlıklar + hesaplı streak/heatmap (server component için). */
 export async function getHabitsOverview(dateStr?: string): Promise<HabitOverviewItem[]> {
   const supabase = createServerSupabase()
-  const today = dateStr ? parseISO(dateStr) : new Date()
+  const today = parseISO(dateStr ?? todayStr())
   const todayDate = format(today, 'yyyy-MM-dd')
   const since = format(subDays(today, HISTORY_DAYS), 'yyyy-MM-dd')
 
@@ -37,7 +42,14 @@ export async function getHabitsOverview(dateStr?: string): Promise<HabitOverview
 
   return (habits ?? []).map((h: HabitDef) => {
     const isDue = makeIsDue(h.cadence_type)
-    const r = computeHabit({ isDue, target: h.target, logs: logsByKey[h.key] ?? {}, today })
+    const r = computeHabit({
+      isDue,
+      target: h.target,
+      logs: logsByKey[h.key] ?? {},
+      today,
+      // Tarama penceresi ASLA fetch penceresini aşmasın (eksik log ≠ yapılmadı).
+      scanDays: HISTORY_DAYS,
+    })
     return { ...h, todayValue: r.todayValue, computed: r.computed, cells: r.cells }
   })
 }

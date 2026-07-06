@@ -35,6 +35,23 @@ export const maxDuration = 60;
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
 const CHAT_ID   = process.env.TELEGRAM_CHAT_ID ?? '';
 
+// ── Webhook dedup ─────────────────────────────────────────────────────────────
+// Telegram, handler cevabı gecikince (LLM yolu 25s+) AYNI update'i yeniden
+// gönderir; dedupsuz her retry çift cevap + çift yan etki (reminder flip, Jarvis
+// aksiyonu) üretir. Warm instance içinde kısa TTL'li in-memory set yeterli —
+// retry'lar saniyeler içinde aynı instance'a düşer; cold-start kaçağı nadir.
+const SEEN_UPDATE_TTL_MS = 5 * 60_000;
+const seenUpdates = new Map<number, number>();
+function seenRecently(updateId: number): boolean {
+  const now = Date.now();
+  for (const [id, ts] of seenUpdates) {
+    if (now - ts > SEEN_UPDATE_TTL_MS) seenUpdates.delete(id);
+  }
+  if (seenUpdates.has(updateId)) return true;
+  seenUpdates.set(updateId, now);
+  return false;
+}
+
 // Serbest mesaj eylemsel bir görev/üretim isteği mi? (Jarvis araç motoruna yönlendir.)
 // İmperatif/üretim fiilleri — hayat sohbetini yutmamak için yeterince spesifik.
 const ACTIONABLE_TASK_RE =
@@ -411,8 +428,14 @@ export async function POST(req: Request): Promise<NextResponse> {
     }
 
     const body = await req.json() as {
+      update_id?: number;
       message?: { text?: string; chat?: { id: number }; message_id?: number };
     };
+
+    // Retry dedup: aynı update_id kısa süre önce işlendiyse yan etkisiz OK dön.
+    if (typeof body.update_id === 'number' && seenRecently(body.update_id)) {
+      return NextResponse.json({ ok: true, deduped: true });
+    }
 
     const text = body?.message?.text;
     if (!text) return NextResponse.json({ ok: true });

@@ -9,6 +9,10 @@ import { enforceSameOrigin, sanitizeWriteBody } from '@/lib/api/guards'
 import { supabaseAdmin } from '@/lib/supabase'
 import { auditSingleLead } from '@/lib/leadIntel/pipeline'
 
+// PSI audit (10-60sn) + konsey LLM geçişi — platform default süresi yetmez,
+// yarıda kesilirse assessment bookkeeping'i kaybolur.
+export const maxDuration = 60
+
 const BodySchema = z.object({ force: z.boolean().optional() }).strict()
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {

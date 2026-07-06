@@ -35,13 +35,25 @@ export async function runTask(task: AgentTask): Promise<TaskResult> {
     return { ok: false, output: '', tokensIn: 0, tokensOut: 0, error }
   }
 
-  await Promise.all([
-    setAgentStatus(agent.key, 'working'),
-    supabaseAdmin
-      .from('agent_tasks')
-      .update({ status: 'working', started_at: new Date().toISOString() })
-      .eq('id', task.id),
-  ])
+  // ATOMİK CLAIM: yalnız hâlâ 'queued' ise sahiplen. Cron tick ile executeInline
+  // aynı satırı aynı anda kapabilir (çift LLM harcaması + çift yan etki) — status
+  // guard'ı kaybedeni sıfır satırla düşürür.
+  const { data: claimed } = await supabaseAdmin
+    .from('agent_tasks')
+    .update({ status: 'working', started_at: new Date().toISOString() })
+    .eq('id', task.id)
+    .eq('status', 'queued')
+    .select('id')
+  if (!claimed || claimed.length === 0) {
+    return {
+      ok: false,
+      output: '',
+      tokensIn: 0,
+      tokensOut: 0,
+      error: 'Görev başka bir işlemci tarafından zaten alınmış (claim kaybedildi).',
+    }
+  }
+  await setAgentStatus(agent.key, 'working')
 
   try {
     const context = await gatherContext(task.agent_key, task.input)

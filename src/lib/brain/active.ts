@@ -76,17 +76,33 @@ export async function runBrainActive(
   const plans = planActiveExecution(steps, order, ctx)
   const outcomes: ActiveRunResult['outcomes'] = []
   let approvalsCreated = 0
+  // Bağımlılık kapısı: yalnız TÜM ancestor'ları 'done' olan adım yürütülür.
+  // (Onay bekleyen / hata almış ancestor → downstream çalışmaz; DAG bunun için var.)
+  const donePlanIds = new Set<string>()
 
   for (const { stepId, decision } of plans) {
     const dbId = dbIdByPlanId.get(stepId)
     const step = stepById.get(stepId)
     if (!dbId || !step) continue
 
+    const unmetDep = step.dependsOn.find((dep) => !donePlanIds.has(dep))
+    if (unmetDep) {
+      await persistStepResult(dbId, 'error', {
+        blockedByDependency: unmetDep,
+        detail: 'bağımlı adım tamamlanmadı (done değil) — adım yürütülmedi',
+      })
+      outcomes.push({ stepId: dbId, kind: 'blocked', note: `bağımlılık bekliyor: ${unmetDep}` })
+      continue
+    }
+
     if (decision.kind === 'auto_run') {
       // Yalnız allowlist deterministik handler; arg-uyuşmazlığında hata → step error.
       try {
-        const result = executeAutoStep(decision.handlerKey, goal)
+        // Handler girdisi adımın kendi input'u; yoksa goal (yalnız goal-şekilli
+        // handler'lar — ör. orchestration.plan_decompose — bununla çalışır).
+        const result = executeAutoStep(decision.handlerKey, step.input ?? goal)
         await persistStepResult(dbId, 'done', result)
+        donePlanIds.add(step.id)
         outcomes.push({ stepId: dbId, kind: 'auto_run', note: `handler ${decision.handlerKey} çalıştı` })
       } catch (err) {
         await persistStepResult(dbId, 'error', { error: err instanceof Error ? err.message : String(err) })
@@ -94,6 +110,7 @@ export async function runBrainActive(
       }
     } else if (decision.kind === 'auto_noop') {
       await persistStepResult(dbId, 'done', { noop: decision.reason })
+      donePlanIds.add(step.id)
       outcomes.push({ stepId: dbId, kind: 'auto_noop', note: decision.reason })
     } else if (decision.kind === 'needs_approval') {
       const draft = buildApprovalDraft({

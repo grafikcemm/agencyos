@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Sparkles, RefreshCw, Zap, Flame, Shield } from "lucide-react";
 
 interface BriefData {
@@ -70,6 +70,10 @@ export function DailyAiBriefCard({
   const [brief, setBrief] = useState<BriefData | null>(null);
   const [loading, setLoading] = useState(false);
   const [energyLevel, setEnergyLevel] = useState<"LOW" | "NORMAL" | "HIGH">("NORMAL");
+  // Mount'ta localStorage'daki enerji default'tan farklıysa energyLevel değişir →
+  // generateBrief kimliği değişir → cache-miss effect'i İKİNCİ kez tetiklenir ve
+  // ilk fetch daha cache'e yazmadan aynı LLM çağrısı çifte atılırdı. Tek uçuş kilidi:
+  const inFlightRef = useRef(false);
 
   // Read energy level from localStorage
   useEffect(() => {
@@ -84,6 +88,8 @@ export function DailyAiBriefCard({
   }, []);
 
   const generateBrief = useCallback(async () => {
+    if (inFlightRef.current) return; // eşzamanlı ikinci AI çağrısını engelle
+    inFlightRef.current = true;
     const today = new Date().toISOString().slice(0, 10);
     const progressHash = `${completedRoutines}-${totalRoutines}-${activeTasks}-${completedTasks}-${willpowerScore}`;
     const cacheKey = `feed-the-goat-mentor-brief-${today}-${progressHash}`;
@@ -130,6 +136,7 @@ export function DailyAiBriefCard({
       const local = generateLocalBrief(energyLevel, completedRoutines, totalRoutines, activeTasks, completedTasks, willpowerScore);
       setBrief(local);
     } finally {
+      inFlightRef.current = false;
       setLoading(false);
     }
   }, [energyLevel, completedRoutines, totalRoutines, activeTasks, completedTasks, willpowerScore]);
