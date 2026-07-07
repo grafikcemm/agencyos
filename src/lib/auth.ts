@@ -1,14 +1,12 @@
 import 'server-only'
-import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
+import type { NextResponse } from 'next/server'
 import type { User } from '@supabase/supabase-js'
-import { SESSION_COOKIE_NAME, verifySessionToken } from '@/lib/session'
 
-// Single-operator auth. A valid HMAC-signed session cookie (set by
-// /api/auth/login) authorizes the request as the local operator. These helpers
-// keep their original union signatures so all existing API routes (which branch
-// on `'response' in x`) compile unchanged — they now return the rejection
-// variant whenever the session cookie is missing, expired, or tampered with.
+// Single-operator app with no auth gate — every request is the local operator.
+// These helpers keep their original union-returning signatures (including the
+// unreachable `{ response }` rejection variant) so the `if ('response' in x)
+// return x.response` dead-code branch at ~68 call sites keeps narrowing to
+// NextResponse instead of widening to `unknown`.
 
 const LOCAL_USER = {
   id: '00000000-0000-0000-0000-000000000000',
@@ -20,47 +18,19 @@ const LOCAL_USER = {
   created_at: new Date(0).toISOString(),
 } as unknown as User
 
-async function hasValidSession(): Promise<boolean> {
-  try {
-    const store = await cookies()
-    return await verifySessionToken(store.get(SESSION_COOKIE_NAME)?.value)
-  } catch {
-    return false
-  }
-}
-
-function unauthorized(): NextResponse {
-  return NextResponse.json({ error: 'Yetkisiz. Giriş gerekli.' }, { status: 401 })
-}
-
 export async function getCurrentUser(): Promise<User | null> {
-  return (await hasValidSession()) ? LOCAL_USER : null
+  return LOCAL_USER
 }
 
 export async function requireApiUser(): Promise<{ user: User } | { response: NextResponse }> {
-  if (await hasValidSession()) return { user: LOCAL_USER }
-  return { response: unauthorized() }
+  return { user: LOCAL_USER }
 }
 
-// `req` is accepted for call-site compatibility (some routes pass the request);
-// the session is read from the request cookies via next/headers.
+// `req` is accepted for call-site compatibility (some routes pass the request).
 export async function requireApiAccess(_req?: Request): Promise<{ ok: true } | { response: NextResponse }> {
   void _req
-  if (await hasValidSession()) return { ok: true }
-  return { response: unauthorized() }
+  return { ok: true }
 }
 
-/**
- * Throwing session guard for Server Actions.
- *
- * Server Actions are auto-exposed as public POST endpoints by Next.js, so they
- * must authenticate independently of any page-level proxy gate. Unlike
- * `requireApiAccess` (which returns a NextResponse for route handlers), actions
- * have no Response to return, so this throws on failure. Call it at the top of
- * every mutating action.
- */
-export async function assertSession(): Promise<void> {
-  if (!(await hasValidSession())) {
-    throw new Error('Yetkisiz. Giriş gerekli.')
-  }
-}
+// No-op — kept so existing Server Actions calling this at their top compile unchanged.
+export async function assertSession(): Promise<void> {}
