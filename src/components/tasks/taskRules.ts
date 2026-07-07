@@ -24,4 +24,8 @@ export const TASK_RULES: TaskRule[] = [
     n: 3,
     text: 'Sağlık (spor + beslenme) planın dışında değil, altında. Rutinleri — özellikle spor + beslenme — aksatma.',
   },
+  {
+    n: 4,
+    text: 'Okula full odak, hocalarla full iletişim. Bitirme Çalışması: birinci öncelik, ikinci şans yok. Haziran: mezuniyet, GPA ≥ 2.00 ile kapanış.',
+  },
 ]

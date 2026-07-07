@@ -17,7 +17,6 @@ import {
   toggleTaskStep,
   deleteTaskStep,
 } from '@/app/actions/taskActions'
-import { ProgressBar } from '@/components/ui/ProgressBar'
 import { cn } from '@/lib/utils'
 import { sortTasks, dueMeta, stepProgress } from './taskUtils'
 import { TaskRulesPanel } from './TaskRulesPanel'
@@ -212,21 +211,99 @@ export function ActiveTasksSection({ initialTasks, source, today }: Props) {
     run(() => deleteTaskStep(stepId))
   }
 
+  // İlerleme kartı: sıradaki odak = öncelik-sıralı listedeki ilk açık görev.
+  const currentTask = activeList.find((t) => !t.is_done) ?? null
+  // Yıldızlı (öncelik) açık görevler en üstte ayrı "Odak" kartında; tamamlanınca
+  // normal listeye döner. Sıralama öncelik-önde olduğundan segmentlerle tutarlı.
+  const focusList = activeList.filter((t) => t.is_priority && !t.is_done)
+  const restList = activeList.filter((t) => !t.is_priority || t.is_done)
+
   return (
     <section className="flex flex-col gap-4">
       <TaskRulesPanel />
 
-      {/* Başlık + ilerleme */}
-      <div className="flex flex-col gap-2.5">
+      {/* İlerleme kartı — faz-segment çubuğu (her segment bir aktif görev) */}
+      {activeTotal > 0 && (
+        <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5 flex flex-col gap-3.5">
+          <div className="flex items-baseline justify-between">
+            <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text-primary)]">
+              İlerleme
+            </h2>
+            <span className="num text-[12px] font-medium text-[var(--text-muted)]">
+              {doneCount}/{activeTotal} · %{pct}
+            </span>
+          </div>
+          <div className="flex gap-1.5" aria-hidden="true">
+            {activeList.map((t) => (
+              <span
+                key={t.id}
+                title={t.title}
+                className={cn(
+                  'h-2.5 flex-1 rounded-full transition-colors duration-500 ease-out motion-reduce:transition-none',
+                  t.is_done
+                    ? 'bg-[var(--success,#34d399)]'
+                    : t.id === currentTask?.id
+                      ? 'bg-[var(--warning,#ffd60a)]'
+                      : 'bg-[var(--bg-elevated,#242424)]',
+                )}
+              />
+            ))}
+          </div>
+          <p className="text-[13px] leading-snug text-[var(--text-secondary)]">
+            {currentTask ? (
+              <>
+                Şu anki odak:{' '}
+                <button
+                  onClick={() => setSelectedId(currentTask.id)}
+                  className="font-semibold text-[var(--text-primary)] hover:text-[var(--accent)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] rounded"
+                >
+                  {currentTask.title}
+                </button>
+                . Bunu bitir, sıradakine geç.
+              </>
+            ) : (
+              <>Tüm aktif görevler tamam. Bekleyenlerden birini aktife al ya da yeni görev ekle.</>
+            )}
+          </p>
+        </div>
+      )}
+
+      {/* Odak kartı — yıldızlı açık görevler (en üstte, ayrı alan) */}
+      {focusList.length > 0 && (
+        <div className="rounded-3xl border border-[var(--warning,#ffd60a)]/25 bg-[var(--bg-card)] p-5 flex flex-col gap-3">
+          <div className="flex items-baseline justify-between">
+            <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text-primary)] inline-flex items-center gap-2">
+              <Star className="w-4 h-4 text-[var(--warning,#ffd60a)] fill-[var(--warning,#ffd60a)]" />
+              Odak
+            </h2>
+            <span className="num text-[12px] font-medium text-[var(--text-muted)]">{focusList.length}</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            {focusList.map((t) => (
+              <TaskRow
+                key={t.id}
+                task={t}
+                today={today}
+                isCurrent={t.id === currentTask?.id}
+                onToggleDone={toggleDone}
+                onTogglePriority={togglePriority}
+                onOpen={() => setSelectedId(t.id)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Görevler kartı */}
+      <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5 flex flex-col gap-3">
         <div className="flex items-baseline justify-between">
-          <h2 className="text-[11px] font-bold uppercase tracking-widest text-[var(--text-secondary)]">
+          <h2 className="font-display text-lg font-semibold tracking-tight text-[var(--text-primary)]">
             Aktif Görevler
           </h2>
-          <span className="num text-[11px] font-medium text-[var(--text-muted)]">
+          <span className="num text-[12px] font-medium text-[var(--text-muted)]">
             {doneCount}/{activeTotal}
           </span>
         </div>
-        {activeTotal > 0 && <ProgressBar progress={pct} />}
 
         {lastError && (
           <p role="alert" className="text-[11px] text-[var(--danger,#ff453a)]">
@@ -240,7 +317,7 @@ export function ActiveTasksSection({ initialTasks, source, today }: Props) {
             e.preventDefault()
             addTask()
           }}
-          className="flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-card)] px-3.5 py-1 focus-within:border-[var(--border-strong)] transition-colors"
+          className="flex items-center gap-2 rounded-2xl border border-[var(--border-subtle)] bg-[var(--bg-elevated,#1c1c1c)] px-3.5 py-1 focus-within:border-[var(--border-strong)] transition-colors"
         >
           <Plus className="w-4 h-4 text-[var(--text-quaternary)] shrink-0" />
           <input
@@ -270,11 +347,12 @@ export function ActiveTasksSection({ initialTasks, source, today }: Props) {
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {activeList.map((t) => (
+            {restList.map((t) => (
               <TaskRow
                 key={t.id}
                 task={t}
                 today={today}
+                isCurrent={t.id === currentTask?.id}
                 onToggleDone={toggleDone}
                 onTogglePriority={togglePriority}
                 onOpen={() => setSelectedId(t.id)}
@@ -284,30 +362,30 @@ export function ActiveTasksSection({ initialTasks, source, today }: Props) {
         )}
       </div>
 
-      {/* Bekleyen grubu — ikincil, soluk, aç/kapa (varsayılan kapalı) */}
+      {/* Bekleyen kartı — ikincil, soluk, aç/kapa (varsayılan kapalı) */}
       {waitingList.length > 0 && (
-        <div className="flex flex-col gap-2.5">
+        <div className="rounded-3xl border border-[var(--border-subtle)] bg-[var(--bg-card)] p-5 flex flex-col gap-3">
           <button
             type="button"
             onClick={() => setWaitingOpen((o) => !o)}
             aria-expanded={waitingOpen}
             className="group flex items-center justify-between gap-2 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           >
-            <span className="flex items-center gap-1.5">
+            <span className="flex items-center gap-2">
               <ChevronRight
                 className={cn(
-                  'w-3.5 h-3.5 text-[var(--text-quaternary)] transition-transform duration-200',
+                  'w-4 h-4 text-[var(--text-quaternary)] transition-transform duration-200',
                   waitingOpen && 'rotate-90',
                 )}
               />
-              <span className="text-[11px] font-bold uppercase tracking-widest text-[var(--text-quaternary)] group-hover:text-[var(--text-muted)] transition-colors">
+              <span className="font-display text-lg font-semibold tracking-tight text-[var(--text-muted)] group-hover:text-[var(--text-secondary)] transition-colors">
                 Bekleyen
               </span>
             </span>
-            <span className="num text-[11px] text-[var(--text-quaternary)]">{waitingList.length}</span>
+            <span className="num text-[12px] text-[var(--text-quaternary)]">{waitingList.length}</span>
           </button>
           {waitingOpen && (
-            <div className="flex flex-col gap-2 opacity-70">
+            <div className="flex flex-col gap-2 opacity-75">
               {waitingList.map((t) => (
                 <TaskRow
                   key={t.id}
@@ -344,12 +422,14 @@ export function ActiveTasksSection({ initialTasks, source, today }: Props) {
 function TaskRow({
   task,
   today,
+  isCurrent = false,
   onToggleDone,
   onTogglePriority,
   onOpen,
 }: {
   task: ActiveTask
   today: string
+  isCurrent?: boolean
   onToggleDone: (task: ActiveTask) => void
   onTogglePriority: (task: ActiveTask) => void
   onOpen: () => void
@@ -362,6 +442,16 @@ function TaskRow({
   const open = () => {
     if (!pending) onOpen()
   }
+
+  // Sol durum şeridi (referans tasarımdaki renkli barlar): gecikmiş → kırmızı,
+  // öncelik → amber, tamam → yeşil, sıradaki odak → amber, diğer → nötr.
+  const barClass = task.is_done
+    ? 'bg-[var(--success,#34d399)]'
+    : due.state === 'overdue'
+      ? 'bg-[var(--danger,#ff453a)]'
+      : flagged || isCurrent
+        ? 'bg-[var(--warning,#ffd60a)]'
+        : 'bg-[var(--border-strong,#3a3a3a)]'
 
   return (
     <div
@@ -377,11 +467,13 @@ function TaskRow({
       aria-label={`${task.title} — detay`}
       aria-disabled={pending || undefined}
       className={cn(
-        'group cursor-pointer rounded-2xl border bg-[var(--bg-card)] px-3.5 py-3 flex items-center gap-3 transition-colors duration-200 hover:bg-[var(--bg-card-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]',
+        'group cursor-pointer rounded-2xl border bg-[var(--bg-elevated,#1c1c1c)] pl-2.5 pr-3.5 py-3 flex items-center gap-3 transition-colors duration-200 hover:bg-[var(--bg-card-hover)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]',
         flagged ? 'border-[var(--accent)]/40' : 'border-[var(--border-subtle)] hover:border-[var(--border-strong)]',
         pending && 'opacity-60 cursor-default',
       )}
     >
+      {/* Durum şeridi */}
+      <span aria-hidden="true" className={cn('self-stretch w-1 rounded-full shrink-0', barClass)} />
       {/* Tamamlama dairesi */}
       <button
         onClick={(e) => {
