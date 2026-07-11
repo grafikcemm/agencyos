@@ -16,4 +16,21 @@ describe('redactForLog', () => {
   it('nesneyi JSON stringe çevirir', () => {
     expect(redactForLog({ a: 1 })).toBe('{"a":1}')
   })
+
+  // eval.security.token_redaction (21 T4/T11)
+  it('Google OAuth access token (ya29.) maskelenir', () => {
+    const out = redactForLog('Bearer ya29.a0AfB_byC1234-abc_XYZ.789 kullanıldı')
+    expect(out).toContain('[token]')
+    expect(out).not.toContain('ya29.a0AfB_byC1234')
+  })
+  it('Google OAuth refresh token (1//) maskelenir', () => {
+    const out = redactForLog('refresh_token=1//0eXvL9-qwerty_ASDF ile yenilendi')
+    expect(out).toContain('[token]')
+    expect(out).not.toContain('1//0eXvL9')
+  })
+  it('token JSON gövdesi içinde de maskelenir', () => {
+    const out = redactForLog({ access_token: 'ya29.SECRETPART123', refresh_token: '1//SECRETREFRESH' })
+    expect(out).not.toContain('SECRETPART123')
+    expect(out).not.toContain('SECRETREFRESH')
+  })
 })

@@ -6,7 +6,7 @@
 // approvals,runs} okur. Framer dark canvas token'ları.
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { ShieldCheck, Check, X, Activity, Boxes, Clock } from 'lucide-react'
+import { ShieldCheck, Check, X, Activity, Boxes, Clock, Flag } from 'lucide-react'
 
 interface RegistryData {
   skills: { codeRegistered: number; dbRegistered: number; active: number; integrityIssues: number }
@@ -29,6 +29,11 @@ interface RunItem {
   cost_usd: number | null
   created_at: string
 }
+interface FlagItem {
+  key: string
+  enabled: boolean
+  description: string
+}
 
 async function getJson<T>(url: string): Promise<T | null> {
   try {
@@ -44,6 +49,7 @@ export default function KonsolPage() {
   const [registry, setRegistry] = useState<RegistryData | null>(null)
   const [approvals, setApprovals] = useState<ApprovalItem[]>([])
   const [runs, setRuns] = useState<RunItem[]>([])
+  const [flags, setFlags] = useState<FlagItem[]>([])
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -55,15 +61,17 @@ export default function KonsolPage() {
   useEffect(() => {
     let alive = true
     ;(async () => {
-      const [reg, appr, runData] = await Promise.all([
+      const [reg, appr, runData, flagData] = await Promise.all([
         getJson<RegistryData>('/api/registry'),
         getJson<{ approvals: ApprovalItem[] }>('/api/approvals'),
         getJson<{ runs: RunItem[] }>('/api/runs?limit=25'),
+        getJson<{ flags: FlagItem[] }>('/api/flags'),
       ])
       if (!alive) return
       setRegistry(reg)
       setApprovals(appr?.approvals ?? [])
       setRuns(runData?.runs ?? [])
+      setFlags(flagData?.flags ?? [])
       setLoading(false)
     })()
     return () => {
@@ -134,6 +142,41 @@ export default function KonsolPage() {
                 ))}
               </div>
             </div>
+          </div>
+        )}
+      </section>
+
+      {/* V2 feature flag durumu — yalnız okunur; env üzerinden yönetilir */}
+      <section aria-labelledby="flags-h" className="mb-10">
+        <h2 id="flags-h" className="label-eyebrow mb-3 flex items-center gap-2">
+          <Flag className="w-3.5 h-3.5 text-[var(--accent)]" /> V2 Bayrakları
+        </h2>
+        {loading ? (
+          <div className="h-16 rounded-xl bg-[var(--bg-card)] animate-pulse" />
+        ) : flags.length === 0 ? (
+          <EmptyRow icon={<Flag className="w-4 h-4" />} text="Bayrak durumu okunamadı." />
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+            {flags.map((f) => (
+              <div
+                key={f.key}
+                className="rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] p-3.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold font-mono text-[var(--text-secondary)] truncate">{f.key}</span>
+                  <span
+                    className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
+                      f.enabled
+                        ? 'bg-[var(--success)]/15 text-[var(--success)]'
+                        : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
+                    }`}
+                  >
+                    {f.enabled ? 'AÇIK' : 'KAPALI'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-[var(--text-muted)] mt-1.5 leading-snug">{f.description}</p>
+              </div>
+            ))}
           </div>
         )}
       </section>
