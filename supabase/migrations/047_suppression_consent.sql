@@ -34,7 +34,9 @@ CREATE INDEX IF NOT EXISTS idx_consent_records_address ON consent_records(lower(
 
 -- Append-only zorlaması: UPDATE/DELETE yapısal olarak engellenir (service-role dahil).
 CREATE OR REPLACE FUNCTION consent_records_append_only() RETURNS trigger
-LANGUAGE plpgsql AS $$
+LANGUAGE plpgsql
+SET search_path = ''  -- linter 0011: mutable search_path uyarısını kapatır
+AS $$
 BEGIN
   RAISE EXCEPTION 'consent_records append-only: % engellendi', TG_OP;
 END $$;
