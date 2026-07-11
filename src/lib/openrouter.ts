@@ -1,57 +1,35 @@
 import { supabaseAdmin } from './supabase'
 import { getMonthlyCapUsd } from './ai/caps'
 import { logAiCostRow } from './ai/costLog'
+import { LIVE_TOKEN_RATES_PER_M, ProviderPolicy, RoutePreset } from './models/presets'
+import {
+  presetTierToModelTier,
+  resolveOperationPreset,
+  resolveOperationPresetStatic,
+} from './models/registry'
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY
 const BASE_URL = 'https://openrouter.ai/api/v1'
 
 type ModelTier = 'light' | 'medium' | 'heavy'
 
-// Per-operation routing table — every JARVIS tool calls getModel() to pick the right tier
-const OPERATION_MODEL_MAP: Record<string, { model: string; tier: ModelTier }> = {
-  // Light: conversational, briefing summaries, quick intent detection
-  jarvis_chat:         { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
-  session_briefing:    { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
-  read_knowledge:      { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
-  wrap_session:        { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
-  build_visual_prompt: { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
-  analyze_lead:        { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
-  batch_enrichment:    { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
-
-  // Medium: structured generation, cold email, briefing reports
-  generate_briefing:   { model: 'anthropic/claude-haiku-4-5', tier: 'medium' },
-  draft_email:         { model: 'anthropic/claude-haiku-4-5', tier: 'medium' },
-  build_carousel_brief:{ model: 'anthropic/claude-haiku-4-5', tier: 'medium' },
-  intent_detection:    { model: 'anthropic/claude-haiku-4-5', tier: 'medium' },
-
-  // Heavy: full proposals only — explicit user approval required before any send
-  draft_proposal:      { model: 'deepseek/deepseek-v4-pro', tier: 'heavy' },
-
-  // Lead Intelligence v2 konseyi — hafif kritikler + haiku chair.
-  // Design Critic multimodal (screenshot signed URL) alır; flash-lite vision destekler.
-  lead_intel_design_critic:      { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
-  lead_intel_automation_analyst: { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
-  lead_intel_skeptic:            { model: 'google/gemini-2.5-flash-lite', tier: 'light' },
-  lead_intel_chair:              { model: 'anthropic/claude-haiku-4-5',   tier: 'medium' },
-}
+// Model routing artık merkezi preset registry'den çözülür
+// (src/lib/models/presets.ts + registry.ts — 16-openrouter-routing.md §3-5).
+// Ham model ID bu dosyada YAŞAMAZ; tek istisna legacy callAgentModel'in
+// geriye-uyumlu raw-model yolu (agents registry'den gelen değer).
 
 // Per-million-token maliyet oranları (USD) — TAHMİNDİR, sabit gerçek değil.
-// input/output ayrık; settings tablosundaki 'ai_token_rates' JSON satırı bu
-// default'ları model bazında ezebilir (deploy gerekmez). Gerçek harcama
-// ai_cost_logs'tan izlenir.
+// Canlı katalog fiyatları models/presets.ts'ten gelir; settings tablosundaki
+// 'ai_token_rates' JSON satırı bu default'ları model bazında ezebilir
+// (deploy gerekmez). Gerçek harcama ai_cost_logs'tan izlenir.
 export interface TokenRate {
   input: number
   output: number
 }
 
-const TOKEN_RATES_PER_M: Record<string, TokenRate> = {
-  'google/gemini-2.5-flash-lite': { input: 0.05, output: 0.05 },
-  'anthropic/claude-haiku-4-5':   { input: 0.25, output: 0.25 },
-  'deepseek/deepseek-v4-flash':   { input: 0.1,  output: 0.1 },
-  'deepseek/deepseek-v4-pro':     { input: 0.5,  output: 0.5 },
-}
+const TOKEN_RATES_PER_M: Record<string, TokenRate> = LIVE_TOKEN_RATES_PER_M
 
-const DEFAULT_RATE: TokenRate = { input: 0.1, output: 0.1 }
+const DEFAULT_RATE: TokenRate = { input: 0.5, output: 2.0 }
 
 // settings.ai_token_rates override'ı — 5 dk cache'li, hata halinde sessizce default.
 let rateOverrideCache: { rates: Record<string, TokenRate>; loadedAt: number } | null = null
@@ -93,8 +71,41 @@ export async function getTokenRate(model: string): Promise<TokenRate> {
   return overrides[model] ?? TOKEN_RATES_PER_M[model] ?? DEFAULT_RATE
 }
 
+/** Geriye-uyumlu imza: operation → { model, tier }. Model artık preset'in
+ *  primary'sidir (statik çözümleme). Self-heal fallback zinciri isteyen
+ *  çağıranlar getRouteForOperation kullanmalı. */
 export function getModel(operation: string): { model: string; tier: ModelTier } {
-  return OPERATION_MODEL_MAP[operation] ?? { model: 'google/gemini-2.5-flash-lite', tier: 'light' }
+  const preset = resolveOperationPresetStatic(operation)
+  return { model: preset.primary, tier: presetTierToModelTier(preset.tier) }
+}
+
+// Çözülmüş route — callOpenRouter'ın tek routing girdisi.
+export interface ResolvedRoute {
+  presetKey: string | null      // null = legacy raw-model yolu (callAgentModel)
+  models: string[]              // [primary, ...fallbacks] — body.models self-heal
+  provider?: ProviderPolicy
+  timeoutMs: number
+  maxRetries: number
+  tier: ModelTier
+  ceiling?: { prompt: number; completion: number }
+}
+
+function presetToRoute(preset: RoutePreset): ResolvedRoute {
+  return {
+    presetKey: preset.key,
+    models: [preset.primary, ...preset.fallbacks],
+    provider: preset.provider,
+    timeoutMs: preset.timeoutMs,
+    maxRetries: preset.maxRetries,
+    tier: presetTierToModelTier(preset.tier),
+    ceiling: preset.ceiling,
+  }
+}
+
+/** Senkron route çözümleme (statik preset) — stream route gibi callOpenRouter
+ *  dışı çağıranlar için: models[] + provider politikasını dışarı verir. */
+export function getRouteForOperation(operation: string): ResolvedRoute {
+  return presetToRoute(resolveOperationPresetStatic(operation))
 }
 
 interface OpenRouterResponse {
@@ -146,45 +157,78 @@ async function getMonthlySpend(): Promise<number> {
   return getSpendSince(startOfMonth)
 }
 
-async function logAiCost(
-  operation: string,
-  modelUsed: string,
-  tier: ModelTier,
-  inputTokens: number,
-  outputTokens: number,
-  costUsd: number,
-  agentKey?: string,
-  relatedLeadId?: string | null,
-  generationId?: string | null,
-  actualCostUsd?: number | null
-) {
-  // cost_usd DAİMA tahmini (parity); gerçek OpenRouter maliyeti actual_cost_usd'ye.
-  await logAiCostRow({
-    operation,
-    model_used: modelUsed,
-    model_tier: tier,
-    input_tokens: inputTokens,
-    output_tokens: outputTokens,
-    cost_usd: costUsd,
-    cost_tl: costUsd * 38,
-    agent_key: agentKey ?? null,
-    related_lead_id: relatedLeadId ?? null,
-    generation_id: generationId ?? null,
-    actual_cost_usd: actualCostUsd ?? null,
-    cost_source: 'estimated',
-  })
-}
-
 // Multimodal içerik parçası (OpenRouter/OpenAI standart formatı).
 // Design Critic screenshot'ı signed URL ile image_url parçası olarak alır.
 export type ContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }
 
+function buildProviderBody(route: ResolvedRoute): Record<string, unknown> | undefined {
+  const p = route.provider
+  const body: Record<string, unknown> = {}
+  // models[] gönderildiğinde self-heal için allow_fallbacks daima açık.
+  if (route.models.length > 1) body.allow_fallbacks = p?.allowFallbacks ?? true
+  if (p?.requireParameters) body.require_parameters = true
+  if (p?.dataCollection) body.data_collection = p.dataCollection
+  if (p?.sort) body.sort = p.sort
+  if (p?.zdr) body.zdr = true
+  if (route.ceiling) {
+    body.max_price = { prompt: route.ceiling.prompt, completion: route.ceiling.completion }
+  }
+  return Object.keys(body).length > 0 ? body : undefined
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')
+}
+
+const RETRY_BACKOFF_MS = 300
+
+// Tek fetch denemesi: AbortController timeout'lu. Başarıda parse edilmiş yanıt,
+// retryable hatada throw (çağıran retry döngüsü devralır).
+async function attemptOpenRouterFetch(
+  body: Record<string, unknown>,
+  timeoutMs: number
+): Promise<OpenRouterResponse> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(`${BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': 'https://grafikcem.agency',
+        'X-Title': 'Grafikcem Agency OS'
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+
+    if (!response.ok) {
+      let message = response.statusText
+      try {
+        const errorData = await response.json()
+        message = errorData.error?.message || message
+      } catch { /* gövde JSON değilse statusText yeter */ }
+      const err = new Error(`OpenRouter API Hatası: ${message}`) as Error & { status?: number }
+      err.status = response.status
+      throw err
+    }
+
+    return (await response.json()) as OpenRouterResponse
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 async function callOpenRouter(
   operation: string,
-  tier: ModelTier,
-  model: string,
+  route: ResolvedRoute,
   systemPrompt: string,
   userPrompt: string | ContentPart[],
   maxTokens: number = 1000,
@@ -204,8 +248,9 @@ async function callOpenRouter(
     )
   }
 
+  const primary = route.models[0]
   const body: Record<string, unknown> = {
-    model,
+    model: primary,
     messages: [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt }
@@ -215,35 +260,58 @@ async function callOpenRouter(
     // Gerçek USD maliyeti yanıt gövdesinde döndür (gözlem; cost_usd hâlâ tahmini).
     usage: { include: true }
   }
+  // Self-heal fallback dizisi: primary 404/5xx olursa OpenRouter otomatik
+  // sonraki modele geçer (16 §4.1 — ölü-ID sorununun kalıcı çözümü).
+  if (route.models.length > 1) body.models = route.models
+  const providerBody = buildProviderBody(route)
+  if (providerBody) body.provider = providerBody
 
   if (tools && tools.length > 0) {
     body.tools = tools
     body.tool_choice = 'auto'
   }
 
-  const response = await fetch(`${BASE_URL}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://grafikcem.agency',
-      'X-Title': 'Grafikcem Agency OS'
-    },
-    body: JSON.stringify(body)
-  })
+  // 1 retry (429/5xx/timeout/network) — kalıcı 4xx retry edilmez; onları
+  // models[] zinciri sağlayıcı tarafında devralır (16 §4.3).
+  let data: OpenRouterResponse | null = null
+  let retryCount = 0
+  let lastError: unknown = null
+  const maxAttempts = Math.max(1, route.maxRetries + 1)
 
-  if (!response.ok) {
-    const errorData = await response.json()
-    throw new Error(`OpenRouter API Hatası: ${errorData.error?.message || response.statusText}`)
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      data = await attemptOpenRouterFetch(body, route.timeoutMs)
+      break
+    } catch (err) {
+      lastError = err
+      const status = (err as { status?: number }).status
+      const retryable = isAbortError(err) || (typeof status === 'number' && isRetryableStatus(status)) || status === undefined
+      if (!retryable || attempt === maxAttempts - 1) throw err
+      retryCount = attempt + 1
+      console.warn(
+        `[model.retry] operation=${operation} preset=${route.presetKey ?? 'raw'} attempt=${retryCount} reason=${err instanceof Error ? err.name + ':' + (status ?? '') : 'unknown'}`
+      )
+      await new Promise((r) => setTimeout(r, RETRY_BACKOFF_MS * (attempt + 1)))
+    }
   }
+  if (!data) throw lastError instanceof Error ? lastError : new Error('OpenRouter isteği başarısız.')
 
-  const data: OpenRouterResponse = await response.json()
   const message = data.choices[0]?.message
   const content = message?.content ?? ''
   const toolCalls = message?.tool_calls
 
+  // Görünür fallback logu — sessiz düşüş YASAK (16 §4.4). data.model fiilen
+  // yanıtlayan modeldir; primary'den farklıysa fallback devrededir.
+  const servedModel = data.model || primary
+  const fallbackUsed = servedModel !== primary
+  if (fallbackUsed) {
+    console.warn(
+      `[model.fallback.used] operation=${operation} preset=${route.presetKey ?? 'raw'} primary=${primary} served=${servedModel} retryCount=${retryCount}`
+    )
+  }
+
   // input/output ayrık oranlarla maliyet (oranlar tahmindir; settings override edebilir).
-  const rate = await getTokenRate(model)
+  const rate = await getTokenRate(servedModel)
   const costUsd =
     (data.usage.prompt_tokens / 1_000_000) * rate.input +
     (data.usage.completion_tokens / 1_000_000) * rate.output
@@ -252,18 +320,24 @@ async function callOpenRouter(
   const generationId = data.id ?? null
   const actualCostUsd = typeof data.usage.cost === 'number' ? data.usage.cost : null
 
-  await logAiCost(
+  // cost_usd DAİMA tahmini (parity); gerçek OpenRouter maliyeti actual_cost_usd'ye.
+  await logAiCostRow({
     operation,
-    data.model,
-    tier,
-    data.usage.prompt_tokens,
-    data.usage.completion_tokens,
-    costUsd,
-    agentKey,
-    relatedLeadId,
-    generationId,
-    actualCostUsd
-  )
+    model_used: servedModel,
+    model_tier: route.tier,
+    input_tokens: data.usage.prompt_tokens,
+    output_tokens: data.usage.completion_tokens,
+    cost_usd: costUsd,
+    cost_tl: costUsd * 38,
+    agent_key: agentKey ?? null,
+    related_lead_id: relatedLeadId ?? null,
+    generation_id: generationId,
+    actual_cost_usd: actualCostUsd,
+    cost_source: 'estimated',
+    preset_key: route.presetKey,
+    fallback_used: fallbackUsed,
+    retry_count: retryCount,
+  })
 
   return {
     content,
@@ -289,11 +363,10 @@ export async function callWithOperationMultimodal(
   maxTokens: number = 1200,
   meta: { agentKey?: string; relatedLeadId?: string | null } = {}
 ): Promise<{ content: string; usage: { promptTokens: number; completionTokens: number }; costUsd: number }> {
-  const { model, tier } = getModel(operation)
+  const preset = await resolveOperationPreset(operation)
   const result = await callOpenRouter(
     operation,
-    tier,
-    model,
+    presetToRoute(preset),
     systemPrompt,
     parts,
     maxTokens,
@@ -312,8 +385,8 @@ export async function callWithOperation(
   maxTokens: number = 1000,
   tools?: JarvisTool[]
 ): Promise<{ content: string; toolCalls?: ToolCall[] }> {
-  const { model, tier } = getModel(operation)
-  return callOpenRouter(operation, tier, model, systemPrompt, userPrompt, maxTokens, tools)
+  const preset = await resolveOperationPreset(operation)
+  return callOpenRouter(operation, presetToRoute(preset), systemPrompt, userPrompt, maxTokens, tools)
 }
 
 // Map an arbitrary model id to a cost tier (used only for logging classification).
@@ -325,6 +398,8 @@ function getTierForModel(model: string): ModelTier {
 
 // Agent-scoped call: runs a specific model (from the agents registry), tags the
 // cost log with the agent key, and returns token usage for task telemetry.
+// Geriye-uyumlu raw-model yolu (16 §5): agents registry ham model taşıyabilir;
+// tercih preset'e kayar ama bu yol kırılmaz. Timeout+retry yine uygulanır.
 export async function callAgentModel(opts: {
   model: string
   agentKey: string
@@ -333,11 +408,16 @@ export async function callAgentModel(opts: {
   maxTokens?: number
   tools?: JarvisTool[]
 }): Promise<{ content: string; toolCalls?: ToolCall[]; tokensIn: number; tokensOut: number }> {
-  const tier = getTierForModel(opts.model)
+  const route: ResolvedRoute = {
+    presetKey: null,
+    models: [opts.model],
+    timeoutMs: 45_000,
+    maxRetries: 1,
+    tier: getTierForModel(opts.model),
+  }
   const result = await callOpenRouter(
     `agent:${opts.agentKey}`,
-    tier,
-    opts.model,
+    route,
     opts.systemPrompt,
     opts.userPrompt,
     opts.maxTokens ?? 1200,
@@ -367,20 +447,15 @@ export async function getMonthlyAiStats(): Promise<{
   }
 }
 
-// Legacy tier-based calls — kept for backward compatibility with existing routes
+// Legacy tier-based calls — kept for backward compatibility with existing routes.
+// İçleri preset çözümlemesine yönlendirildi (16 §5.4); ham model ID yok.
 export async function callLight(
   systemPrompt: string,
   userPrompt: string,
   maxTokens: number = 1000
 ): Promise<string> {
-  const result = await callOpenRouter(
-    'light_generic',
-    'light',
-    'google/gemini-2.5-flash-lite',
-    systemPrompt,
-    userPrompt,
-    maxTokens
-  )
+  const preset = await resolveOperationPreset('light_generic')
+  const result = await callOpenRouter('light_generic', presetToRoute(preset), systemPrompt, userPrompt, maxTokens)
   return result.content
 }
 
@@ -389,14 +464,8 @@ export async function callMedium(
   userPrompt: string,
   maxTokens: number = 1000
 ): Promise<string> {
-  const result = await callOpenRouter(
-    'medium_generic',
-    'medium',
-    'anthropic/claude-haiku-4-5',
-    systemPrompt,
-    userPrompt,
-    maxTokens
-  )
+  const preset = await resolveOperationPreset('medium_generic')
+  const result = await callOpenRouter('medium_generic', presetToRoute(preset), systemPrompt, userPrompt, maxTokens)
   return result.content
 }
 
@@ -405,13 +474,8 @@ export async function callHeavy(
   userPrompt: string,
   maxTokens: number = 1000
 ): Promise<string> {
-  const result = await callOpenRouter(
-    'heavy_generic',
-    'heavy',
-    'deepseek/deepseek-v4-pro',
-    systemPrompt,
-    userPrompt,
-    maxTokens
-  )
+  // heavy_generic → professional; premium-deal yalnız explicit escalation (16 §5).
+  const preset = await resolveOperationPreset('heavy_generic')
+  const result = await callOpenRouter('heavy_generic', presetToRoute(preset), systemPrompt, userPrompt, maxTokens)
   return result.content
 }

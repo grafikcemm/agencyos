@@ -110,7 +110,7 @@ Giriş Verileri:
 
 Her alan için text kısmını kısa ve vurucu yaz, listeler için maddeleri \n• ile ayırarak tek bir string olarak yaz. _source_note kısmında ise bu bilginin hangi analizden veya veriden öğrenildiğini belirt (Örn: "Firma Başarısızlık Analizi #3", "Bursa Bölgesi Sinyali", "Konsey Onayı - 12 Mayıs"). Hiçbir açıklama veya markdown kod bloğu (Örn: \`\`\`json) ekleme, sadece JSON objesini döndür.`
 
-    // 5. Call OpenRouter using google/gemini-2.5-flash-lite via callLight
+    // 5. Call OpenRouter via callLight (preset: agencyos-fast-extract)
     const aiResponse = await callLight(systemPrompt, userPrompt, 2000)
 
     let parsedJson: any = null

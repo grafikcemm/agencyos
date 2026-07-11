@@ -1,4 +1,4 @@
-import { getModel } from '@/lib/openrouter'
+import { getRouteForOperation } from '@/lib/openrouter'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireApiAccess } from '@/lib/auth'
 import { getKnowledgeDoc } from '@/lib/knowledge'
@@ -33,7 +33,8 @@ export async function POST(req: Request) {
 
     const contextData = await getContextData()
     const profile = await getKnowledgeDoc('00_GRAFIKCEM_CONTEXT.md')
-    const { model } = getModel('jarvis_chat')
+    // Preset route: models[] self-heal — primary ölse bile OpenRouter fallback'e geçer.
+    const route = getRouteForOperation('jarvis_chat')
 
     const systemPrompt = `Sen JARVIS'sin — Ali Cem Bozma'nın kişisel asistanısın. Türkçe, kısa yanıtlar ver.
 Hiçbir şeyi otomatik gönderme — mail, teklif veya DM için her zaman onay iste.
@@ -49,7 +50,8 @@ ${contextData}`
         'X-Title': 'Grafikcem Agency OS'
       },
       body: JSON.stringify({
-        model,
+        model: route.models[0],
+        ...(route.models.length > 1 ? { models: route.models, provider: { allow_fallbacks: true } } : {}),
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: message }

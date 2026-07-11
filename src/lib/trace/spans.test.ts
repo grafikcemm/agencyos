@@ -6,13 +6,13 @@ describe('trace span — redaction + süre (§12/§16)', () => {
     const r = redactAttributes({
       prompt: 'gizli sistem promptu',
       api_key: 'sk-abc123456',
-      model: 'claude-haiku-4-5',
+      model: 'example-model-x',
       note: 'operatör sk-leak987654 için',
       count: 42,
     })
     expect(r.prompt).toBe('‹redacted›')
     expect(r.api_key).toBe('‹redacted›')
-    expect(r.model).toBe('claude-haiku-4-5')
+    expect(r.model).toBe('example-model-x')
     expect(String(r.note)).not.toContain('sk-leak987654')
     expect(r.count).toBe(42)
   })
