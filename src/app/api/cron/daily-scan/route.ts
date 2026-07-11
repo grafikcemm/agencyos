@@ -9,6 +9,7 @@ import { buildDailyTargetPlan, loadCityEngagement } from '@/lib/cityTargeting'
 import { isMissingCategoryColumnError, stripCategoryKeys } from '@/lib/leads/categoryPersist'
 import { getLeadIntelMode } from '@/lib/leadIntel/flag'
 import { runLeadIntelPipeline, PoolCandidate } from '@/lib/leadIntel/pipeline'
+import { logToolCostRow } from '@/lib/ai/toolCostLog'
 
 // Lead Intelligence v2: PSI audit'leri (aday başına 10-60sn) aynı koşuda çalışır.
 // Hobby planda 300sn ancak Fluid Compute ile mümkün — deploy öncesi proje ayarını doğrula.
@@ -152,6 +153,9 @@ async function handleScan(req: Request) {
     let attempts = 0
     const maxAttempts = 40 // API/sonsuz döngü koruması; geniş şehir×sektör rotasyonuna izin ver
     const PER_CANDIDATE_BUDGET = 4 // bir şehir×sektör adayı en çok bu kadar ilçe denemesi tüketir
+    // Places maliyet sayaçları (mig 052 tool_cost_logs)
+    let textsearchCalls = 0
+    let detailsCalls = 0
 
     // Şehir×sektör adayları üzerinde dön: her aday için ilçe rotasyonu + sektör query'leri.
     for (const candidate of targetPlan) {
@@ -180,6 +184,7 @@ async function handleScan(req: Request) {
         console.log(`[DAILY CRON] Running query: "${searchQuery}" (Attempt ${attempts}, Accepted: ${acceptedLeads.length})`)
 
         const searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(searchQuery)}&key=${apiKey}&language=tr&region=tr`
+        textsearchCalls++
         const searchRes = await fetch(searchUrl)
         const searchData = await searchRes.json()
 
@@ -215,6 +220,7 @@ async function handleScan(req: Request) {
 
           // Fetch Place Details
           const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,formatted_phone_number,website,geometry,rating,user_ratings_total&key=${apiKey}&language=tr`
+          detailsCalls++
           const detailsRes = await fetch(detailsUrl)
           const detailsData = await detailsRes.json()
 
@@ -508,6 +514,20 @@ async function handleScan(req: Request) {
       responsePayload.dryRun = true
     } else {
       responsePayload.insertedCount = acceptedLeads.length
+    }
+
+    // Places maliyeti (mig 052) — never-throws, cron cevabını geciktirmez/kırmaz.
+    if (textsearchCalls > 0) {
+      await logToolCostRow({
+        tool: 'google_places', operation: 'textsearch', units: textsearchCalls,
+        meta: { source: 'daily-scan-cron' },
+      })
+    }
+    if (detailsCalls > 0) {
+      await logToolCostRow({
+        tool: 'google_places', operation: 'details', units: detailsCalls,
+        meta: { source: 'daily-scan-cron' },
+      })
     }
 
     return NextResponse.json(responsePayload)

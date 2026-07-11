@@ -9,6 +9,7 @@ import { runEvidenceEngine } from '@/lib/evidenceEngine'
 import { calculateLeadScoreV3 } from '@/lib/leadScoringV3'
 import { runQualityEngine } from '@/lib/highQualityLeadEngine'
 import { isMissingCategoryColumnError, stripCategoryKeys } from '@/lib/leads/categoryPersist'
+import { logToolCostRow } from '@/lib/ai/toolCostLog'
 
 export interface ScanParams {
   sector: string
@@ -74,11 +75,15 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
   let pagetoken: string | undefined
   let firstStatus: string | null = null
   let firstErrorMessage: string | undefined
+  // Places maliyet sayaçları (mig 052 tool_cost_logs) — hacim × birim tahmin.
+  let textsearchCalls = 0
+  let detailsCalls = 0
 
   for (let page = 0; page < MAX_PAGES; page++) {
     if (page > 0) {
       await new Promise(resolve => setTimeout(resolve, 2000))
     }
+    textsearchCalls++
     const res = await fetch(buildSearchUrl(pagetoken))
     const data = await res.json()
     if (page === 0) {
@@ -92,6 +97,7 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
     } else if (data.status === 'INVALID_REQUEST' && pagetoken) {
       // Token henüz hazır değil — bir kez daha kısa bekleyip tekrar dene, sonra bırak.
       await new Promise(resolve => setTimeout(resolve, 2000))
+      textsearchCalls++
       const retry = await fetch(buildSearchUrl(pagetoken))
       const retryData = await retry.json()
       if (retryData.status === 'OK' && Array.isArray(retryData.results)) {
@@ -144,6 +150,7 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
   for (const place of places) {
     const placeId = place.place_id as string
     const detailsUrl = `${PLACES_BASE}/details/json?place_id=${placeId}&fields=name,formatted_phone_number,website,formatted_address,geometry,rating,user_ratings_total&key=${apiKey}&language=tr`
+    detailsCalls++
     const detailsRes = await fetch(detailsUrl)
     const detailsData = await detailsRes.json()
     const d = detailsData.result as Record<string, unknown> | null
@@ -307,6 +314,20 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
     if (runError) console.warn('scan_runs kaydı yazılamadı:', runError.message)
   } catch (e) {
     console.warn('scan_runs kaydı yazılamadı:', e instanceof Error ? e.message : e)
+  }
+
+  // Places maliyeti İLK KEZ ölçülür (22-cost-model) — never-throws, akışı kırmaz.
+  if (textsearchCalls > 0) {
+    await logToolCostRow({
+      tool: 'google_places', operation: 'textsearch', units: textsearchCalls,
+      meta: { sector: cleanSector, city: loc.city, source },
+    })
+  }
+  if (detailsCalls > 0) {
+    await logToolCostRow({
+      tool: 'google_places', operation: 'details', units: detailsCalls,
+      meta: { sector: cleanSector, city: loc.city, source },
+    })
   }
 
   return {
