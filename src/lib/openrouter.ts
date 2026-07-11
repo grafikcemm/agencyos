@@ -163,12 +163,18 @@ export type ContentPart =
   | { type: 'text'; text: string }
   | { type: 'image_url'; image_url: { url: string } }
 
-function buildProviderBody(route: ResolvedRoute): Record<string, unknown> | undefined {
+// require_parameters'ın amacı fallback'in TOOL/VISION desteğini zorlamaktır
+// (16 §4.5). Sampling paramlarına (temperature) uygulanırsa frontier reasoning
+// modellerinin endpoint'leri (temperature desteklemez) filtrelenip 404
+// "No endpoints found" doğurur — canlı doğrulanan davranış. Bu yüzden:
+//   · require_parameters YALNIZ istek gerçekten tools/vision içeriyorsa gönderilir
+//   · gönderildiğinde temperature body'den düşülür (filtre yalnız tool/vision'ı zorlar)
+function buildProviderBody(route: ResolvedRoute, needsParams: boolean): Record<string, unknown> | undefined {
   const p = route.provider
   const body: Record<string, unknown> = {}
   // models[] gönderildiğinde self-heal için allow_fallbacks daima açık.
   if (route.models.length > 1) body.allow_fallbacks = p?.allowFallbacks ?? true
-  if (p?.requireParameters) body.require_parameters = true
+  if (p?.requireParameters && needsParams) body.require_parameters = true
   if (p?.dataCollection) body.data_collection = p.dataCollection
   if (p?.sort) body.sort = p.sort
   if (p?.zdr) body.zdr = true
@@ -249,6 +255,10 @@ async function callOpenRouter(
   }
 
   const primary = route.models[0]
+  const hasTools = Boolean(tools && tools.length > 0)
+  const hasVision = Array.isArray(userPrompt) && userPrompt.some((p) => p.type === 'image_url')
+  const needsParams = hasTools || hasVision
+
   const body: Record<string, unknown> = {
     model: primary,
     messages: [
@@ -256,17 +266,20 @@ async function callOpenRouter(
       { role: 'user', content: userPrompt }
     ],
     max_tokens: maxTokens,
-    temperature: 0.7,
     // Gerçek USD maliyeti yanıt gövdesinde döndür (gözlem; cost_usd hâlâ tahmini).
     usage: { include: true }
   }
+  // temperature yalnız require_parameters gönderilmeyecekse eklenir (yukarıdaki
+  // buildProviderBody notu — endpoint filtresi 404'ünün canlı-doğrulanmış fixi).
+  const willRequireParams = Boolean(route.provider?.requireParameters && needsParams)
+  if (!willRequireParams) body.temperature = 0.7
   // Self-heal fallback dizisi: primary 404/5xx olursa OpenRouter otomatik
   // sonraki modele geçer (16 §4.1 — ölü-ID sorununun kalıcı çözümü).
   if (route.models.length > 1) body.models = route.models
-  const providerBody = buildProviderBody(route)
+  const providerBody = buildProviderBody(route, needsParams)
   if (providerBody) body.provider = providerBody
 
-  if (tools && tools.length > 0) {
+  if (hasTools && tools) {
     body.tools = tools
     body.tool_choice = 'auto'
   }

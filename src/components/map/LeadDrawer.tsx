@@ -88,6 +88,25 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
   const [emailDraft, setEmailDraft] = useState<{ id: string; subject: string | null; body: string } | null>(null)
   const [draftingEmail, setDraftingEmail] = useState(false)
   const [emailError, setEmailError] = useState<string | null>(null)
+  // Gmail HITL gönderim durumu (Sprint 0 Faz 4) — onay/gönderim/dry-run.
+  const [sendStatus, setSendStatus] = useState<{
+    sent: boolean
+    gmailMessageId: string | null
+    lastError: string | null
+    approval: { id: string; status: string; expiresAt: string } | null
+    dryRunMode: boolean
+  } | null>(null)
+  const [gmailBusy, setGmailBusy] = useState(false)
+  const [gmailNote, setGmailNote] = useState<string | null>(null)
+  const [statusDraftId, setStatusDraftId] = useState<string | null>(null)
+
+  // Taslak değişince gönderim durumu render-anında sıfırlanır (adjust-state-
+  // during-render deseni — effect içinde sync setState cascade'i yok).
+  if ((emailDraft?.id ?? null) !== statusDraftId) {
+    setStatusDraftId(emailDraft?.id ?? null)
+    setSendStatus(null)
+    setGmailNote(null)
+  }
 
   useEffect(() => {
     fetch('/api/enrichment/apollo')
@@ -107,6 +126,77 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
       .catch(() => { /* taslak yoksa sessiz geç */ })
     return () => { cancelled = true }
   }, [rawLead.id])
+
+  // Taslak varken Gmail gönderim durumunu yükle (onay/gönderildi/dry-run).
+  useEffect(() => {
+    if (!emailDraft) return
+    let cancelled = false
+    fetch(`/api/outreach/${emailDraft.id}/send-status`)
+      .then(res => res.json())
+      .then(data => { if (!cancelled && data?.success) setSendStatus(data.data) })
+      .catch(() => { /* durum okunamazsa blok gizli kalır */ })
+    return () => { cancelled = true }
+  }, [emailDraft])
+
+  const refreshSendStatus = async (draftId: string) => {
+    try {
+      const res = await fetch(`/api/outreach/${draftId}/send-status`)
+      const data = await res.json()
+      if (data?.success) setSendStatus(data.data)
+    } catch { /* sessiz */ }
+  }
+
+  const handleRequestSend = async () => {
+    if (!emailDraft || gmailBusy) return
+    setGmailBusy(true)
+    setGmailNote(null)
+    try {
+      const res = await fetch(`/api/outreach/${emailDraft.id}/request-send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setGmailNote('Onay isteği oluşturuldu — Konsol > Onay Kuyruğu üzerinden onaylayın.')
+      } else if (data.blockedReasons) {
+        setGmailNote(`Gönderim bloke: ${data.blockedReasons.join(', ')}`)
+      } else {
+        setGmailNote(data.error || 'Onay isteği oluşturulamadı.')
+      }
+      await refreshSendStatus(emailDraft.id)
+    } catch {
+      setGmailNote('Bağlantı hatası oluştu.')
+    } finally {
+      setGmailBusy(false)
+    }
+  }
+
+  const handleSendGmail = async () => {
+    if (!emailDraft || gmailBusy || !sendStatus?.approval) return
+    setGmailBusy(true)
+    setGmailNote(null)
+    try {
+      const res = await fetch(`/api/outreach/${emailDraft.id}/send-gmail`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ approvalId: sendStatus.approval.id }),
+      })
+      const data = await res.json()
+      if (data.success) {
+        setGmailNote(data.data?.dryRun ? 'Gönderildi (DRY-RUN — gerçek e-posta çıkmadı).' : 'Gmail üzerinden gönderildi.')
+      } else if (data.blockedReasons) {
+        setGmailNote(`Gönderim bloke: ${data.blockedReasons.join(', ')}`)
+      } else {
+        setGmailNote(data.error || 'Gönderim başarısız.')
+      }
+      await refreshSendStatus(emailDraft.id)
+    } catch {
+      setGmailNote('Bağlantı hatası oluştu.')
+    } finally {
+      setGmailBusy(false)
+    }
+  }
 
   // Close the drawer on Escape — expected behavior for an overlay panel.
   useEffect(() => {
@@ -561,6 +651,51 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
                 >
                   <Copy className="w-3 h-3" /> {copied ? 'Kopyalandı ✓' : 'Gövdeyi kopyala'}
                 </button>
+
+                {/* Gmail HITL gönderim bloğu (Sprint 0 Faz 4) — onaysız gönderim yok */}
+                <div className="space-y-1.5 border-t border-[var(--border-subtle)] pt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9px] font-bold tracking-widest uppercase text-[var(--text-muted)]">
+                      Gmail Gönderimi {sendStatus?.dryRunMode ? '· DRY-RUN' : ''}
+                    </span>
+                    {sendStatus?.approval && !sendStatus.sent && (
+                      <span className="text-[9px] font-mono text-[var(--text-tertiary)]">onay: {sendStatus.approval.status}</span>
+                    )}
+                  </div>
+
+                  {sendStatus?.sent ? (
+                    <div className="text-[10px] text-[var(--success)] font-semibold">
+                      Gönderildi ✓ {sendStatus.gmailMessageId?.startsWith('dryrun-') ? '(dry-run)' : ''}
+                    </div>
+                  ) : sendStatus?.approval?.status === 'approved' ? (
+                    <button
+                      onClick={handleSendGmail}
+                      disabled={gmailBusy}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-[var(--accent)] text-white text-[10px] font-bold rounded-md hover:brightness-110 disabled:opacity-50"
+                    >
+                      <Mail className="w-3 h-3" /> {gmailBusy ? 'Gönderiliyor…' : sendStatus.dryRunMode ? 'Gönder (dry-run)' : "Gmail'den Gönder"}
+                    </button>
+                  ) : sendStatus?.approval?.status === 'pending' ? (
+                    <div className="text-[10px] text-[var(--text-tertiary)]">
+                      Onay bekliyor — <a href="/konsol" className="text-[var(--accent)] underline">Konsol &gt; Onay Kuyruğu</a>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleRequestSend}
+                      disabled={gmailBusy}
+                      className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-[var(--bg-base)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[10px] font-bold text-[var(--text-primary)] rounded-md disabled:opacity-50"
+                    >
+                      <Mail className="w-3 h-3" /> {gmailBusy ? 'İsteniyor…' : 'Gmail Onayı İste'}
+                    </button>
+                  )}
+
+                  {gmailNote && (
+                    <div className="text-[10px] text-[var(--text-tertiary)] leading-snug">{gmailNote}</div>
+                  )}
+                  {sendStatus?.lastError && !sendStatus.sent && (
+                    <div className="text-[10px] text-[var(--danger)] leading-snug">{sendStatus.lastError}</div>
+                  )}
+                </div>
               </>
             )}
           </div>

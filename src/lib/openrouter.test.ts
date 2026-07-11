@@ -81,9 +81,24 @@ describe('callWithOperation — models[] self-heal + policy (16 §4)', () => {
     const provider = body.provider as Record<string, unknown>
     expect(provider.allow_fallbacks).toBe(true)
     expect(provider.data_collection).toBe('deny')
-    expect(provider.require_parameters).toBe(true)
+    // tools/vision YOK → require_parameters gönderilmez (aksi frontier
+    // modellerde temperature filtresiyle 404 doğurur — canlı doğrulandı)
+    expect(provider.require_parameters).toBeUndefined()
+    expect(body.temperature).toBe(0.7)
     expect(provider.max_price).toEqual({ prompt: 3.0, completion: 12.0 })
     expect(body.usage).toEqual({ include: true })
+  })
+
+  it('tools VARSA require_parameters gönderilir, temperature düşülür (16 §4.5)', async () => {
+    fetchMock.mockResolvedValueOnce(okResponse('openai/gpt-5.6-luna'))
+    await callWithOperation('draft_email', 'sys', 'user', 500, [
+      { type: 'function', function: { name: 'f', description: 'd', parameters: {} } },
+    ])
+    const body = sentBody()
+    const provider = body.provider as Record<string, unknown>
+    expect(provider.require_parameters).toBe(true)
+    expect(body.temperature).toBeUndefined()
+    expect(body.tools).toBeDefined()
   })
 
   it('fallback devrede: data.model ≠ primary → fallback_used:true + görünür log', async () => {
