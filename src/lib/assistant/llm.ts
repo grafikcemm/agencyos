@@ -1,4 +1,4 @@
-import { gatewayChat, isGatewayEnabled } from "../ai/gateway";
+import { gatewayChat } from "../ai/gateway";
 
 export interface OpenRouterMessage {
   role: "system" | "user" | "assistant";
@@ -12,96 +12,23 @@ export interface OpenRouterOptions {
   timeoutMs?: number;
 }
 
-let warnedMissingConfig = false;
-
+// Faz 5 (audit bulgu #4): asistan LLM yolu HER ZAMAN merkezi gateway'den geçer.
+// Model artık OPENROUTER_MODEL ham env'inden değil, preset registry'den
+// (assistant_chat → agencyos-research: models[] self-heal + retry + fallback
+// logu + preset_key'li cost log + aylık tavan). Dönüş sözleşmesi değişmedi:
+// başarısızlıkta null (asistanın statik fallback'i devrede kalır).
 export async function callOpenRouter(
   messages: OpenRouterMessage[],
   options: OpenRouterOptions = {}
 ): Promise<string | null> {
-  // Faz 0: AI_GATEWAY_ENABLED=true iken tek gateway'e delege et (maliyet loglanır
-  // + aylık tavana tabi olur — bu yol önceden TAKİPSİZDİ). Varsayılan KAPALI →
-  // aşağıdaki mevcut satır-içi davranış birebir korunur. Dönüş sözleşmesi aynı
-  // (string | null); gateway de başarısızlıkta null döner.
-  if (isGatewayEnabled()) {
-    const res = await gatewayChat(messages, {
-      model: options.model,
-      temperature: options.temperature,
-      maxTokens: options.maxTokens,
-      timeoutMs: options.timeoutMs,
-      operation: 'assistant_chat',
-    });
-    return res.content;
-  }
-
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  const model = options.model ?? process.env.OPENROUTER_MODEL;
-
-  if (!apiKey || !model) {
-    // Sessizce null dönüp tüm asistanı statik fallback'e düşürmek yerine en az bir kez uyar.
-    if (!warnedMissingConfig) {
-      warnedMissingConfig = true;
-      console.warn(
-        '[openrouter] OPENROUTER_API_KEY veya OPENROUTER_MODEL tanımlı değil — asistan LLM yanıtları kapalı, statik fallback kullanılıyor.'
-      );
-    }
-    return null;
-  }
-
-  const {
-    temperature = 0.3,
-    maxTokens = 800,
-    // Reasoning modelleri (DeepSeek vb.) 10s'de yetişemiyor — TimeoutError
-    // sessiz fallback'in ikinci kök nedeniydi. Route'larda maxDuration ile uyumlu.
-    timeoutMs = 25000,
-  } = options;
-
-  try {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://agencyos.app",
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        temperature,
-        max_tokens: maxTokens,
-        // Reasoning modelleri (DeepSeek vb.) reasoning kanalına token yakıp
-        // content:null dönebiliyor — iki parametre de gönderilir (legacy + güncel).
-        include_reasoning: false,
-        reasoning: { exclude: true },
-      }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-
-    if (!response.ok) {
-      console.error("[openrouter] non-OK response", response.status, model);
-      return null;
-    }
-
-    const data = await response.json();
-    const msg = data?.choices?.[0]?.message;
-    let content: string | undefined = msg?.content;
-    if (content) {
-      content = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-    }
-    if (!content) {
-      console.warn("[openrouter] empty content", {
-        finish_reason: data?.choices?.[0]?.finish_reason,
-        model,
-      });
-      return null;
-    }
-    return content;
-  } catch (err) {
-    console.error(
-      "[openrouter] request failed",
-      err instanceof Error ? err.name : "unknown"
-    );
-    return null;
-  }
+  const res = await gatewayChat(messages, {
+    model: options.model,
+    temperature: options.temperature,
+    maxTokens: options.maxTokens,
+    timeoutMs: options.timeoutMs,
+    operation: 'assistant_chat',
+  });
+  return res.content;
 }
 
 export function extractJSON(text: string): unknown | null {

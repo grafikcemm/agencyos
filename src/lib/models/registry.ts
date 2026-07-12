@@ -28,6 +28,10 @@ export const OPERATION_PRESET_MAP: Record<string, string> = {
   read_knowledge:      'agencyos-research',
   wrap_session:        'agencyos-research',
   build_visual_prompt: 'agencyos-research',
+  // Faz 5: assistant/llm.ts + ai/gateway.ts artık OPENROUTER_MODEL ham env'i
+  // yerine bu operation eşlemesinden geçer (audit bulgu #4).
+  assistant_chat:      'agencyos-research',
+  assistant_mentor:    'agencyos-research',
 
   // Tier 3 — profesyonel yazım
   generate_briefing:    'agencyos-professional',

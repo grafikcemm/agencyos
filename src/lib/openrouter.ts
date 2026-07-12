@@ -1,8 +1,9 @@
 import { supabaseAdmin } from './supabase'
 import { getMonthlyCapUsd } from './ai/caps'
 import { logAiCostRow } from './ai/costLog'
-import { LIVE_TOKEN_RATES_PER_M, ProviderPolicy, RoutePreset } from './models/presets'
+import { LIVE_TOKEN_RATES_PER_M, ProviderPolicy, RoutePreset, allPresetModelIds } from './models/presets'
 import {
+  getPresetByKey,
   presetTierToModelTier,
   resolveOperationPreset,
   resolveOperationPresetStatic,
@@ -421,9 +422,26 @@ export async function callAgentModel(opts: {
   maxTokens?: number
   tools?: JarvisTool[]
 }): Promise<{ content: string; toolCalls?: ToolCall[]; tokensIn: number; tokensOut: number }> {
+  // Faz 5 (audit bulgu #4): DB'den gelen model ID doğrulanır. Preset
+  // kataloğunda olmayan (drift'e açık) bir ID'ye professional zincirinden
+  // fallback eklenir — ID katalogdan düşerse çağrı sessizce 404'e gömülmez,
+  // self-heal + görünür log devreye girer. Timeout/retry/cost-log zaten
+  // ortak callOpenRouter yolunda.
+  const knownIds = allPresetModelIds()
+  const isKnown = knownIds.includes(opts.model)
+  let models = [opts.model]
+  if (!isKnown) {
+    const professional = getPresetByKey('agencyos-professional')
+    const fallbacks = [professional.primary, ...professional.fallbacks].filter((m) => m !== opts.model)
+    models = [opts.model, ...fallbacks]
+    console.warn(
+      `[model.unverified] agent=${opts.agentKey} model=${opts.model} preset kataloğunda yok — professional fallback zinciri eklendi`
+    )
+  }
   const route: ResolvedRoute = {
     presetKey: null,
-    models: [opts.model],
+    models,
+    ...(models.length > 1 ? { provider: { allowFallbacks: true } } : {}),
     timeoutMs: 45_000,
     maxRetries: 1,
     tier: getTierForModel(opts.model),

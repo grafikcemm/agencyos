@@ -9,9 +9,14 @@ import {
 } from './registry'
 import { checkPresetDrift, CatalogModel } from './verify'
 
-// 16-openrouter-routing.md §1-2: üretimde patlayan üç ölü ID + rate tablosundaki
-// dördüncü — hiçbir preset zincirinde geçemez.
-const DEAD_MODEL_IDS = [
+// YASAKLI legacy ID'ler — güncel çağrı/config'te kullanılamazlar. Bu bir
+// "katalogdan kalıcı silindi" iddiası DEĞİL, politika kararıdır: 2026-07-12
+// canlı katalog kontrolünde gemini-2.5-flash-lite ve deepseek-v4-pro yeniden
+// listede görünüyordu (claude-haiku-4-5 yoktu). Katalog gerçeği drift
+// kontrolüyle (checkPresetDrift + nightly cron) izlenir; preset zincirleri
+// yalnız doğrulanmış güncel modelleri taşır. Tarihsel docs/migration
+// referansları "çağrı yeri" sayılmaz.
+const BANNED_LEGACY_MODEL_IDS = [
   'google/gemini-2.5-flash-lite',
   'anthropic/claude-haiku-4-5',
   'deepseek/deepseek-v4-pro',
@@ -19,10 +24,10 @@ const DEAD_MODEL_IDS = [
 ]
 
 describe('PRESETS katalog (16 §3 sözleşme sadakati)', () => {
-  it('hiçbir preset zincirinde ölü model ID yok', () => {
+  it('hiçbir preset zincirinde yasaklı legacy model ID yok', () => {
     const ids = allPresetModelIds()
-    for (const dead of DEAD_MODEL_IDS) {
-      expect(ids).not.toContain(dead)
+    for (const banned of BANNED_LEGACY_MODEL_IDS) {
+      expect(ids).not.toContain(banned)
     }
   })
 

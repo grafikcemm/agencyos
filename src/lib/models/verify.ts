@@ -23,11 +23,22 @@ export interface DriftIssue {
   detail: string
 }
 
-/** Canlı OpenRouter kataloğunu çeker (per-token fiyatlar $/M'e çevrilir). */
+const CATALOG_TIMEOUT_MS = 15_000
+
+/** Canlı OpenRouter kataloğunu çeker (per-token fiyatlar $/M'e çevrilir).
+ *  AbortController timeout'lu — asılı katalog isteği cron'u süresiz bekletemez. */
 export async function fetchLiveCatalog(fetchImpl: typeof fetch = fetch): Promise<Map<string, CatalogModel>> {
-  const res = await fetchImpl(OPENROUTER_MODELS_URL, {
-    headers: { 'Content-Type': 'application/json' },
-  })
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), CATALOG_TIMEOUT_MS)
+  let res: Response
+  try {
+    res = await fetchImpl(OPENROUTER_MODELS_URL, {
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+    })
+  } finally {
+    clearTimeout(timer)
+  }
   if (!res.ok) {
     throw new Error(`OpenRouter katalog isteği başarısız: HTTP ${res.status}`)
   }
