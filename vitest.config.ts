@@ -17,6 +17,15 @@ export default defineConfig({
       reportsDirectory: './test-results/coverage',
       include: ['src/lib/**/*.ts'],
       exclude: ['src/lib/**/*.test.ts', 'src/lib/migrations/**', 'src/lib/types.ts'],
+      // Kritik modül eşikleri (Faz 6): gönderim güvenliği + model routing
+      // gerileyemez — tam suite `--coverage` ile altına düşerse FAIL.
+      thresholds: {
+        'src/lib/outreach/gmail.ts': { statements: 90, lines: 90, branches: 85 },
+        'src/lib/outreach/sendMachine.ts': { statements: 90, lines: 90, branches: 80 },
+        'src/lib/outreach/auditCompliance.ts': { statements: 90, lines: 90, branches: 85 },
+        'src/lib/models/**/*.ts': { statements: 90, branches: 80 },
+        'src/lib/ai/toolCostLog.ts': { statements: 90, branches: 85 },
+      },
     },
   },
 })
