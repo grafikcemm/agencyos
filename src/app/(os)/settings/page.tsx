@@ -6,6 +6,7 @@ import { Shield, Server, Activity, Save, AlertTriangle, Package, Trash2, Refresh
 import { Badge } from '@/components/ui/badge'
 import { fetchSettings, saveSetting } from '@/lib/repositories/settings'
 import { SIGNATURE_SETTING_KEYS, SIGNATURE_DEFAULTS, COMPLIANCE_SETTING_KEYS } from '@/lib/coldEmail'
+import { TelegramDiagnostics } from '@/components/settings/TelegramDiagnostics'
 
 interface ConfigHealth {
   success: boolean
@@ -176,6 +177,9 @@ export default function SettingsPage() {
             {msg.text}
           </div>
         )}
+
+        {/* Telegram durum paneli (Faz B7) — read-only, secret gostermez */}
+        <TelegramDiagnostics />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Agency info */}

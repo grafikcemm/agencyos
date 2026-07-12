@@ -10,29 +10,13 @@ import type { ReminderType } from '@/data/orchestratorConfig';
 import type { AssistantDailyState, UnifiedTodayPlan } from '@/lib/dailyOrchestrator';
 import { buildMorningBriefingBlock } from '@/lib/assistant/morningBriefing';
 import { getIstanbulDateAndDay } from '@/lib/assistant/timezone';
-import { getCommitment, setCommitment, logConversationTurn } from '@/lib/assistant/memory';
+import { getCommitment, setCommitment } from '@/lib/assistant/memory';
 import { morningCommitmentQuestion, eveningRecallQuestion, sanitizeForTelegram } from '@/lib/assistant/mentorLoop';
 import { loadAssistantLiveContext, type AssistantLiveContext } from '@/lib/assistant/liveContext';
 import { buildMentorSystemPrompt } from '@/lib/assistant/prompts';
 import { callOpenRouter } from '@/lib/assistant/llm';
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
-const CHAT_ID   = process.env.TELEGRAM_CHAT_ID ?? '';
-
-async function sendTelegram(text: string): Promise<number | null> {
-  if (!BOT_TOKEN || !CHAT_ID) return null;
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: CHAT_ID, text, parse_mode: 'HTML' }),
-    });
-    const data = await res.json() as { ok: boolean; result?: { message_id: number } };
-    return data?.result?.message_id ?? null;
-  } catch {
-    return null;
-  }
-}
+import { dispatchReminder, filterSentToday } from '@/lib/assistant/reminderDispatch';
 
 async function getOrCreateDailyState(date: string): Promise<any> {
   const { data } = await supabaseAdmin
@@ -202,13 +186,17 @@ export async function GET(req: Request): Promise<NextResponse> {
     return NextResponse.json({ ok: true, message: 'Orchestrator not active yet', startDate: process.env.ORCHESTRATOR_START_DATE });
   }
 
-  // Get already-sent reminders for today
+  // Bugün gönderilmiş sayılan reminder'lar: send_failed satırlar retry vadesi
+  // geldiyse LİSTEDEN ÇIKAR (yeniden denenebilir) — sahte-başarı kilidi yok (Faz B2).
   const { data: sentRows } = await supabaseAdmin
     .from('assistant_reminders')
-    .select('reminder_type')
+    .select('reminder_type, status, metadata')
     .eq('date', today);
 
-  const sentToday = (sentRows ?? []).map(r => r.reminder_type as ReminderType);
+  const sentToday = filterSentToday(
+    (sentRows ?? []) as Array<{ reminder_type: string; status: string | null; metadata: { next_retry_at?: string } | null }>,
+    Date.now(),
+  ) as ReminderType[];
   const due = getDueReminder(new Date(), sentToday);
 
   if (!due) {
@@ -288,25 +276,16 @@ export async function GET(req: Request): Promise<NextResponse> {
     // reminder'ı "gönderildi" diye işaretleme.
     return NextResponse.json({ ok: true, message: 'Empty reminder, skipped', due });
   }
-  const messageId = await sendTelegram(message);
-  // Log outbound reminder so the mentor LLM has full two-way context.
-  if (message) {
-    await logConversationTurn({ date: today, role: 'assistant', message, intent: due });
+
+  // Faz B2: message_id'siz "gönderildi" YOK — başarı/başarısızlık dispatchReminder'da
+  // doğru kaydedilir (başarısızlıkta conversation log yazılmaz, sentToday kilitlenmez).
+  const result = await dispatchReminder({ date: today, reminderType: due, message, successStatus: 'pending' });
+
+  if (!result.sent) {
+    return NextResponse.json(
+      { ok: false, due, error: result.error, attempts: result.attempts },
+      { status: 502 },
+    );
   }
-
-  // Record the sent reminder
-  await supabaseAdmin.from('assistant_reminders').upsert(
-    {
-      date: today,
-      reminder_type: due,
-      sent_at: new Date().toISOString(),
-      // 'pending' = gönderildi, kullanıcı cevabı bekleniyor. Webhook tamam/pas/ertele
-      // bu statüyü sorgular; 'sent' olduğunda hiç eşleşmiyordu (reminder lifecycle bug).
-      status: 'pending',
-      telegram_message_id: messageId,
-    },
-    { onConflict: 'date,reminder_type' }
-  );
-
-  return NextResponse.json({ ok: true, sent: due, messageId });
+  return NextResponse.json({ ok: true, sent: due, messageId: result.messageId, attempts: result.attempts });
 }

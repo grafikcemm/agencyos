@@ -32,25 +32,32 @@ import { runJarvis } from '@/lib/jarvis/engine';
 // OpenRouter reasoning modelleri yavaş — 25s LLM timeout'una alan tanı (Vercel).
 export const maxDuration = 60;
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
-const CHAT_ID   = process.env.TELEGRAM_CHAT_ID ?? '';
+import { z } from 'zod';
+import { sendTelegramMessage } from '@/lib/telegram/client';
+import { claimTelegramUpdate } from '@/lib/telegram/updateClaims';
+import { parseSalesCommand } from '@/lib/telegram/salesCommands';
+import { handleSalesCommand } from '@/lib/telegram/salesHandlers';
+import { setPendingAction, consumePendingAction } from '@/lib/telegram/pendingActions';
 
-// ── Webhook dedup ─────────────────────────────────────────────────────────────
-// Telegram, handler cevabı gecikince (LLM yolu 25s+) AYNI update'i yeniden
-// gönderir; dedupsuz her retry çift cevap + çift yan etki (reminder flip, Jarvis
-// aksiyonu) üretir. Warm instance içinde kısa TTL'li in-memory set yeterli —
-// retry'lar saniyeler içinde aynı instance'a düşer; cold-start kaçağı nadir.
-const SEEN_UPDATE_TTL_MS = 5 * 60_000;
-const seenUpdates = new Map<number, number>();
-function seenRecently(updateId: number): boolean {
-  const now = Date.now();
-  for (const [id, ts] of seenUpdates) {
-    if (now - ts > SEEN_UPDATE_TTL_MS) seenUpdates.delete(id);
-  }
-  if (seenUpdates.has(updateId)) return true;
-  seenUpdates.set(updateId, now);
-  return false;
-}
+// ── Update şeması (Faz B3) ────────────────────────────────────────────────────
+// Minimum doğrulama: update_id zorunlu; message alanları opsiyonel ama TİPLİ.
+// Mesaj-dışı update'ler (edited_message, callback_query…) güvenli no-op.
+const TelegramUpdateSchema = z
+  .object({
+    update_id: z.number().int(),
+    message: z
+      .object({
+        message_id: z.number().optional(),
+        text: z.string().max(4096).optional(),
+        chat: z.object({ id: z.union([z.number(), z.string()]) }).optional(),
+        from: z.object({ id: z.union([z.number(), z.string()]) }).optional(),
+      })
+      .passthrough()
+      .optional(),
+  })
+  .passthrough();
+
+const MAX_UPDATE_BYTES = 64 * 1024;
 
 // Serbest mesaj eylemsel bir görev/üretim isteği mi? (Jarvis araç motoruna yönlendir.)
 // İmperatif/üretim fiilleri — hayat sohbetini yutmamak için yeterince spesifik.
@@ -80,25 +87,11 @@ interface DailyV2State {
 
 type DailyV2Patch = Partial<Omit<DailyV2State, 'date'>>;
 
+// Faz B1: tüm gönderimler ortak transport'tan (timeout + typed sonuç + redaction).
 async function sendTelegram(text: string): Promise<{ ok: boolean; status: number }> {
-  if (!BOT_TOKEN || !CHAT_ID) {
-    console.error('[telegram] BOT_TOKEN/CHAT_ID eksik — mesaj gönderilemedi');
-    return { ok: false, status: 0 };
-  }
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: CHAT_ID, text, parse_mode: 'HTML' }),
-    });
-    if (!res.ok) {
-      console.error('[telegram] sendMessage failed', res.status);
-    }
-    return { ok: res.ok, status: res.status };
-  } catch (err) {
-    console.error('[telegram] sendMessage threw', err instanceof Error ? err.name : 'unknown');
-    return { ok: false, status: 0 };
-  }
+  const result = await sendTelegramMessage(text);
+  if (!result.ok) console.error('[telegram] sendMessage failed', result.status, result.error);
+  return { ok: result.ok, status: result.status };
 }
 
 /** sendTelegram + assistant turunu telegram_conversations'a logla (best-effort).
@@ -427,31 +420,102 @@ export async function POST(req: Request): Promise<NextResponse> {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     }
 
-    const body = await req.json() as {
-      update_id?: number;
-      message?: { text?: string; chat?: { id: number }; message_id?: number };
-    };
-
-    // Retry dedup: aynı update_id kısa süre önce işlendiyse yan etkisiz OK dön.
-    if (typeof body.update_id === 'number' && seenRecently(body.update_id)) {
-      return NextResponse.json({ ok: true, deduped: true });
+    // Gövde boyutu sınırı (Faz B3) — dev update'ler reddedilir.
+    const rawBody = await req.text();
+    if (rawBody.length > MAX_UPDATE_BYTES) {
+      return NextResponse.json({ error: 'payload too large' }, { status: 413 });
     }
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(rawBody);
+    } catch {
+      return NextResponse.json({ error: 'invalid json' }, { status: 400 });
+    }
+    const parsed = TelegramUpdateSchema.safeParse(parsedJson);
+    // Şemaya uymayan veya mesaj-dışı update → güvenli no-op (Telegram retry etmesin diye 200).
+    if (!parsed.success) return NextResponse.json({ ok: true, ignored: 'schema' });
+    const body = parsed.data;
 
-    const text = body?.message?.text;
+    const text = body.message?.text;
     if (!text) return NextResponse.json({ ok: true });
 
-    // Yalnızca yetkili sohbet işlenir (CHAT_ID yapılandırılmışsa) — yabancı update'leri sessizce yut.
+    // ── Yetkilendirme (Faz B3) — FAIL-CLOSED: env eksikse veya alan eksikse İŞLENMEZ.
+    // Bu blok her türlü DB yazımından ÖNCE gelir (yetkisiz update hiçbir iz bırakmaz).
     const allowedChat = process.env.TELEGRAM_CHAT_ID;
-    const incomingChat = body?.message?.chat?.id;
-    if (allowedChat && incomingChat != null && String(incomingChat) !== allowedChat) {
-      return NextResponse.json({ ok: true });
+    const allowedUser = process.env.TELEGRAM_USER_ID;
+    const incomingChat = body.message?.chat?.id;
+    const incomingFrom = body.message?.from?.id;
+    if (!allowedChat || incomingChat == null || String(incomingChat) !== allowedChat) {
+      return NextResponse.json({ ok: true, ignored: 'chat' });
     }
+    if (!allowedUser) {
+      // Yapılandırma eksik → fail-closed. (Deploy notu: TELEGRAM_USER_ID zorunlu.)
+      console.error('[telegram] TELEGRAM_USER_ID tanımsız — update işlenmedi (fail-closed)');
+      return NextResponse.json({ ok: true, ignored: 'user_env' });
+    }
+    if (incomingFrom == null || String(incomingFrom) !== allowedUser) {
+      return NextResponse.json({ ok: true, ignored: 'user' });
+    }
+
+    // ── Idempotency (Faz B4): durable claim; duplicate → yan etkisiz çık.
+    const claim = await claimTelegramUpdate(body.update_id);
+    if (!claim.fresh) return NextResponse.json({ ok: true, deduped: true, mode: claim.mode });
 
     const { todayStr: today } = getIstanbulDateAndDay();
 
     if (!isOrchestratorActive(today)) {
       await sendTelegram(
         `Asistan henüz aktif değil.\nSistem ${process.env.ORCHESTRATOR_START_DATE ?? '2026-06-01'} tarihinde başlıyor.`
+      );
+      return NextResponse.json({ ok: true });
+    }
+
+    // ── SATIŞ KOMUTLARI ÖNCE (Faz B5/B6) ─────────────────────────────────────
+    // "cold email hazırla", "Klinik X arandı", "bugün kimi arayayım?" gibi
+    // komutlar taahhüt yakalayıcısına veya hayat-intent'lerine ASLA düşmez.
+    const salesCmd = parseSalesCommand(text);
+    if (salesCmd) {
+      await logConversationTurn({ date: today, role: 'user', message: text, intent: `sales:${salesCmd.type}` });
+      try {
+        const salesReply = await handleSalesCommand(salesCmd, {
+          updateId: body.update_id,
+          chatKey: String(incomingChat),
+        });
+        await replyGuaranteed(salesReply, today, `sales_${salesCmd.type}`);
+      } catch (err) {
+        console.error('[telegram] sales command failed', err instanceof Error ? err.message : 'unknown');
+        await replyGuaranteed('Satış komutu işlenemedi — birazdan tekrar dene.', today, 'sales_error');
+      }
+      return NextResponse.json({ ok: true });
+    }
+
+    // ── "görev ekle" → 1/2 seçimi (TTL'li tek-kullanımlık pending state, Faz B5).
+    if (/^[12]$/.test(text.trim())) {
+      const pending = await consumePendingAction(String(incomingChat));
+      if (pending?.type === 'add_task_choice') {
+        const title = String(pending.payload.title ?? '').trim();
+        const category = text.trim() === '1' ? 'active' : 'waiting';
+        if (!title) {
+          await replyGuaranteed('Görev başlığı kayboldu — "görev ekle: <başlık>" ile yeniden başlat.', today, 'add_task_error');
+          return NextResponse.json({ ok: true });
+        }
+        const { error: taskErr } = await supabaseAdmin.from('active_tasks').insert({ title, category });
+        if (taskErr) {
+          await replyGuaranteed('Görev kaydedilemedi — tekrar dener misin?', today, 'add_task_error');
+        } else {
+          await replyGuaranteed(
+            `Görev eklendi (${category === 'active' ? 'Aktif görevler' : 'Bekleyenler'}): <b>${title}</b>`,
+            today,
+            'add_task_done',
+          );
+        }
+        return NextResponse.json({ ok: true });
+      }
+      // Bekleyen seçim yok veya süresi dolmuş → MUTASYON YOK (belirsiz seçim güvenli no-op).
+      await replyGuaranteed(
+        'Bekleyen bir seçim yok (süresi dolmuş olabilir). "görev ekle: <başlık>" ile yeniden başlat.',
+        today,
+        'choice_expired',
       );
       return NextResponse.json({ ok: true });
     }
@@ -699,8 +763,10 @@ export async function POST(req: Request): Promise<NextResponse> {
       }
 
       case 'add_task_draft': {
+        // TTL'li pending state — "1"/"2" cevabı yukarıdaki seçim bloğunda tamamlanır (Faz B5).
+        await setPendingAction(String(incomingChat), 'add_task_choice', { title: intent.title });
         await sendTelegram(
-          `Görevi nereye ekleyeyim?\n"${intent.title}"\n\n1) Aktif görevler\n2) Bekleyenler\n\nCevapla: 1 veya 2`
+          `Görevi nereye ekleyeyim?\n"${intent.title}"\n\n1) Aktif görevler\n2) Bekleyenler\n\nCevapla: 1 veya 2 (10 dk geçerli)`
         );
         break;
       }
@@ -713,6 +779,19 @@ export async function POST(req: Request): Promise<NextResponse> {
         // Meta/yetenek sorusu → deterministik yanıt; taahhüt akışını ASLA tetikleme.
         if (msgIntent === 'meta') {
           await reply(capabilitiesReply(), today, 'meta');
+          break;
+        }
+
+        // ── Eylemsel görev / üretim isteği → Jarvis (Faz B5: taahhüt yakalayıcısından
+        // ÖNCE — "içerik üret", "araştır" gibi komutlar taahhüt olarak KAYDEDİLMEZ).
+        if (isActionableTask(text)) {
+          try {
+            const { reply: jReply } = await runJarvis(text);
+            await replyGuaranteed(jReply || GRACEFUL_TR_FALLBACK, today, 'jarvis');
+          } catch (err) {
+            console.error('[telegram] jarvis failed', err);
+            await replyGuaranteed(GRACEFUL_TR_FALLBACK, today, 'jarvis_error');
+          }
           break;
         }
 
@@ -745,20 +824,6 @@ export async function POST(req: Request): Promise<NextResponse> {
           await updateDailyState(today, { energy: energyWord });
           // morning check-in canlıysa taahhüt sorusuna ilerle (gated).
           if (await maybeAdvanceMorningCommitment(today)) break;
-        }
-
-        // ── Eylemsel görev / üretim isteği → Jarvis araç motoru (GERÇEKTEN yapar) ──
-        // "müşteri mesaj taslağı oluştur", "X için pitch yaz", "yurtdışı iş araştır" gibi.
-        // Jarvis doğru aracı seçer; tool yoksa create_task ile görevi kaydeder/yanıtlar.
-        if (isActionableTask(text)) {
-          try {
-            const { reply: jReply } = await runJarvis(text);
-            await replyGuaranteed(jReply || GRACEFUL_TR_FALLBACK, today, 'jarvis');
-          } catch (err) {
-            console.error('[telegram] jarvis failed', err);
-            await replyGuaranteed(GRACEFUL_TR_FALLBACK, today, 'jarvis_error');
-          }
-          break;
         }
 
         // ── Akıllı yönlendirme: hayat (hızlı mentor) vs iş (çok-ajanlı kurul) ──

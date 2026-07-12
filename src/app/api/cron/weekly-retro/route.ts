@@ -5,29 +5,12 @@ import { getIstanbulDateAndDay } from '@/lib/assistant/timezone';
 import { buildMentorSystemPrompt } from '@/lib/assistant/prompts';
 import { sanitizeForTelegram } from '@/lib/assistant/mentorLoop';
 import { callOpenRouter } from '@/lib/assistant/llm';
-import { logConversationTurn } from '@/lib/assistant/memory';
 
 // Haftalık retro — Cem'in son 7 gününü (taahhütler + tekrarlayan temalar) değerlendirir,
 // pozitif psikoloji + GROW ile sıcak özet + gelecek hafta TEK odak önerir. Pazar akşamı.
 export const maxDuration = 60;
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN ?? '';
-const CHAT_ID = process.env.TELEGRAM_CHAT_ID ?? '';
-
-async function sendTelegram(text: string): Promise<number | null> {
-  if (!BOT_TOKEN || !CHAT_ID) return null;
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: CHAT_ID, text, parse_mode: 'HTML' }),
-    });
-    const data = (await res.json()) as { result?: { message_id: number } };
-    return data?.result?.message_id ?? null;
-  } catch {
-    return null;
-  }
-}
+import { dispatchReminder } from '@/lib/assistant/reminderDispatch';
 
 function isAuthorized(req: Request): boolean {
   const authHeader = req.headers.get('authorization');
@@ -92,15 +75,18 @@ export async function GET(req: Request): Promise<NextResponse> {
     return NextResponse.json({ ok: true, message: 'Orchestrator not active yet' });
   }
 
-  // İdempotent: bu hafta zaten gönderildiyse atla.
+  // İdempotent: bu hafta GERÇEKTEN gönderildiyse atla. send_failed satır blokE ETMEZ
+  // (Faz B2 — başarısız deneme retry hakkını kilitleyemez).
   try {
     const { data: existing } = await supabaseAdmin
       .from('assistant_reminders')
-      .select('id')
+      .select('id, status')
       .eq('date', today)
       .eq('reminder_type', 'weekly_retro')
       .maybeSingle();
-    if (existing) return NextResponse.json({ ok: true, message: 'Already sent this week' });
+    if (existing && existing.status !== 'send_failed') {
+      return NextResponse.json({ ok: true, message: 'Already sent this week' });
+    }
   } catch { /* devam */ }
 
   const dataBlock = await buildRetroData(today);
@@ -135,15 +121,19 @@ export async function GET(req: Request): Promise<NextResponse> {
       'Gelecek hafta için tek odak seç: en yüksek kaldıraçlı işin ne? Onu pazartesi ilk işe koy.';
   }
 
-  const messageId = await sendTelegram(message);
-  try {
-    await logConversationTurn({ date: today, role: 'assistant', message, intent: 'weekly_retro' });
-  } catch { /* non-critical */ }
+  // Faz B2: message_id yoksa "gönderildi" yok — aynı kural weekly retro için de geçerli.
+  const result = await dispatchReminder({
+    date: today,
+    reminderType: 'weekly_retro',
+    message,
+    successStatus: 'done',
+  });
 
-  await supabaseAdmin.from('assistant_reminders').upsert(
-    { date: today, reminder_type: 'weekly_retro', sent_at: new Date().toISOString(), status: 'done', telegram_message_id: messageId },
-    { onConflict: 'date,reminder_type' },
-  );
-
-  return NextResponse.json({ ok: true, sent: 'weekly_retro', messageId });
+  if (!result.sent) {
+    return NextResponse.json(
+      { ok: false, error: result.error, attempts: result.attempts },
+      { status: 502 },
+    );
+  }
+  return NextResponse.json({ ok: true, sent: 'weekly_retro', messageId: result.messageId });
 }
