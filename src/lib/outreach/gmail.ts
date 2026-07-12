@@ -252,10 +252,13 @@ interface GmailAccountRow {
 }
 
 async function loadActiveGmailAccount(): Promise<GmailAccountRow | null> {
+  // mig 055 tek-aktif-hesap partial UNIQUE index'i sayesinde en fazla bir satır
+  // döner; order yine de deterministik seçim garantisi için (belt+braces).
   const { data } = await supabaseAdmin
     .from('gmail_accounts')
     .select('id, email_address, vault_secret_id, active')
     .eq('active', true)
+    .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle()
   return (data as GmailAccountRow) ?? null
