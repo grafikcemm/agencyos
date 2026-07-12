@@ -1,7 +1,7 @@
 'use client'
 
 import { createElement, useEffect, type ReactNode } from 'react'
-import { X, Flame, Lightbulb, Dumbbell, UtensilsCrossed, Waves, Pill } from 'lucide-react'
+import { X, Lightbulb, Dumbbell, UtensilsCrossed, Waves, Pill } from 'lucide-react'
 import type { HabitOverviewItem } from '@/lib/habits/config'
 import { groupForHabit } from '@/lib/habits/config'
 import { getHabitDetail } from '@/data/habitDetails'

@@ -1,6 +1,6 @@
 'use client'
 
-import { createElement, useCallback, useRef, useState, useTransition } from 'react'
+import { createElement, useCallback, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Flame, Check } from 'lucide-react'
 import { setHabitValue } from '@/app/actions/habitActions'
@@ -33,13 +33,15 @@ export function HabitTracker({ items, today }: { items: HabitOverviewItem[]; tod
   // props henüz gelmemişken) — kullanıcı hemen ikinci habit'e dokunursa, ilkinin
   // gecikmiş refresh'i ikincinin optimistik durumunu ezerdi. Uçuşta işlem varken
   // server sync atlanır; son işlemin refresh'i zaten hepsini içerir.
-  const pendingTaps = useRef(0)
+  // State (ref değil): render sırasında okunuyor — react-hooks/refs kuralı ref
+  // okumasını yasaklar; sayaç güncellemeleri functional-update ile yarışsız.
+  const [pendingTaps, setPendingTaps] = useState(0)
 
   // server props referansı değişince (router.refresh sonrası) authoritative veriyi al
   const [lastItems, setLastItems] = useState(items)
   if (items !== lastItems) {
     setLastItems(items)
-    if (pendingTaps.current === 0) setLocal(items)
+    if (pendingTaps === 0) setLocal(items)
   }
 
   const score = computeHabitScore(local, today)
@@ -84,14 +86,14 @@ export function HabitTracker({ items, today }: { items: HabitOverviewItem[]; tod
       }),
     )
     setBusyKey(h.key)
-    pendingTaps.current++
+    setPendingTaps((n) => n + 1)
     startTransition(async () => {
       try {
         await setHabitValue(h.key, next, today)
         router.refresh()
       } finally {
         // Server action throw etse bile kartı kalıcı kilitleme.
-        pendingTaps.current--
+        setPendingTaps((n) => n - 1)
         setBusyKey(null)
       }
     })
