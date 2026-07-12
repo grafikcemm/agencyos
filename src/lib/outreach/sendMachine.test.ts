@@ -74,6 +74,7 @@ function seedAttempt(patch: Partial<SendAttempt> = {}): SendAttempt {
     state: 'claimed', claim_token: 'tok-1', attempt_count: 1,
     claimed_at: new Date().toISOString(), sent_at: null,
     provider_message_id: null, provider_thread_id: null, finalized: false, last_error: null,
+    reconcile_search_count: 0, last_searched_at: null,
     ...patch,
   } as SendAttempt
   rows.push(att as unknown as Row)
@@ -155,8 +156,16 @@ describe('reconcileSendAttempt', () => {
     expect(rpcCalls).toHaveLength(1)
   })
 
+  it('grace period içinde "yok" sonucu HÜKÜMSÜZ → no_action, sayaç artmaz', async () => {
+    const att = seedAttempt({ state: 'unknown' }) // claimed_at = şimdi
+    const r = await reconcileSendAttempt({ attempt: att, transport: createDryRunTransport(OID), ...content() })
+    expect(r.outcome).toBe('no_action')
+    expect(String((r as { reason?: string }).reason)).toContain('grace')
+    expect(rows[0].reconcile_search_count ?? 0).toBe(0)
+  })
+
   it('unknown + aramada BULUNDU → reconciled finalize (p_final_state=reconciled)', async () => {
-    const att = seedAttempt({ state: 'unknown' })
+    const att = seedAttempt({ state: 'unknown', claimed_at: new Date(Date.now() - 10 * 60_000).toISOString() })
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const transport: GmailTransport = {
       async send() { throw new Error('çağrılmamalı') },
@@ -172,8 +181,8 @@ describe('reconcileSendAttempt', () => {
     warnSpy.mockRestore()
   })
 
-  it('arama transport hatası → outcome:error (durum DEĞİŞMEZ)', async () => {
-    const att = seedAttempt({ state: 'unknown' })
+  it('arama transport hatası → outcome:error; durum ve SAYAÇ değişmez (hata ≠ not-found)', async () => {
+    const att = seedAttempt({ state: 'unknown', claimed_at: new Date(Date.now() - 10 * 60_000).toISOString() })
     const transport: GmailTransport = {
       async send() { throw new Error('x') },
       async findByRfcMessageId() { throw new Error('readonly OAuth yok') },
@@ -181,12 +190,40 @@ describe('reconcileSendAttempt', () => {
     const r = await reconcileSendAttempt({ attempt: att, transport, ...content() })
     expect(r.outcome).toBe('error')
     expect(rows[0].state).toBe('unknown')
+    expect(rows[0].reconcile_search_count ?? 0).toBe(0)
   })
 
-  it('bulunamadı ama failed CAS kaybedildi → error (yeniden kontrol iste)', async () => {
-    const att = seedAttempt({ state: 'unknown' })
+  it('kademeli not-found: 1. arama unconfirmed → 2. arama needs_confirmation → confirm ile failed', async () => {
+    const old = new Date(Date.now() - 10 * 60_000).toISOString()
+    seedAttempt({ state: 'unknown', claimed_at: old })
+    const dry = createDryRunTransport(OID) // find → null
+
+    const r1 = await reconcileSendAttempt({ attempt: rows[0] as unknown as SendAttempt, transport: dry, ...content() })
+    expect(r1.outcome).toBe('not_found_unconfirmed')
+    expect(rows[0].reconcile_search_count).toBe(1)
+    expect(rows[0].state).toBe('unknown')
+
+    const r2 = await reconcileSendAttempt({ attempt: rows[0] as unknown as SendAttempt, transport: dry, ...content() })
+    expect(r2.outcome).toBe('not_found_needs_confirmation')
+    expect(rows[0].state).toBe('unknown') // confirm'süz failed YAZILMAZ
+
+    const r3 = await reconcileSendAttempt({
+      attempt: rows[0] as unknown as SendAttempt, transport: dry, ...content(), confirmNotFound: true,
+    })
+    expect(r3.outcome).toBe('not_found_marked_failed')
+    expect(rows[0].state).toBe('failed')
+  })
+
+  it('bulunamadı + confirm ama failed CAS kaybedildi → error (yeniden kontrol iste)', async () => {
+    const att = seedAttempt({
+      state: 'unknown',
+      claimed_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+      reconcile_search_count: 2,
+    })
     updateMatchesNothing = true
-    const r = await reconcileSendAttempt({ attempt: att, transport: createDryRunTransport(OID), ...content() })
+    const r = await reconcileSendAttempt({
+      attempt: att, transport: createDryRunTransport(OID), ...content(), confirmNotFound: true,
+    })
     expect(r.outcome).toBe('error')
   })
 

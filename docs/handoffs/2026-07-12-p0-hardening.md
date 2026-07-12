@@ -1,6 +1,6 @@
 # Handoff — AgencyOS V2 P0/P1 Sertleştirme Sprinti (Audit Düzeltmeleri)
 
-**Tarih:** 2026-07-12 · **Branch:** `feat/agencyos-v2-sprint0` (worktree `../agency-os-v2-sprint0`) · **Base:** 3c5de92 (Sprint 0/1 kapanışı) · **HEAD:** 2ff8e05 · **PUSH: YAPILMADI (kullanıcı kararı: bekle)**
+**Tarih:** 2026-07-12 · **Branch:** `feat/agencyos-v2-sprint0` (worktree `../agency-os-v2-sprint0`) · **Base:** 3c5de92 (Sprint 0/1 kapanışı) · **HEAD:** 56973b5 (bu handoff commit'i dahil sprint kapanışı) · **PUSH: YAPILMADI (kullanıcı kararı: bekle)**
 
 ## Goal
 Bağımsız audit'in 7 bulgusu: P0 auth açığı + yarışa-açık Gmail idempotency + manuel send bypass + eksik routing merkezileştirme + scope allowlist + E2E/kalite eksikleri.
@@ -18,7 +18,7 @@ Bağımsız audit'in 7 bulgusu: P0 auth açığı + yarışa-açık Gmail idempo
 
 ## Kapanış kriterleri durumu
 - tsc ✓ · lint **0 error / 0 warning** ✓ · vitest **673/673** ✓ · coverage eşikleri (gmail 94.9/85.7, auditCompliance 98/87, sendMachine 95.9/82.9, models 91+, toolCostLog 100) ✓ · build ✓ (MODULE_TYPELESS uyarısı çözüldü) · **Playwright 15/15** (prod build; 2 ardışık koşu) ✓
-- Yetkisiz API 401 ✓ (E2E) · Promise.all çift send → provider TAM 1 ✓ (unit+E2E) · provider-success/DB-failure retry → 0 ek çağrı ✓ (unit) · manuel email bypass imkânsız ✓ (unit+E2E) · scopes pozitif allowlist ✓ (mig 055 canlı+SQL doğrulama) · anon DB reddi ✓ (RLS+REVOKE deseni) · advisors: YENİ WARN/ERROR yok (tek WARN `update_updated_at` — sprint ÖNCESİNDEN) · gerçek Gmail hâlâ OAuth+güvenlik incelemesi arkasında ✓ · LIFE DB sıfır dokunuş ✓ · prod DB'de test artığı SIFIR (SQL ile doğrulandı) ✓
+- Yetkisiz API 401 ✓ (E2E) · Promise.all çift send → provider TAM 1 ✓ (unit+E2E) · provider-success/DB-failure retry → 0 ek çağrı ✓ (unit) · manuel email bypass imkânsız ✓ (unit+E2E) · scopes pozitif allowlist ✓ (mig 055 canlı+SQL doğrulama) · anon DB reddi ✓ (RLS+REVOKE deseni) · advisors: YENİ WARN/ERROR yok — security'de tek WARN `update_updated_at` search_path (pre-existing), performance'ta tek WARN `settings` duplicate-index {settings_key_key, settings_key_unique} (pre-existing) · gerçek Gmail hâlâ OAuth+güvenlik incelemesi arkasında ✓ · LIFE DB sıfır dokunuş ✓ · prod DB'de test artığı SIFIR (SQL ile doğrulandı) ✓
 
 ## Canlıya uygulananlar (kullanıcı onayıyla, MCP)
 mig **054** + **055** App DB'de (dfedeh…); information_schema + get_advisors doğrulandı; eski negatif `gmail_accounts_scope_guard` kaldırıldı.

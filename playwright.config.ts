@@ -1,17 +1,33 @@
 import { defineConfig } from '@playwright/test'
+import { resolveE2EDbEnv } from './e2e/env'
 
 // E2E suite — PRODUCTION build'e karşı koşar (next start, port 3200).
+//
+// DB İZOLASYONU (Faz 7.1): test edilen sunucu DA seed/cleanup istemcisi DE
+// yalnız E2E_* env'leriyle verilen AYRI test DB'sine bağlanır. Env eksikse ya
+// da ref production App DB ref'iyle aynıysa suite fail-fast (globalSetup +
+// buradaki çözümleme). Production service-role'a sessiz fallback YOKTUR.
+//
 // Auth env'leri test değerleridir (gerçek secret DEĞİL); LOCAL_OPERATOR_MODE
-// .env.local'da true olsa bile NODE_ENV=production'da hükümsüz — suite tam
-// da bunu doğrular. Testler canlı App DB'ye kendi seed'ini yazar ve
-// afterAll'da SİLER (artık bırakmama kuralı).
+// .env.local'da true olsa bile NODE_ENV=production'da hükümsüz — suite bunu
+// doğrular.
 
 export const E2E_PASSWORD = 'e2e-parola-123'
 export const E2E_SESSION_SECRET = 'e2e-oturum-secreti-en-az-32-karakter-uzun'
 export const E2E_OPERATOR_TOKEN = 'e2e-operator-token-en-az-32-karakter-uzun'
 
+// Config yükünde toleranslı çözümleme: eksik/yanlış env'in AÇIK hatasını
+// globalSetup fırlatır (suite hiç başlamaz); burada placeholder bırakılır.
+let e2eDb: { url: string; anonKey: string; serviceRoleKey: string } | null = null
+try {
+  e2eDb = resolveE2EDbEnv()
+} catch {
+  e2eDb = null
+}
+
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: './e2e/global-setup.ts',
   timeout: 60_000,
   fullyParallel: false,
   workers: 1,
@@ -33,6 +49,10 @@ export default defineConfig({
       APP_SESSION_SECRET: E2E_SESSION_SECRET,
       OPERATOR_API_TOKEN: E2E_OPERATOR_TOKEN,
       GMAIL_SEND_ENABLED: 'false',
+      // Sunucu TEST DB'sine bağlanır — canlı App DB'ye yazım yapısal imkânsız.
+      NEXT_PUBLIC_SUPABASE_URL: e2eDb?.url ?? 'https://e2e-env-eksik.invalid',
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: e2eDb?.anonKey ?? 'e2e-env-eksik',
+      SUPABASE_SERVICE_ROLE_KEY: e2eDb?.serviceRoleKey ?? 'e2e-env-eksik',
     },
   },
 })

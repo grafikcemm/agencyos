@@ -1,34 +1,16 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { APIRequestContext } from '@playwright/test'
 import { E2E_OPERATOR_TOKEN } from '../playwright.config'
+import { resolveE2EDbEnv } from './env'
 
-// .env.local'dan yalnız Supabase bağlantısını okur (seed + temizlik için).
-// Değerler asla loglanmaz.
-function readEnvLocal(): Record<string, string> {
-  const out: Record<string, string> = {}
-  try {
-    // BOM temizliği: dosyanın ilk satırındaki ﻿ anahtar adını bozuyor.
-    const raw = readFileSync(join(__dirname, '..', '.env.local'), 'utf8').replace(/^﻿/, '')
-    for (const line of raw.split(/\r?\n/)) {
-      const m = line.match(/^([A-Z0-9_]+)=(.*)$/)
-      if (m) out[m[1]] = m[2].trim()
-    }
-  } catch {
-    // yoksa process.env'e düşülür
-  }
-  return out
-}
-
+// Seed/cleanup istemcisi YALNIZ ayrı test DB'sine bağlanır (E2E_* env —
+// e2e/env.ts): production service-role'a fallback YOK; production ref'e
+// işaret eden env fail-fast. Değerler asla loglanmaz.
 let cachedAdmin: SupabaseClient | null = null
 export function supabaseAdmin(): SupabaseClient {
   if (cachedAdmin) return cachedAdmin
-  const env = readEnvLocal()
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY ?? env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) throw new Error('Supabase env eksik (NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)')
-  cachedAdmin = createClient(url, key, { auth: { persistSession: false } })
+  const db = resolveE2EDbEnv()
+  cachedAdmin = createClient(db.url, db.serviceRoleKey, { auth: { persistSession: false } })
   return cachedAdmin
 }
 

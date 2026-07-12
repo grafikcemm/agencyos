@@ -21,6 +21,10 @@ function rpcFinalize(args: Record<string, unknown>) {
     (a) => a.outreach_message_id === args.p_outreach_message_id && a.claim_token === args.p_claim_token
   )
   if (!attempt) return { data: { ok: false, error: 'attempt_veya_claim_token_uyusmuyor' }, error: null }
+  // mig 056: onay kimliği attempt'e bağlı onayla birebir eşleşmeli.
+  if (attempt.approval_id !== args.p_approval_id) {
+    return { data: { ok: false, error: 'approval_id_attempt_ile_uyusmuyor' }, error: null }
+  }
   if (attempt.finalized) return { data: { ok: true, already: true }, error: null }
   if (!['sending', 'sent', 'unknown'].includes(String(attempt.state))) {
     return { data: { ok: false, error: `finalize_gecersiz_state_${attempt.state}` }, error: null }
@@ -87,11 +91,12 @@ function makeQuery(table: string) {
         rows.some((r) => r.outreach_message_id === payload!.outreach_message_id)) {
         return { data: null, error: { message: 'duplicate key value violates unique constraint', code: '23505' } }
       }
-      // Tablo default'ları (mig 054): finalized=false, attempt_count=1 vb.
+      // Tablo default'ları (mig 054+056): finalized=false, attempt_count=1 vb.
       if (table === 'outreach_send_attempts') {
         payload = {
           attempt_count: 1, finalized: false, sent_at: null,
           provider_message_id: null, provider_thread_id: null, last_error: null,
+          reconcile_search_count: 0, last_searched_at: null,
           ...payload,
         }
       }
@@ -515,7 +520,7 @@ describe('at-most-once state machine (yarış + provider hataları)', () => {
     expect(calls()).toBe(0)
   })
 
-  it('belirsiz provider hatası (timeout/5xx) → unknown; KÖR RETRY YOK; reconcile → failed → yeniden dene → başarı', async () => {
+  it('belirsiz hata → unknown; reconcile KADEMELİ: grace → 2×arama → operatör onayı → failed → re-claim → başarı', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const approvalId = await approvedDraft()
@@ -531,9 +536,32 @@ describe('at-most-once state machine (yarış + provider hataları)', () => {
     expect(r2.needsReconciliation).toBe(true)
     expect(failing.calls()).toBe(1)
 
-    // Reconcile: Gmail aramasında yok → failed (yeniden denenebilir).
-    const rec = await reconcileOutreachSend(DRAFT_ID)
-    expect(rec.outcome).toBe('not_found_marked_failed')
+    // Reconcile arama transport'u: her zaman "yok" der (enjekte test dikişi).
+    const searchEmpty: GmailTransport = {
+      async send() { throw new Error('çağrılmamalı') },
+      async findByRfcMessageId() { return null },
+    }
+
+    // 1) Grace period içinde: "yok" sonucu HÜKÜMSÜZ, sayaç bile artmaz.
+    const g = await reconcileOutreachSend(DRAFT_ID, { transport: searchEmpty })
+    expect(g.ok).toBe(true)
+    expect(g.outcome).toBe('no_action')
+    expect(db.outreach_send_attempts[0].state).toBe('unknown')
+
+    // 2) Grace sonrası ilk "yok": karar YOK (min arama dolmadı).
+    const later = Date.now() + 6 * 60_000
+    const n1 = await reconcileOutreachSend(DRAFT_ID, { transport: searchEmpty, nowMs: later })
+    expect(n1.outcome).toBe('not_found_unconfirmed')
+    expect(db.outreach_send_attempts[0].state).toBe('unknown')
+
+    // 3) İkinci "yok": karar hâlâ OPERATÖRDE.
+    const n2 = await reconcileOutreachSend(DRAFT_ID, { transport: searchEmpty, nowMs: later })
+    expect(n2.outcome).toBe('not_found_needs_confirmation')
+    expect(db.outreach_send_attempts[0].state).toBe('unknown')
+
+    // 4) Açık onayla → failed (yeniden denenebilir).
+    const n3 = await reconcileOutreachSend(DRAFT_ID, { transport: searchEmpty, nowMs: later, confirmNotFound: true })
+    expect(n3.outcome).toBe('not_found_marked_failed')
     expect(db.outreach_send_attempts[0].state).toBe('failed')
 
     // Yeniden deneme: failed → re-claim → başarı; attempt_count artar.
@@ -545,6 +573,76 @@ describe('at-most-once state machine (yarış + provider hataları)', () => {
     expect(db.email_messages).toHaveLength(1)
     logSpy.mockRestore()
     warnSpy.mockRestore()
+  })
+
+  it('GMAIL_SEND_ENABLED=false iken enjekte-transport OLMADAN unknown attempt failed YAPILAMAZ', async () => {
+    const approvalId = await approvedDraft()
+    db.outreach_send_attempts.push({
+      id: 'att-dr', outreach_message_id: DRAFT_ID, approval_id: approvalId,
+      action_digest: 'x', rfc_message_id: `<outreach-${DRAFT_ID}@agencyos.grafikcem>`,
+      state: 'unknown', claim_token: 'tok-dr', attempt_count: 1,
+      claimed_at: new Date(Date.now() - 10 * 60_000).toISOString(), sent_at: null,
+      provider_message_id: null, provider_thread_id: null, finalized: false, last_error: null,
+      reconcile_search_count: 5, last_searched_at: null,
+    })
+    const r = await reconcileOutreachSend(DRAFT_ID, { confirmNotFound: true })
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('GMAIL_SEND_ENABLED=false')
+    expect(db.outreach_send_attempts[0].state).toBe('unknown') // durum korunur
+  })
+
+  it('eşzamanlı iki confirm-reconcile → failed geçişini TEK biri kazanır (CAS)', async () => {
+    const approvalId = await approvedDraft()
+    db.outreach_send_attempts.push({
+      id: 'att-race', outreach_message_id: DRAFT_ID, approval_id: approvalId,
+      action_digest: 'x', rfc_message_id: `<outreach-${DRAFT_ID}@agencyos.grafikcem>`,
+      state: 'unknown', claim_token: 'tok-race', attempt_count: 1,
+      claimed_at: new Date(Date.now() - 10 * 60_000).toISOString(), sent_at: null,
+      provider_message_id: null, provider_thread_id: null, finalized: false, last_error: null,
+      reconcile_search_count: 2, last_searched_at: null,
+    })
+    const searchEmpty: GmailTransport = {
+      async send() { throw new Error('çağrılmamalı') },
+      async findByRfcMessageId() { return null },
+    }
+    const later = Date.now()
+    const [a, b] = await Promise.all([
+      reconcileOutreachSend(DRAFT_ID, { transport: searchEmpty, nowMs: later, confirmNotFound: true }),
+      reconcileOutreachSend(DRAFT_ID, { transport: searchEmpty, nowMs: later, confirmNotFound: true }),
+    ])
+    const outcomes = [a.outcome, b.outcome]
+    expect(outcomes.filter((o) => o === 'not_found_marked_failed')).toHaveLength(1)
+    expect(db.outreach_send_attempts[0].state).toBe('failed')
+  })
+
+  it('finalize RPC: approval_id attempt ile uyuşmazsa DB seviyesinde reddedilir (mig 056)', async () => {
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const approvalId = await approvedDraft()
+    // İkinci (yanlış) onay kaydı:
+    db.approval_requests.push({
+      id: 'app-yanlis', action: SEND_GMAIL_ACTION, status: 'approved',
+      action_digest: 'd', approved_digest: 'd',
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+    })
+    // Attempt DOĞRU onayla claim'li; finalize YANLIŞ onayla çağrılıyor —
+    // bunu tetiklemek için attempt'i elle 'sent' bırakıp repair'i yanlış
+    // approval'a bağlarız: attempt.approval_id = approvalId, çağrı app-yanlis.
+    db.outreach_send_attempts.push({
+      id: 'att-mm', outreach_message_id: DRAFT_ID, approval_id: approvalId,
+      action_digest: 'x', rfc_message_id: '<x>', state: 'sent', claim_token: 'tok-mm', attempt_count: 1,
+      claimed_at: new Date().toISOString(), sent_at: new Date().toISOString(),
+      provider_message_id: 'g-mm', provider_thread_id: 't-mm', finalized: false, last_error: null,
+      reconcile_search_count: 0, last_searched_at: null,
+    })
+    const rpc = rpcFinalize({
+      p_outreach_message_id: DRAFT_ID, p_approval_id: 'app-yanlis', p_claim_token: 'tok-mm',
+      p_gmail_message_id: 'g-mm', p_gmail_thread_id: 't-mm', p_from_address: 'f', p_to_address: 't',
+      p_subject: 's', p_body: 'b', p_sent_at: new Date().toISOString(), p_final_state: 'sent',
+    })
+    expect((rpc.data as { ok: boolean; error?: string }).ok).toBe(false)
+    expect((rpc.data as { error?: string }).error).toContain('approval_id_attempt_ile_uyusmuyor')
+    expect(db.outreach_messages[0].status).toBe('draft') // hiçbir yazım uygulanmadı
+    errSpy.mockRestore()
   })
 
   it('kesin provider reddi (4xx) → failed; yeniden deneme serbest', async () => {
@@ -664,7 +762,7 @@ describe('at-most-once state machine (yarış + provider hataları)', () => {
     expect(r.error).toContain('bulunamadı')
   })
 
-  it('GMAIL_SEND_ENABLED=true reconcile: REST araması OAuth\'suz → outcome error (durum korunur)', async () => {
+  it('GMAIL_SEND_ENABLED=true reconcile: REST araması OAuth\'suz → outcome error (durum korunur; arama hatası ≠ not-found)', async () => {
     process.env.GMAIL_SEND_ENABLED = 'true'
     db.gmail_accounts.push({ id: 'acc-1', email_address: 'ali@x.co', vault_secret_id: 'v1', active: true, created_at: new Date().toISOString() })
     const approvalId = await approvedDraft()
@@ -672,13 +770,15 @@ describe('at-most-once state machine (yarış + provider hataları)', () => {
       id: 'att-u', outreach_message_id: DRAFT_ID, approval_id: approvalId,
       action_digest: 'x', rfc_message_id: `<outreach-${DRAFT_ID}@agencyos.grafikcem>`,
       state: 'unknown', claim_token: 'tok-u', attempt_count: 1,
-      claimed_at: new Date().toISOString(), sent_at: null,
+      claimed_at: new Date(Date.now() - 10 * 60_000).toISOString(), sent_at: null,
       provider_message_id: null, provider_thread_id: null, finalized: false, last_error: null,
+      reconcile_search_count: 0, last_searched_at: null,
     })
     const r = await reconcileOutreachSend(DRAFT_ID)
     expect(r.ok).toBe(false)
     expect(r.error).toContain('OAuth')
     expect(db.outreach_send_attempts[0].state).toBe('unknown')
+    expect(db.outreach_send_attempts[0].reconcile_search_count).toBe(0) // hata sayaç ARTIRMAZ
   })
 
   it('alreadySent + provider id\'siz attempt → dryRun bilinmez (undefined), repair atlanır', async () => {

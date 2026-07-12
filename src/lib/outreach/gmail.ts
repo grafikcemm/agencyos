@@ -563,10 +563,16 @@ export interface ReconcileOutcome {
 }
 
 /** 'unknown' ya da bayat 'sending' attempt'i çözer: Gmail'de deterministik
- *  Message-ID araması → bulunursa reconciled+finalize, bulunamazsa failed
- *  (yeniden claim edilebilir). Dry-run transport'ta arama her zaman boş →
- *  failed; gerçek arama OAuth (gmail.readonly) gerektirir. */
-export async function reconcileOutreachSend(outreachMessageId: string): Promise<ReconcileOutcome> {
+ *  Message-ID araması → bulunursa reconciled+finalize; bulunamazsa karar
+ *  KADEMELİ (grace period + min arama sayısı + AÇIK operatör onayı —
+ *  sendMachine.reconcileSendAttempt). GÜVENLİK KURALI: GMAIL_SEND_ENABLED=false
+ *  iken dry-run transport'un boş araması GERÇEK bir attempt'i failed
+ *  YAPAMAZ — arama gerektiren yol flag kapalıyken bloke edilir (yalnız
+ *  finalize-onarımı, aramasız olduğu için, her modda çalışır). */
+export async function reconcileOutreachSend(
+  outreachMessageId: string,
+  opts?: { confirmNotFound?: boolean; nowMs?: number; transport?: GmailTransport }
+): Promise<ReconcileOutcome> {
   const attempt = await getSendAttempt(outreachMessageId)
   if (!attempt) return { ok: false, error: 'Gönderim denemesi kaydı yok' }
 
@@ -577,10 +583,30 @@ export async function reconcileOutreachSend(outreachMessageId: string): Promise<
   const { subject, body } = effectiveContent(row)
 
   const sendEnabled = isGmailSendEnabled()
-  const account = sendEnabled ? await loadActiveGmailAccount() : null
-  const transport =
-    sendEnabled && account ? createGmailRestTransport(account) : createDryRunTransport(row.id, row.gmail_thread_id)
+  const needsSearch = attempt.state === 'unknown' || attempt.state === 'sending'
 
+  let transport: GmailTransport
+  if (opts?.transport) {
+    // Test dikişi — enjekte transport çağıranın sorumluluğunda.
+    transport = opts.transport
+  } else if (needsSearch) {
+    if (!sendEnabled) {
+      return {
+        ok: false,
+        error:
+          'GMAIL_SEND_ENABLED=false — dry-run transport ile gerçek gönderim araması yapılamaz; ' +
+          "attempt 'failed' kararı için flag + OAuth (gmail.readonly) gerekir",
+      }
+    }
+    const account = await loadActiveGmailAccount()
+    if (!account) return { ok: false, error: 'Aktif gmail_accounts kaydı yok — arama yapılamaz' }
+    transport = createGmailRestTransport(account)
+  } else {
+    // Aramasız yol (sent+finalize onarımı) — transport fiilen kullanılmaz.
+    transport = createDryRunTransport(row.id, row.gmail_thread_id)
+  }
+
+  const account = sendEnabled ? await loadActiveGmailAccount() : null
   const result = await reconcileSendAttempt({
     attempt,
     transport,
@@ -589,6 +615,8 @@ export async function reconcileOutreachSend(outreachMessageId: string): Promise<
     toAddress: lead.email,
     subject,
     body,
+    nowMs: opts?.nowMs,
+    confirmNotFound: opts?.confirmNotFound,
   })
   if (result.outcome === 'error') return { ok: false, outcome: result.outcome, error: result.error }
   return { ok: true, outcome: result.outcome }

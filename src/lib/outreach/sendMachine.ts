@@ -37,11 +37,21 @@ export interface SendAttempt {
   provider_thread_id: string | null
   finalized: boolean
   last_error: string | null
+  /** mig 056: kaç kez Gmail'de arandı (not-found kararı için minimum şart). */
+  reconcile_search_count: number
+  last_searched_at: string | null
 }
 
 /** Bir claim bu süreden uzun 'claimed'/'sending'te kalırsa bayat sayılır ve
  *  'unknown'a düşürülür (process ölmüş olabilir; provider sonucu belirsiz). */
 export const STALE_CLAIM_MS = 2 * 60 * 1000
+
+/** Gmail eventual-consistency payı: gönderim denemesinden bu süre geçmeden
+ *  "aramada yok" sonucu HÜKÜMSÜZDÜR (mail henüz indekslenmemiş olabilir). */
+export const RECONCILE_GRACE_MS = 5 * 60 * 1000
+
+/** failed kararı için gereken minimum BAĞIMSIZ "not found" arama sayısı. */
+export const MIN_RECONCILE_SEARCHES = 2
 
 /** Deterministik RFC 2822 Message-ID — outreach id'den türetilir; retry'da
  *  DEĞİŞMEZ, reconciliation `rfc822msgid:` aramasının ankrajıdır. */
@@ -282,14 +292,39 @@ export function createDryRunTransport(outreachMessageId: string, existingThreadI
 export type ReconcileResult =
   | { outcome: 'reconciled_sent'; providerMessageId: string }
   | { outcome: 'not_found_marked_failed' }
+  /** Arama "yok" dedi ama karar için henüz yetersiz (min arama sayısı dolmadı). */
+  | { outcome: 'not_found_unconfirmed'; searchCount: number }
+  /** Yeterli arama yapıldı; failed kararı AÇIK operatör onayı bekliyor. */
+  | { outcome: 'not_found_needs_confirmation'; searchCount: number }
   | { outcome: 'no_action'; reason: string }
   | { outcome: 'error'; error: string }
 
+/** Arama sayacını artırır (mig 056). Sayacın kaybı kabul edilebilir —
+ *  yalnız claim_token sahibi yazar (re-claim yarışına karışmaz). */
+async function bumpSearchCount(attempt: SendAttempt, nowMs: number): Promise<number> {
+  const next = (attempt.reconcile_search_count ?? 0) + 1
+  await supabaseAdmin
+    .from('outreach_send_attempts')
+    .update({
+      reconcile_search_count: next,
+      last_searched_at: new Date(nowMs).toISOString(),
+      updated_at: new Date(nowMs).toISOString(),
+    })
+    .eq('id', attempt.id)
+    .eq('claim_token', attempt.claim_token)
+  return next
+}
+
 /** Belirsiz ('unknown') ya da bayat 'sending' attempt'i çözer:
- *  1. Gmail'de deterministik Message-ID ara (KÖR RETRY DEĞİL).
- *  2. Bulunursa → sent + finalize (state 'reconciled').
- *  3. Bulunamazsa → 'failed' (yeniden claim edilebilir).
- *  Finalize parametreleri çağırandan gelir (içerik DB'deki onaylı içeriktir). */
+ *  1. Grace period (RECONCILE_GRACE_MS): gönderim denemesinden yeterli süre
+ *     geçmeden "aramada yok" HÜKÜMSÜZ — Gmail eventual-consistency.
+ *  2. Gmail'de deterministik Message-ID ara (KÖR RETRY DEĞİL). Arama HATASI
+ *     (throw) not-found DEĞİLDİR → outcome 'error', durum değişmez.
+ *  3. Bulunursa → finalize (state 'reconciled').
+ *  4. Bulunamazsa: sayaç artar; MIN_RECONCILE_SEARCHES dolmadan karar YOK;
+ *     dolduktan sonra da failed YALNIZ açık operatör onayıyla
+ *     (confirmNotFound=true) yazılır — tek arama sonucu asla otomatik
+ *     duplicate-riskli re-claim kapısı açmaz. */
 export async function reconcileSendAttempt(opts: {
   attempt: SendAttempt
   transport: GmailTransport
@@ -299,6 +334,8 @@ export async function reconcileSendAttempt(opts: {
   subject: string
   body: string
   nowMs?: number
+  /** Operatörün "gerçekten gönderilmemiş, failed yap" onayı. */
+  confirmNotFound?: boolean
 }): Promise<ReconcileResult> {
   const { attempt } = opts
   if (attempt.state === 'sent' && !attempt.finalized) {
@@ -322,15 +359,23 @@ export async function reconcileSendAttempt(opts: {
     return { outcome: 'no_action', reason: `state '${attempt.state}' reconciliation gerektirmiyor` }
   }
 
+  // Grace period: deneme çok taze — mail Gmail aramasına düşmemiş olabilir.
+  const nowMs = opts.nowMs ?? Date.now()
+  const claimedAtMs = Date.parse(attempt.claimed_at)
+  if (Number.isFinite(claimedAtMs) && nowMs - claimedAtMs < RECONCILE_GRACE_MS) {
+    const kalanSn = Math.ceil((RECONCILE_GRACE_MS - (nowMs - claimedAtMs)) / 1000)
+    return { outcome: 'no_action', reason: `grace period: ${kalanSn}s sonra tekrar deneyin (eventual consistency)` }
+  }
+
   let found: { id: string; threadId: string } | null
   try {
     found = await opts.transport.findByRfcMessageId(attempt.rfc_message_id)
   } catch (err) {
+    // ARAMA HATASI ≠ not-found: sayaç ARTMAZ, durum DEĞİŞMEZ.
     return { outcome: 'error', error: err instanceof Error ? err.message : 'arama hatası' }
   }
 
   if (found) {
-    const nowIso = new Date(opts.nowMs ?? Date.now()).toISOString()
     const fin = await finalizeSend({
       attempt,
       approvalId: opts.approvalId,
@@ -340,7 +385,7 @@ export async function reconcileSendAttempt(opts: {
       toAddress: opts.toAddress,
       subject: opts.subject,
       body: opts.body,
-      sentAtIso: nowIso,
+      sentAtIso: new Date(nowMs).toISOString(),
       finalState: 'reconciled',
     })
     if (!fin.ok) return { outcome: 'error', error: fin.error ?? 'finalize başarısız' }
@@ -348,7 +393,20 @@ export async function reconcileSendAttempt(opts: {
     return { outcome: 'reconciled_sent', providerMessageId: found.id }
   }
 
-  const failed = await markFailed(attempt, 'reconciliation: Gmail aramasında bulunamadı — gönderilmemiş sayıldı')
+  // Kesin "aramada yok" — ama TEK sonuç karar değildir.
+  const searchCount = await bumpSearchCount(attempt, nowMs)
+  if (searchCount < MIN_RECONCILE_SEARCHES) {
+    return { outcome: 'not_found_unconfirmed', searchCount }
+  }
+  if (!opts.confirmNotFound) {
+    // Yeterli arama var; failed kararı OPERATÖRÜN — otomatik yazılmaz.
+    return { outcome: 'not_found_needs_confirmation', searchCount }
+  }
+
+  const failed = await markFailed(
+    attempt,
+    `reconciliation: ${searchCount} aramada bulunamadı + operatör onayı — gönderilmemiş sayıldı`
+  )
   if (!failed) {
     // CAS kaybedildi (paralel reconcile?) — durum değişmiş; tekrar bakılmalı.
     return { outcome: 'error', error: 'failed geçişi CAS kaybetti — durumu yeniden kontrol edin' }
