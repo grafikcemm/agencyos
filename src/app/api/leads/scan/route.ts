@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { scanLeads } from '@/lib/leads/scan'
 import { requireApiAccess } from '@/lib/auth'
 
@@ -6,6 +7,8 @@ export async function POST(req: Request) {
   try {
     const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
 
     // Gövde güvensizdir — alanları whitelist + clamp et.
     const body = await req.json()

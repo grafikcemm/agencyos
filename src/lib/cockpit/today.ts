@@ -22,7 +22,13 @@ export interface CallLead {
   tier: string | null
   nextFollowUpAt: string | null
   expectedMonthlyTl: number
+  /** 'due' = follow-up zamanı gelmiş; 'daily' = deterministik günlük seçim (NULL follow-up). */
+  source: 'due' | 'daily'
+  reason: string
 }
+
+/** Bugün aranacaklar üst sınırı (due + daily-pick toplamı). */
+const CALL_LIST_CAP = 12
 
 export interface PendingSendDraft {
   draftId: string
@@ -124,24 +130,83 @@ async function panel<T>(fn: () => Promise<T[]>): Promise<PanelResult<T>> {
   }
 }
 
+const CALL_COLS =
+  'id, business_name, phone, status, lead_tier, next_follow_up_at, expected_monthly_value_tl, ' +
+  'quality_score, money_potential_score, urgency_score, last_contact_at, do_not_contact'
+
+type LeadRow = {
+  id: string
+  business_name: string | null
+  phone: string | null
+  status: string
+  lead_tier: string | null
+  next_follow_up_at: string | null
+  expected_monthly_value_tl: number | null
+}
+
+function toCallLead(r: LeadRow, source: 'due' | 'daily', reason: string): CallLead {
+  return {
+    id: r.id,
+    businessName: r.business_name ?? '—',
+    phone: r.phone ?? null,
+    status: r.status,
+    tier: r.lead_tier ?? null,
+    nextFollowUpAt: r.next_follow_up_at ?? null,
+    expectedMonthlyTl: r.expected_monthly_value_tl ?? 0,
+    source,
+    reason,
+  }
+}
+
+// Bugün aranacaklar: (1) follow-up zamanı gelmiş leadler + (2) hiç planlanmamış
+// (next_follow_up_at NULL) aktif new leadlerden DETERMINISTIK günlük seçim.
+// (2) olmadan 61 telefonlu-ama-follow-up'sız lead görünmez → "0 aranacak" (finding #1-4).
+// Sayfa okunurken DB'ye YAZILMAZ; sıralama sabit kolonlarla → aynı gün aynı sıra.
 async function loadLeadsToCall(nowIso: string): Promise<CallLead[]> {
-  const { data, error } = await supabaseAdmin
+  // (1) Follow-up zamanı gelmiş.
+  const { data: due, error: dueErr } = await supabaseAdmin
     .from('leads')
-    .select('id, business_name, phone, status, lead_tier, next_follow_up_at, expected_monthly_value_tl')
+    .select(CALL_COLS)
     .in('status', ['new', 'contacted', 'responded'])
+    .eq('do_not_contact', false)
+    .not('next_follow_up_at', 'is', null)
     .lte('next_follow_up_at', nowIso)
     .order('next_follow_up_at', { ascending: true })
-    .limit(8)
-  if (error) throw new Error(error.message)
-  return (data ?? []).map((r) => ({
-    id: r.id as string,
-    businessName: (r.business_name as string) ?? '—',
-    phone: (r.phone as string) ?? null,
-    status: r.status as string,
-    tier: (r.lead_tier as string) ?? null,
-    nextFollowUpAt: (r.next_follow_up_at as string) ?? null,
-    expectedMonthlyTl: (r.expected_monthly_value_tl as number) ?? 0,
-  }))
+    .limit(CALL_LIST_CAP)
+  if (dueErr) throw new Error(dueErr.message)
+
+  const dueRows = (due ?? []) as unknown as LeadRow[]
+  const out: CallLead[] = dueRows.map((r) => toCallLead(r, 'due', 'Takip zamanı geldi'))
+  const seen = new Set(out.map((l) => l.id))
+  const remaining = CALL_LIST_CAP - out.length
+
+  // (2) Günlük deterministik seçim: hiç planlanmamış (NULL follow-up) aktif new leadler.
+  //     Öncelik: aranabilir (telefon var, do_not_contact=false) + tier A>B>… (asc: A önce,
+  //     null sona) → kalite → para → aciliyet → en eski temas → id (stabil tie-break).
+  if (remaining > 0) {
+    const { data: fresh, error: freshErr } = await supabaseAdmin
+      .from('leads')
+      .select(CALL_COLS)
+      .eq('status', 'new')
+      .eq('do_not_contact', false)
+      .not('phone', 'is', null)
+      .is('next_follow_up_at', null)
+      .order('lead_tier', { ascending: true, nullsFirst: false })
+      .order('quality_score', { ascending: false, nullsFirst: false })
+      .order('money_potential_score', { ascending: false, nullsFirst: false })
+      .order('urgency_score', { ascending: false, nullsFirst: false })
+      .order('last_contact_at', { ascending: true, nullsFirst: true })
+      .order('id', { ascending: true })
+      .limit(remaining)
+    if (freshErr) throw new Error(freshErr.message)
+    const freshRows = (fresh ?? []) as unknown as LeadRow[]
+    for (const r of freshRows) {
+      if (seen.has(r.id)) continue
+      out.push(toCallLead(r, 'daily', 'Günün önceliği (henüz aranmadı)'))
+    }
+  }
+
+  return out
 }
 
 async function loadPendingSends(): Promise<PendingSendDraft[]> {

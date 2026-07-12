@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { requireApiAccess } from '@/lib/auth'
 import { isSameOrigin, checkRateLimit } from '@/lib/commandCenter/security'
 import { callLight } from '@/lib/openrouter'
@@ -30,6 +31,8 @@ const FALLBACK: LibraryAdvice = {
 export async function POST(req: NextRequest) {
   const access = await requireApiAccess(req)
   if ('response' in access) return access.response
+  const originError = enforceSameOrigin(req)
+  if (originError) return originError
   if (!isSameOrigin(req)) {
     return NextResponse.json({ error: 'Access Denied' }, { status: 403 })
   }

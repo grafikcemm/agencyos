@@ -2,6 +2,7 @@
 // Single-agent chat. Persists the operator message, builds context from the last
 // 10 messages, calls the agent's model, persists the reply, and returns it.
 import { NextResponse } from 'next/server'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireApiAccess } from '@/lib/auth'
 import { getAgent, buildAgentSystemPrompt } from '@/lib/agents/registry'
@@ -13,6 +14,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ key: st
 
     const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
 
     const { message } = await req.json()
     if (!message || typeof message !== 'string' || message.trim() === '') {

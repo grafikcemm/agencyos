@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { requireApiAccess } from '@/lib/auth'
 import { runPersonScan } from '@/lib/personLeads/scan'
 
@@ -8,6 +9,8 @@ import { runPersonScan } from '@/lib/personLeads/scan'
 export async function POST(req: Request) {
   const access = await requireApiAccess(req)
   if ('response' in access) return access.response
+  const originError = enforceSameOrigin(req)
+  if (originError) return originError
 
   if (!process.env.APOLLO_API_KEY) {
     return NextResponse.json(

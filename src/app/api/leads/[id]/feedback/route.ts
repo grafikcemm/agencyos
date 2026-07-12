@@ -21,7 +21,7 @@ const BodySchema = z
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const auth = await requireApiUser()
+    const auth = await requireApiUser(req)
     if ('response' in auth) return auth.response
     const originBlock = enforceSameOrigin(req)
     if (originBlock) return originBlock

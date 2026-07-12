@@ -68,6 +68,15 @@
     "tool_embeddings": "49725bfcb407ad8da334ca338ebc0e8a",
     "tool_registry": "cacb20913087d474ccff6fe1cea283c2"
   },
+  "views": {
+    "leads_with_status": "9183c28359ef4ad92f54f15d9f5dd9cc",
+    "run_steps": "036d99b0d720233facfe00b92e797fa2",
+    "runs": "6f473c5f78ac06d9ef7d88434cc4e546",
+    "sector_city_engagement_stats": "99ac99664cb968de88395954029fb859",
+    "sector_city_engagement_stats_v2": "febbaedff9c758cf02074fed7e2dabca",
+    "sector_engagement_stats": "194e5d55bb9a13ed228bd65f9b9f4ecd",
+    "sector_engagement_stats_v2": "27e327e0e65abfb56943bc7baed82b51"
+  },
   "functions_md5": "0753759dc495e99fdfa21562997e257f",
   "triggers_md5": "2fec56f101e2fe21be93caf015be7a74"
 }

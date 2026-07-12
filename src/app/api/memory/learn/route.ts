@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { supabaseAdmin } from '@/lib/supabase'
 import { callLight } from '@/lib/openrouter'
 import { readFileSync, existsSync } from 'fs'
@@ -6,10 +7,12 @@ import { join } from 'path'
 import { requireApiAccess } from '@/lib/auth'
 import { redactForLog } from '@/lib/redact'
 
-export async function POST() {
+export async function POST(req: Request) {
   try {
-    const access = await requireApiAccess()
+    const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
     // 1. Fetch converted and lost leads
     let leads: any[] = []
     try {

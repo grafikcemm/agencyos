@@ -81,7 +81,7 @@ function dbErrorResponse(method: string, error: unknown): NextResponse {
 
 export async function GET(req: Request, { params }: { params: Promise<{ table: string }> }) {
   try {
-    const auth = await requireApiUser()
+    const auth = await requireApiUser(req)
     if ('response' in auth) return auth.response
 
     const { table } = await params
@@ -132,7 +132,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ table: s
 
 export async function POST(req: Request, { params }: { params: Promise<{ table: string }> }) {
   try {
-    const auth = await requireApiUser()
+    const auth = await requireApiUser(req)
     if ('response' in auth) return auth.response
 
     const csrf = enforceSameOrigin(req)
@@ -156,7 +156,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ table: 
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ table: string }> }) {
   try {
-    const auth = await requireApiUser()
+    const auth = await requireApiUser(req)
     if ('response' in auth) return auth.response
 
     const csrf = enforceSameOrigin(req)
@@ -203,7 +203,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ table:
 
 export async function DELETE(req: Request, { params }: { params: Promise<{ table: string }> }) {
   try {
-    const auth = await requireApiUser()
+    const auth = await requireApiUser(req)
     if ('response' in auth) return auth.response
 
     const csrf = enforceSameOrigin(req)

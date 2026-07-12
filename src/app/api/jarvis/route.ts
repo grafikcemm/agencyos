@@ -1,4 +1,5 @@
 import { requireApiAccess } from '@/lib/auth'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { runJarvis } from '@/lib/jarvis/engine'
 
 // Tüm araç-çağıran mantık @/lib/jarvis/engine.ts'te (web + Telegram ortak kullanır).
@@ -6,6 +7,8 @@ export async function POST(req: Request) {
   try {
     const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
     const { message } = await req.json()
     if (!message) return Response.json({ error: 'message gerekli' }, { status: 400 })
 

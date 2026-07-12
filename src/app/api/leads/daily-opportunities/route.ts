@@ -32,7 +32,7 @@ interface EvidenceOut {
 
 export async function GET(req: Request) {
   try {
-    const auth = await requireApiUser()
+    const auth = await requireApiUser(req)
     if ('response' in auth) return auth.response
 
     const { searchParams } = new URL(req.url)

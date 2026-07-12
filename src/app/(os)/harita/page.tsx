@@ -178,32 +178,41 @@ export default function HaritaPage() {
   // Mobile JARVIS overlay
   const [jarvisOpen, setJarvisOpen] = useState(false)
 
-  const fetchLeads = useCallback(async () => {
+  const fetchLeads = useCallback(async (signal?: AbortSignal) => {
     try {
       // Arşivlenmiş leadleri server-side hariç tut (neStatus) + bounded fetch (limit).
-      const res = await fetch('/api/db/leads?order=quality_score&neStatus=archived&limit=1000')
+      const res = await fetch('/api/db/leads?order=quality_score&neStatus=archived&limit=1000', { signal })
       const json = await res.json()
       const data = Array.isArray(json) ? json : (json.data ?? [])
       const enriched = enrichLeads(data as Lead[])
       setAllLeads(enriched)
     } catch {
+      // Navigasyon/unmount kaynaklı iptal gürültü değildir (body-stream cancel
+      // hata adı 'AbortError' olmayabilir) — signal.aborted deterministik işaret.
+      if (signal?.aborted) return
       console.error('Lead fetch error')
     }
   }, [])
 
-  const fetchPersonLeads = useCallback(async () => {
+  const fetchPersonLeads = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await fetch('/api/db/person_leads?order=person_score&neStatus=dismissed&limit=1000')
+      const res = await fetch('/api/db/person_leads?order=person_score&neStatus=dismissed&limit=1000', { signal })
       const json = await res.json()
       const data = Array.isArray(json) ? json : (json.data ?? [])
       setPersonLeads(data as PersonLead[])
     } catch {
+      if (signal?.aborted) return
       console.error('Person lead fetch error')
     }
   }, [])
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { fetchLeads(); fetchPersonLeads() }, [fetchLeads, fetchPersonLeads])
+  useEffect(() => {
+    const ctrl = new AbortController()
+    // async fetch sonrası setState (mount'ta veri yükleme) — kasıtlı.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchLeads(ctrl.signal); fetchPersonLeads(ctrl.signal)
+    return () => ctrl.abort()
+  }, [fetchLeads, fetchPersonLeads])
 
   // Kişi taramasını manuel tetikle (Apollo People Search).
   const handlePersonScan = async () => {

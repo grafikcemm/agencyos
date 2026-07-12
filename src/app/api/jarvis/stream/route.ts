@@ -1,4 +1,5 @@
 import { getRouteForOperation } from '@/lib/openrouter'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireApiAccess } from '@/lib/auth'
 import { getKnowledgeDoc } from '@/lib/knowledge'
@@ -27,6 +28,8 @@ export async function POST(req: Request) {
   try {
     const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
     const { message } = await req.json()
     if (!message) return Response.json({ error: 'message gerekli' }, { status: 400 })
     if (!OPENROUTER_API_KEY) return Response.json({ error: 'API key eksik' }, { status: 500 })

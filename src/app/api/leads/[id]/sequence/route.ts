@@ -2,6 +2,7 @@
 // MANUEL-GÖNDER: her adım due_at'inde hatırlatma görevine döner; gönderimi operatör yapar.
 // GET — lead için önerilen plan + kanal matrisini önizler (planlamadan).
 import { NextResponse } from 'next/server'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireApiAccess } from '@/lib/auth'
 import { scheduleMultiChannelSequence } from '@/lib/outreach/sequences'
@@ -24,6 +25,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
   try {
     const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
     const { id } = await params
     if (!id) return NextResponse.json({ error: 'id zorunludur' }, { status: 400 })
 
@@ -44,6 +47,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
     const { id } = await params
     if (!id) return NextResponse.json({ error: 'id zorunludur' }, { status: 400 })
 

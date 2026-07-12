@@ -1373,6 +1373,107 @@ CREATE TRIGGER trg_playbooks_updated_at BEFORE UPDATE ON public.playbooks FOR EA
 CREATE TRIGGER trg_projects_updated_at BEFORE UPDATE ON public.projects FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_settings_updated_at BEFORE UPDATE ON public.settings FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+-- ---- VIEW'LAR (App DB pg_get_viewdef; SECURITY INVOKER — alttaki tabloların
+--       e2e_open policy'si geçerli). /api/runs, run_steps, sektör analitiği okur. ----
+CREATE OR REPLACE VIEW public.leads_with_status AS
+ SELECT id, business_name, sector, city, district, phone, website, email,
+    google_place_id, latitude, longitude, rating, review_count, status,
+    potential_score, ai_analysis, pitch, notes, has_website, created_at,
+    updated_at, priority, score, score_breakdown, location, follow_up_date,
+    lost_reason, contact_instagram, contact_email, contact_phone,
+    mini_audit_output, pitch_draft,
+        CASE
+            WHEN score >= 80 THEN 'yuksek'::text
+            WHEN score >= 60 THEN 'iyi'::text
+            WHEN score >= 40 THEN 'orta'::text
+            ELSE 'dusuk'::text
+        END AS score_status
+   FROM leads;
+
+CREATE OR REPLACE VIEW public.run_steps AS
+ SELECT id, directive_id AS run_id, parent_step_id, agent_key, skill_slug, title,
+    input, status, result, permission_scopes, risk_level, data_sensitivity,
+    tokens_in, tokens_out, attempts, max_attempts, lease_owner, lease_expires_at,
+    next_run_at, error, last_error, created_at, started_at, finished_at
+   FROM agent_tasks;
+
+CREATE OR REPLACE VIEW public.runs AS
+ SELECT id, operator_input, intent, success_criteria, channel, mode, status,
+    plan, debrief, error, budget_usd_max, cost_usd, created_at, finished_at
+   FROM directives;
+
+CREATE OR REPLACE VIEW public.sector_city_engagement_stats AS
+ SELECT COALESCE(NULLIF(normalized_sector, ''::text), sector, 'bilinmeyen'::text) AS sector_key,
+    COALESCE(NULLIF(city_slug, ''::text), lower(city), 'bilinmeyen'::text) AS city_key,
+    count(*)::integer AS total_leads,
+    count(*) FILTER (WHERE status = ANY (ARRAY['contacted'::text, 'responded'::text, 'meeting'::text, 'proposal'::text, 'converted'::text]))::integer AS engaged_leads,
+    count(*) FILTER (WHERE status = 'converted'::text)::integer AS converted_leads,
+    count(*) FILTER (WHERE status = 'lost'::text)::integer AS lost_leads,
+    max(created_at) AS last_lead_at
+   FROM leads
+  GROUP BY (COALESCE(NULLIF(normalized_sector, ''::text), sector, 'bilinmeyen'::text)), (COALESCE(NULLIF(city_slug, ''::text), lower(city), 'bilinmeyen'::text));
+
+CREATE OR REPLACE VIEW public.sector_city_engagement_stats_v2 AS
+ SELECT COALESCE(NULLIF(normalized_sector, ''::text), sector, 'bilinmeyen'::text) AS sector_key,
+    COALESCE(NULLIF(city_slug, ''::text), lower(city), 'bilinmeyen'::text) AS city_key,
+    count(*)::integer AS total_leads,
+    count(*) FILTER (WHERE status = ANY (ARRAY['responded'::text, 'meeting'::text, 'proposal'::text, 'converted'::text]))::integer AS engaged_leads,
+    (count(*) FILTER (WHERE status = 'responded'::text) * 1 + count(*) FILTER (WHERE status = 'meeting'::text) * 2 + count(*) FILTER (WHERE status = 'proposal'::text) * 3 + count(*) FILTER (WHERE status = 'converted'::text) * 4)::integer AS weighted_engagement,
+    count(*) FILTER (WHERE status = 'converted'::text)::integer AS converted_leads,
+    count(*) FILTER (WHERE status = 'lost'::text)::integer AS lost_leads,
+    max(created_at) AS last_lead_at
+   FROM leads
+  GROUP BY (COALESCE(NULLIF(normalized_sector, ''::text), sector, 'bilinmeyen'::text)), (COALESCE(NULLIF(city_slug, ''::text), lower(city), 'bilinmeyen'::text));
+
+CREATE OR REPLACE VIEW public.sector_engagement_stats AS
+ SELECT COALESCE(NULLIF(normalized_sector, ''::text), sector, 'bilinmeyen'::text) AS sector_key,
+    count(*)::integer AS total_leads,
+    count(*) FILTER (WHERE status = ANY (ARRAY['contacted'::text, 'responded'::text, 'meeting'::text, 'proposal'::text, 'converted'::text]))::integer AS engaged_leads,
+    count(*) FILTER (WHERE status = 'converted'::text)::integer AS converted_leads,
+    count(*) FILTER (WHERE status = 'lost'::text)::integer AS lost_leads,
+    max(created_at) AS last_lead_at
+   FROM leads
+  GROUP BY (COALESCE(NULLIF(normalized_sector, ''::text), sector, 'bilinmeyen'::text));
+
+CREATE OR REPLACE VIEW public.sector_engagement_stats_v2 AS
+ WITH base AS (
+         SELECT COALESCE(NULLIF(leads.normalized_sector, ''::text), leads.sector, 'bilinmeyen'::text) AS sector_key,
+            count(*)::integer AS total_leads,
+            count(*) FILTER (WHERE leads.status = ANY (ARRAY['responded'::text, 'meeting'::text, 'proposal'::text, 'converted'::text]))::integer AS engaged_leads,
+            (count(*) FILTER (WHERE leads.status = 'responded'::text) * 1 + count(*) FILTER (WHERE leads.status = 'meeting'::text) * 2 + count(*) FILTER (WHERE leads.status = 'proposal'::text) * 3 + count(*) FILTER (WHERE leads.status = 'converted'::text) * 4)::integer AS weighted_engagement,
+            count(*) FILTER (WHERE leads.status = 'converted'::text)::integer AS converted_leads,
+            count(*) FILTER (WHERE leads.status = 'lost'::text)::integer AS lost_leads,
+            max(leads.created_at) AS last_lead_at
+           FROM leads
+          GROUP BY (COALESCE(NULLIF(leads.normalized_sector, ''::text), leads.sector, 'bilinmeyen'::text))
+        ), fb AS (
+         SELECT COALESCE(NULLIF(fl.normalized_sector, ''::text), fl.sector, 'bilinmeyen'::text) AS sector_key,
+            round(count(*) FILTER (WHERE f.verdict = 'uygun'::text)::numeric / count(*)::numeric, 3) AS feedback_accept_rate
+           FROM lead_match_feedback f
+             JOIN leads fl ON fl.id = f.lead_id
+          GROUP BY (COALESCE(NULLIF(fl.normalized_sector, ''::text), fl.sector, 'bilinmeyen'::text))
+        ), yields AS (
+         SELECT COALESCE(NULLIF(al.normalized_sector, ''::text), al.sector, 'bilinmeyen'::text) AS sector_key,
+            count(*) FILTER (WHERE COALESCE(a.design_score, 0) >= COALESCE(a.ai_score, 0))::integer AS design_yield,
+            count(*) FILTER (WHERE COALESCE(a.ai_score, 0) > COALESCE(a.design_score, 0))::integer AS ai_yield
+           FROM lead_assessments a
+             JOIN leads al ON al.id = a.lead_id
+          WHERE a.selected
+          GROUP BY (COALESCE(NULLIF(al.normalized_sector, ''::text), al.sector, 'bilinmeyen'::text))
+        )
+ SELECT base.sector_key, base.total_leads, base.engaged_leads, base.weighted_engagement,
+    base.converted_leads, base.lost_leads, base.last_lead_at, fb.feedback_accept_rate,
+    COALESCE(yields.design_yield, 0) AS design_yield,
+    COALESCE(yields.ai_yield, 0) AS ai_yield
+   FROM base
+     LEFT JOIN fb USING (sector_key)
+     LEFT JOIN yields USING (sector_key);
+
+GRANT SELECT ON public.leads_with_status, public.run_steps, public.runs,
+  public.sector_city_engagement_stats, public.sector_city_engagement_stats_v2,
+  public.sector_engagement_stats, public.sector_engagement_stats_v2
+  TO anon, authenticated, service_role;
+
 -- ---- RLS (parity: enabled=true) + TEST-ONLY permissive policy ----
 DO $rls$
 DECLARE t text;
@@ -1443,6 +1544,12 @@ tables AS (
   LEFT JOIN cons k ON k.tbl = r.tbl
   LEFT JOIN idx x ON x.tbl = r.tbl
 ),
+views AS (
+  SELECT c.relname AS vw, md5(pg_catalog.pg_get_viewdef(c.oid, true)) AS h
+  FROM pg_catalog.pg_class c
+  JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
+  WHERE c.relkind IN ('v','m')
+),
 fns AS (
   SELECT md5(coalesce(string_agg(replace(pg_catalog.pg_get_functiondef(p.oid), E'\r', ''), E'\n' ORDER BY p.proname), '')) AS h
   FROM pg_catalog.pg_proc p
@@ -1458,6 +1565,7 @@ trg AS (
 )
 SELECT jsonb_build_object(
   'tables', (SELECT jsonb_object_agg(tbl, h) FROM tables),
+  'views', (SELECT jsonb_object_agg(vw, h) FROM views),
   'functions_md5', (SELECT h FROM fns),
   'triggers_md5', (SELECT h FROM trg)
 );

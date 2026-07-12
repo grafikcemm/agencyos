@@ -2,6 +2,7 @@
 // Accepts an operator directive (free-text input), runs it through the agent
 // orchestrator, and returns the directive result (plan, debrief, task count).
 import { NextResponse } from 'next/server'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { requireApiAccess } from '@/lib/auth'
 import { runDirective } from '@/lib/agents/orchestrator'
 
@@ -9,6 +10,8 @@ export async function POST(req: Request) {
   try {
     const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
 
     const { input } = await req.json()
     if (!input || typeof input !== 'string' || input.trim() === '') {

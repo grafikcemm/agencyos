@@ -1,6 +1,7 @@
 'use server';
 
 import { createServerSupabase } from '@/lib/supabaseServer';
+import { assertSession } from '@/lib/auth';
 import { FALLBACK_QUOTES } from '@/data/quotes';
 
 interface SelectedQuote {
@@ -10,6 +11,9 @@ interface SelectedQuote {
 }
 
 export async function ensureTodayQuote(): Promise<void> {
+  // Mutasyon (daily_quotes upsert + quote_pool update) → oturum zorunlu.
+  // try/catch DIŞINDA: yetkisiz çağrı sessizce yutulmamalı, reddedilmeli.
+  await assertSession();
   try {
     const supabase = createServerSupabase();
     const today = new Date().toISOString().slice(0, 10);

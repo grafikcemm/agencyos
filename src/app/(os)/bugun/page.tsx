@@ -97,13 +97,30 @@ export default async function BugunPage() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Panel icon={PhoneCall} title="Bugün Aranacaklar" count={c.leadsToCall.items.length}
-          error={c.leadsToCall.error} empty="Bugün için planlanmış arama yok." testId="panel-calls">
+          error={c.leadsToCall.error} empty="Bugün için aranacak aktif lead yok." testId="panel-calls">
           <ul className="flex flex-col gap-2">
             {c.leadsToCall.items.map((l) => (
-              <li key={l.id} className="flex items-center gap-2 text-[13px]">
+              <li key={l.id} className="flex items-center gap-2 text-[13px]" data-testid={`call-lead-${l.id}`}>
+                <span
+                  className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${
+                    l.source === 'due' ? 'bg-amber-500/15 text-amber-400' : 'bg-[var(--accent)]/15 text-[var(--accent)]'
+                  }`}
+                  title={l.reason}
+                >
+                  {l.source === 'due' ? 'TAKİP' : 'GÜNÜN'}
+                </span>
                 <span className="text-[var(--text-primary)] font-medium truncate">{l.businessName}</span>
                 {l.tier && <span className="text-[10px] px-1.5 rounded bg-[var(--bg-elevated)] text-[var(--text-muted)]">{l.tier}</span>}
-                <span className="ml-auto text-[11px] text-[var(--text-muted)]">{l.phone ?? 'telefon yok'}</span>
+                {l.phone ? (
+                  <a
+                    href={`tel:${l.phone.replace(/\s/g, '')}`}
+                    className="ml-auto text-[11px] font-semibold text-[var(--accent)] hover:underline whitespace-nowrap"
+                  >
+                    Ara · {l.phone}
+                  </a>
+                ) : (
+                  <span className="ml-auto text-[11px] text-[var(--text-muted)]">telefon yok</span>
+                )}
               </li>
             ))}
           </ul>

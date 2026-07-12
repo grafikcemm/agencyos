@@ -1,8 +1,26 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { lifeSupabaseAdmin as supabaseAdmin } from '@/lib/lifeSupabaseAdmin';
 import { requireApiAccess } from '@/lib/auth';
+import { enforceSameOrigin, parseJsonBody, BadRequestError } from '@/lib/api/guards';
 import fs from 'fs';
 import path from 'path';
+
+// Tüm alanlar opsiyonel (handler ?? varsayılanla dolduruyor); boş gövde → {} kabul.
+const AssistantSettingsBodySchema = z
+  .object({
+    telegramNotifications: z.boolean(),
+    desktopNotifications: z.boolean(),
+    morningTime: z.string(),
+    noonTime: z.string(),
+    eveningTime: z.string(),
+    nightTime: z.string(),
+    lowEnergyOverride: z.boolean(),
+    notificationTone: z.string(),
+    timezone: z.string(),
+  })
+  .partial()
+  .strict();
 
 interface AssistantSettings {
   telegramNotifications: boolean;
@@ -142,10 +160,15 @@ export async function GET() {
 export async function POST(req: Request) {
   const access = await requireApiAccess(req);
   if ("response" in access) return access.response;
+  const originError = enforceSameOrigin(req);
+  if (originError) return originError;
   let body: Partial<AssistantSettings>;
   try {
-    body = (await req.json()) as Partial<AssistantSettings>;
-  } catch {
+    body = await parseJsonBody(req, AssistantSettingsBodySchema);
+  } catch (err) {
+    if (err instanceof BadRequestError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
   }
 

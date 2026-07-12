@@ -5,6 +5,7 @@
 // normalize edilir ve AYNI pipeline'a girer (job_evaluator → legitimacy → writer);
 // ajans kaynağı olduğundan scoring.ts fit bonusu otomatik uygulanır.
 import { NextResponse } from 'next/server'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { requireApiAccess } from '@/lib/auth'
 import { ingestJob } from '@/lib/jobs/scan'
 import type { RawJob } from '@/lib/jobs/types'
@@ -33,6 +34,8 @@ export async function POST(req: Request) {
   try {
     const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
 
     const body = await req.json().catch(() => ({}))
     const url = typeof body.url === 'string' ? body.url.trim() : ''

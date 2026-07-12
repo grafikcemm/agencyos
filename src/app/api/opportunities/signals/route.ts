@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { requireApiAccess } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
@@ -62,6 +63,8 @@ export async function POST(request: Request) {
   try {
     const access = await requireApiAccess(request)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(request)
+    if (originError) return originError
     const { id, status, linked_product_id } = await request.json()
     if (!id || !status) {
       return Response.json({ success: false, error: 'id and status are required' }, { status: 400 })

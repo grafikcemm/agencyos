@@ -28,6 +28,14 @@ test('kokpit panelleri: aranacaklar + geciken follow-up + unknown attempt + sıc
     lead_tier: 'A', phone: '+90 555 000 00 00', status: 'contacted',
     expected_monthly_value_tl: 12000,
   }).eq('id', call.leadId)
+  // Seed: GÜNLÜK SEÇİM lead'i — status=new + next_follow_up_at=NULL + telefon.
+  // Finding #1-4 regression koruması: bu lead "0 aranacak"a düşmemeli, panel-calls'ta
+  // "GÜNÜN" kaynağıyla görünmeli (deterministik günlük seçim).
+  const daily = await seedDraft('kokpit-gunluk')
+  await db.from('leads').update({
+    status: 'new', next_follow_up_at: null,
+    phone: '+90 555 111 22 33', lead_tier: 'B', quality_score: 77,
+  }).eq('id', daily.leadId)
   // Seed: sıcak lead (teklif bekleyen)
   const hot = await seedDraft('kokpit-hot')
   await db.from('leads').update({
@@ -56,10 +64,16 @@ test('kokpit panelleri: aranacaklar + geciken follow-up + unknown attempt + sıc
   await expect(revenue).toContainText('Beklenen aylık gelir')
   await expect(revenue).toContainText('Hedef:')
 
-  // Aranacaklar: seed lead adı + tier
+  // Aranacaklar: due lead (TAKİP) + tel: link
   const calls = page.getByTestId('panel-calls')
   await expect(calls).toContainText('kokpit-call')
   await expect(calls).toContainText('+90 555 000 00 00')
+  await expect(calls).toContainText('TAKİP')
+  // GÜNLÜK SEÇİM: NULL-follow-up new lead panel-calls'ta "GÜNÜN" ile görünür (finding #1-4)
+  await expect(calls.getByTestId(`call-lead-${daily.leadId}`)).toContainText('GÜNÜN')
+  await expect(calls.getByTestId(`call-lead-${daily.leadId}`)).toContainText('+90 555 111 22 33')
+  // tel: aksiyon linki mevcut
+  await expect(calls.locator('a[href^="tel:"]').first()).toBeVisible()
 
   // Geciken follow-up
   await expect(page.getByTestId('panel-followups')).toContainText('adım 1')

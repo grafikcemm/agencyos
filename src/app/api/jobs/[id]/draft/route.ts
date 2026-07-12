@@ -4,6 +4,7 @@
 // job_application_drafts'a yazar), sonra üretilen taslağı döndürür. Böylece UI taslağı
 // anında gösterir (cron/agent-tick'i beklemeden).
 import { NextResponse } from 'next/server'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireApiAccess } from '@/lib/auth'
 import { runTask, type AgentTask } from '@/lib/agents/runner'
@@ -15,6 +16,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
 
     const { id } = await params
     if (!id) return NextResponse.json({ error: 'id zorunludur' }, { status: 400 })

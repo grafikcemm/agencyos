@@ -1,10 +1,13 @@
 import { supabaseAdmin } from '@/lib/supabase'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { requireApiAccess } from '@/lib/auth'
 
 export async function GET(req: Request) {
   try {
     const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
     const { searchParams } = new URL(req.url)
     const type = searchParams.get('type') // sessions, memories, strategy, hypotheses, decisions, counts
 
@@ -59,6 +62,8 @@ export async function POST(req: Request) {
   try {
     const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
     const body = await req.json()
     const { type, ...payload } = body
 

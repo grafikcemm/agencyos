@@ -3,6 +3,7 @@
 // Note: requires 005_apollo_enrichments.sql migration before first use.
 
 import { NextResponse } from 'next/server'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireApiAccess } from '@/lib/auth'
 import { redactForLog } from '@/lib/redact'
@@ -18,6 +19,8 @@ export async function GET() {
 export async function POST(req: Request) {
   const access = await requireApiAccess(req)
   if ('response' in access) return access.response
+  const originError = enforceSameOrigin(req)
+  if (originError) return originError
   if (!APOLLO_API_KEY) {
     return NextResponse.json(
       { error: 'Apollo enrichment not configured. Add APOLLO_API_KEY to .env.local to enable.' },

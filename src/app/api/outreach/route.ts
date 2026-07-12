@@ -3,6 +3,7 @@
 // POST: create a DRAFT outreach message. Status is ALWAYS forced to 'draft' here —
 // approval and sending happen only via /api/outreach/send (operator session).
 import { NextResponse } from 'next/server'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireApiAccess } from '@/lib/auth'
 
@@ -12,6 +13,8 @@ export async function GET(req: Request) {
   try {
     const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
 
     const { searchParams } = new URL(req.url)
     const status = searchParams.get('status')
@@ -41,6 +44,8 @@ export async function POST(req: Request) {
   try {
     const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
 
     const body = await req.json()
     const { lead_id, channel, subject, body: messageBody, sequence_step, created_by } = body

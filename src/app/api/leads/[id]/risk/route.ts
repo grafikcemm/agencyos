@@ -2,6 +2,7 @@
 // base_score korunur, yalnız risk yeniden hesaplanır (tam tarama gerekmez):
 // potential_score = base_score - risk_score, route yeniden türetilir.
 import { NextResponse } from 'next/server'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireApiAccess } from '@/lib/auth'
 import { rescoreWithRisk, type BehavioralFlags } from '@/lib/leadScoringV3'
@@ -28,6 +29,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const access = await requireApiAccess(req)
     if ('response' in access) return access.response
+    const originError = enforceSameOrigin(req)
+    if (originError) return originError
 
     const { id } = await params
     if (!id) return NextResponse.json({ error: 'id zorunludur' }, { status: 400 })
