@@ -4,10 +4,12 @@
 // loading → loading.tsx, sayfa-seviyesi hata → error.tsx.
 
 import {
-  Sunrise, PhoneCall, Inbox, AlarmClock, AlertTriangle, Flame, type LucideIcon,
+  Sunrise, Inbox, AlarmClock, Flame, type LucideIcon,
 } from 'lucide-react'
 import { getTodayCockpit } from '@/lib/cockpit/today'
 import { PendingSendsPanel } from '@/components/cockpit/PendingSendsPanel'
+import { CallListPanel } from '@/components/cockpit/CallListPanel'
+import { SendIssuesPanel } from '@/components/cockpit/SendIssuesPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -96,35 +98,7 @@ export default async function BugunPage() {
       </section>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <Panel icon={PhoneCall} title="Bugün Aranacaklar" count={c.leadsToCall.items.length}
-          error={c.leadsToCall.error} empty="Bugün için aranacak aktif lead yok." testId="panel-calls">
-          <ul className="flex flex-col gap-2">
-            {c.leadsToCall.items.map((l) => (
-              <li key={l.id} className="flex items-center gap-2 text-[13px]" data-testid={`call-lead-${l.id}`}>
-                <span
-                  className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${
-                    l.source === 'due' ? 'bg-amber-500/15 text-amber-400' : 'bg-[var(--accent)]/15 text-[var(--accent)]'
-                  }`}
-                  title={l.reason}
-                >
-                  {l.source === 'due' ? 'TAKİP' : 'GÜNÜN'}
-                </span>
-                <span className="text-[var(--text-primary)] font-medium truncate">{l.businessName}</span>
-                {l.tier && <span className="text-[10px] px-1.5 rounded bg-[var(--bg-elevated)] text-[var(--text-muted)]">{l.tier}</span>}
-                {l.phone ? (
-                  <a
-                    href={`tel:${l.phone.replace(/\s/g, '')}`}
-                    className="ml-auto text-[11px] font-semibold text-[var(--accent)] hover:underline whitespace-nowrap"
-                  >
-                    Ara · {l.phone}
-                  </a>
-                ) : (
-                  <span className="ml-auto text-[11px] text-[var(--text-muted)]">telefon yok</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </Panel>
+        <CallListPanel initial={c.leadsToCall} duplicates={c.callDuplicates} />
 
         <PendingSendsPanel initial={c.pendingSends} />
 
@@ -155,24 +129,7 @@ export default async function BugunPage() {
           </ul>
         </Panel>
 
-        <Panel icon={AlertTriangle} title="Gönderim / Reconciliation Sorunları" count={c.sendIssues.items.length}
-          error={c.sendIssues.error} empty="Sorunlu gönderim denemesi yok." testId="panel-issues">
-          <ul className="flex flex-col gap-2">
-            {c.sendIssues.items.map((s) => (
-              <li key={s.outreachMessageId} className="text-[13px]">
-                <div className="flex items-center gap-2">
-                  <span className={s.state === 'unknown' ? 'text-red-400 font-semibold' : 'text-amber-400 font-semibold'}>
-                    {s.state}{!s.finalized && s.state === 'sent' ? ' (finalize eksik)' : ''}
-                  </span>
-                  <span className="text-[11px] text-[var(--text-muted)]">
-                    deneme {s.attemptCount} · arama {s.searchCount}
-                  </span>
-                </div>
-                {s.lastError && <div className="text-[11px] text-[var(--text-muted)] truncate">{s.lastError}</div>}
-              </li>
-            ))}
-          </ul>
-        </Panel>
+        <SendIssuesPanel initial={c.sendIssues} />
 
         <Panel icon={Flame} title="Teklif Bekleyen Sıcak Lead'ler" count={c.hotLeads.items.length}
           error={c.hotLeads.error} empty="Şu an teklif bekleyen sıcak lead yok." testId="panel-hot">

@@ -62,7 +62,8 @@ const NAV_GROUPS = [
       { label: 'Pipeline',          icon: GitMerge,  href: '/pipeline' },
       { label: 'Projeler',          icon: Briefcase, href: '/projects' },
       { label: 'Hizmetlerim',       icon: Package,   href: '/services' },
-      { label: 'İcraat Fırsatları', icon: Target,    href: '/icraat-firsatlari' },
+      // İcraat Fırsatları nav'dan kaldırıldı (Faz C6 — /firsatlar ile mükerrer;
+      // link taraması: gelen link yok). Sayfa deep-link'le hâlâ açılır, silme ayrı karar.
       { label: 'Kariyer Radarı',    icon: Compass,   href: '/kariyer' },
     ]
   }

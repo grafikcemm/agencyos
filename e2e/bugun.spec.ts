@@ -41,6 +41,12 @@ test('kokpit panelleri: aranacaklar + geciken follow-up + unknown attempt + sıc
   await db.from('leads').update({
     status: 'responded', expected_monthly_value_tl: 25000, pain_point: 'web sitesi eski',
   }).eq('id', hot.leadId)
+  // Seed: DUPLICATE telefon (C2) — daily ile aynı numara; listede İKİ KEZ çıkmamalı.
+  const dup = await seedDraft('kokpit-duplike')
+  await db.from('leads').update({
+    status: 'new', next_follow_up_at: null,
+    phone: '0555 111 22 33', lead_tier: 'C', quality_score: 10,
+  }).eq('id', dup.leadId)
   // Seed: geciken follow-up
   await db.from('follow_up_sequences').insert({
     lead_id: call.leadId, step: 1, channel: 'email',
@@ -78,10 +84,19 @@ test('kokpit panelleri: aranacaklar + geciken follow-up + unknown attempt + sıc
   // Geciken follow-up
   await expect(page.getByTestId('panel-followups')).toContainText('adım 1')
 
-  // Gönderim sorunları: unknown attempt görünür
+  // C2 dedupe: aynı telefon listede TEK satır; duplicate notu görünür, otomatik merge yok.
+  await expect(calls.getByTestId(`call-lead-${dup.leadId}`)).toHaveCount(0)
+  await expect(calls.getByTestId('call-duplicates')).toContainText('kokpit-duplike')
+
+  // C4 (finding #5-6): approval'ı OLMAYAN taslak da panelde görünür + durum rozeti.
+  const drafts = page.getByTestId('panel-approvals')
+  await expect(drafts.getByTestId(`draft-state-${call.draftId}`)).toContainText('Onay yok')
+
+  // Gönderim sorunları: unknown attempt görünür + Reconcile aksiyonu (finding #9)
   const issues = page.getByTestId('panel-issues')
   await expect(issues).toContainText('unknown')
   await expect(issues).toContainText('belirsiz sonuç')
+  await expect(issues.getByTestId(`reconcile-${hot.draftId}`)).toBeVisible()
 
   // Sıcak lead + beklenen aylık değer
   const hotPanel = page.getByTestId('panel-hot')
@@ -90,6 +105,32 @@ test('kokpit panelleri: aranacaklar + geciken follow-up + unknown attempt + sıc
 
   // Cevaplar: empty-state metni (reply ingest Sprint 2)
   await expect(page.getByTestId('panel-replies')).toContainText('Henüz gelen cevap yok')
+})
+
+test('satır aksiyonu: Arandı → contacted + follow-up planlanır (server authoritative, finding C1)', async ({ page }) => {
+  const db = supabaseAdmin()
+  const lead = await seedDraft('kokpit-aksiyon')
+  await db.from('leads').update({
+    status: 'new', next_follow_up_at: null, phone: '+90 555 222 33 44',
+    lead_tier: 'A', quality_score: 90,
+  }).eq('id', lead.leadId)
+
+  await login(page)
+  await page.goto('/bugun')
+
+  const row = page.getByTestId(`call-lead-${lead.leadId}`)
+  await expect(row).toBeVisible()
+  await row.getByTestId(`lead-action-called-${lead.leadId}`).click()
+  await expect(row).toContainText('Arandı ✓')
+
+  // Server authoritative kanıt: statü contacted + follow-up İLERİ tarihli.
+  await expect
+    .poll(async () => {
+      const { data } = await db
+        .from('leads').select('status, next_follow_up_at, last_contact_at').eq('id', lead.leadId).single()
+      return data?.status === 'contacted' && data?.next_follow_up_at != null && data?.last_contact_at != null
+    }, { timeout: 10_000 })
+    .toBe(true)
 })
 
 test('kokpitten tam HITL akışı: Onayla → Gönder (dry-run) → Gönderildi + DB kanıtı', async ({ page, request }) => {

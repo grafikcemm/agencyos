@@ -7,37 +7,24 @@
 import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { findSendApproval } from '@/lib/outreach/gmail'
-import { extractDomain } from '@/lib/outreach/auditCompliance'
+import { extractDomain, isSuppressed } from '@/lib/outreach/auditCompliance'
 
-export interface PanelResult<T> {
-  items: T[]
-  error: string | null
-}
-
-export interface CallLead {
-  id: string
-  businessName: string
-  phone: string | null
-  status: string
-  tier: string | null
-  nextFollowUpAt: string | null
-  expectedMonthlyTl: number
-  /** 'due' = follow-up zamanı gelmiş; 'daily' = deterministik günlük seçim (NULL follow-up). */
-  source: 'due' | 'daily'
-  reason: string
-}
+// Paylaşılan tipler + saf yardımcılar client-safe modülde (shared.ts) — build:
+// 'use client' paneller server-only olan bu dosyadan DEĞER import edemez.
+import {
+  classifyDraftState,
+  normalizePhoneKey,
+  DRAFT_NEXT_ACTION,
+  type PanelResult,
+  type CallLead,
+  type CallDuplicate,
+  type PendingSendDraft,
+  type SendIssue,
+} from './shared'
+export * from './shared'
 
 /** Bugün aranacaklar üst sınırı (due + daily-pick toplamı). */
 const CALL_LIST_CAP = 12
-
-export interface PendingSendDraft {
-  draftId: string
-  approvalId: string
-  approvalStatus: string
-  businessName: string
-  domain: string
-  subject: string
-}
 
 export interface InboundReply {
   id: string
@@ -52,15 +39,6 @@ export interface OverdueFollowup {
   businessName: string
   step: number
   dueAt: string
-}
-
-export interface SendIssue {
-  outreachMessageId: string
-  state: string
-  finalized: boolean
-  attemptCount: number
-  searchCount: number
-  lastError: string | null
 }
 
 export interface HotLead {
@@ -79,6 +57,8 @@ export interface RevenueStrip {
 
 export interface TodayCockpit {
   leadsToCall: PanelResult<CallLead>
+  /** C2: aynı telefonun dublörleri — review edilsin diye görünür, otomatik merge YOK. */
+  callDuplicates: CallDuplicate[]
   pendingSends: PanelResult<PendingSendDraft>
   replies: PanelResult<InboundReply>
   overdueFollowups: PanelResult<OverdueFollowup>
@@ -162,7 +142,7 @@ function toCallLead(r: LeadRow, source: 'due' | 'daily', reason: string): CallLe
 // (next_follow_up_at NULL) aktif new leadlerden DETERMINISTIK günlük seçim.
 // (2) olmadan 61 telefonlu-ama-follow-up'sız lead görünmez → "0 aranacak" (finding #1-4).
 // Sayfa okunurken DB'ye YAZILMAZ; sıralama sabit kolonlarla → aynı gün aynı sıra.
-async function loadLeadsToCall(nowIso: string): Promise<CallLead[]> {
+async function loadLeadsToCall(nowIso: string): Promise<{ list: CallLead[]; duplicates: CallDuplicate[] }> {
   // (1) Follow-up zamanı gelmiş.
   const { data: due, error: dueErr } = await supabaseAdmin
     .from('leads')
@@ -175,9 +155,36 @@ async function loadLeadsToCall(nowIso: string): Promise<CallLead[]> {
     .limit(CALL_LIST_CAP)
   if (dueErr) throw new Error(dueErr.message)
 
+  // C2 dedupe: aynı normalize telefon aynı gün listesinde İKİ KEZ çıkmaz.
+  // Kanonik = sıralamada önce gelen; atlanan satır silinmez, review için raporlanır.
+  const out: CallLead[] = []
+  const duplicates: CallDuplicate[] = []
+  const seen = new Set<string>()
+  const phoneOwner = new Map<string, CallLead>()
+
+  const pushDeduped = (lead: CallLead): void => {
+    if (seen.has(lead.id)) return
+    const key = normalizePhoneKey(lead.phone)
+    if (key) {
+      const owner = phoneOwner.get(key)
+      if (owner) {
+        duplicates.push({
+          phoneKey: key,
+          canonicalId: owner.id,
+          canonicalName: owner.businessName,
+          duplicateId: lead.id,
+          duplicateName: lead.businessName,
+        })
+        return
+      }
+      phoneOwner.set(key, lead)
+    }
+    seen.add(lead.id)
+    out.push(lead)
+  }
+
   const dueRows = (due ?? []) as unknown as LeadRow[]
-  const out: CallLead[] = dueRows.map((r) => toCallLead(r, 'due', 'Takip zamanı geldi'))
-  const seen = new Set(out.map((l) => l.id))
+  for (const r of dueRows) pushDeduped(toCallLead(r, 'due', 'Takip zamanı geldi'))
   const remaining = CALL_LIST_CAP - out.length
 
   // (2) Günlük deterministik seçim: hiç planlanmamış (NULL follow-up) aktif new leadler.
@@ -200,37 +207,68 @@ async function loadLeadsToCall(nowIso: string): Promise<CallLead[]> {
       .limit(remaining)
     if (freshErr) throw new Error(freshErr.message)
     const freshRows = (fresh ?? []) as unknown as LeadRow[]
-    for (const r of freshRows) {
-      if (seen.has(r.id)) continue
-      out.push(toCallLead(r, 'daily', 'Günün önceliği (henüz aranmadı)'))
-    }
+    for (const r of freshRows) pushDeduped(toCallLead(r, 'daily', 'Günün önceliği (henüz aranmadı)'))
   }
 
-  return out
+  return { list: out.slice(0, CALL_LIST_CAP), duplicates }
 }
 
 async function loadPendingSends(): Promise<PendingSendDraft[]> {
-  // Email taslakları → her biri için onay durumu (idempotency türevli lookup).
+  // TÜM email taslakları görünür — onayı olmayanlar da (finding #5-6: eskiden
+  // approval'sız taslaklar gizleniyordu → operatör darboğazı göremiyordu).
   const { data, error } = await supabaseAdmin
     .from('outreach_messages')
-    .select('id, subject, lead_id, leads(business_name, email)')
+    .select('id, subject, status, lead_id, leads(business_name, email)')
     .eq('channel', 'email')
-    .eq('status', 'draft')
+    .in('status', ['draft', 'sent'])
     .order('created_at', { ascending: false })
-    .limit(10)
+    .limit(12)
   if (error) throw new Error(error.message)
+
   const out: PendingSendDraft[] = []
   for (const row of data ?? []) {
-    const approval = await findSendApproval(row.id as string)
-    if (!approval || !['pending', 'approved'].includes(approval.status)) continue
+    const draftId = row.id as string
     const lead = (row as { leads?: { business_name?: string; email?: string } }).leads
+    const email = lead?.email ?? null
+
+    // Attempt durumu (send makinesi kaydı) — yoksa null.
+    const { data: attempt } = await supabaseAdmin
+      .from('outreach_send_attempts')
+      .select('state, finalized')
+      .eq('outreach_message_id', draftId)
+      .maybeSingle()
+
+    const approval = await findSendApproval(draftId)
+
+    let suppressed = false
+    if (email) {
+      try {
+        const verdict = await isSuppressed(email)
+        suppressed = verdict.suppressed
+      } catch {
+        // fail-closed: suppression kontrol edilemiyorsa gönderime giden yol zaten
+        // auditCompliance'ta bloke — burada görünürlük için blocked say.
+        suppressed = true
+      }
+    }
+
+    const state = classifyDraftState({
+      attemptState: (attempt?.state as string) ?? null,
+      attemptFinalized: Boolean(attempt?.finalized),
+      hasRecipient: Boolean(email),
+      suppressed,
+      approvalStatus: approval?.status ?? null,
+    })
+
     out.push({
-      draftId: row.id as string,
-      approvalId: approval.id,
-      approvalStatus: approval.status,
+      draftId,
+      approvalId: approval?.id ?? null,
+      approvalStatus: approval?.status ?? null,
       businessName: lead?.business_name ?? '—',
-      domain: extractDomain(lead?.email ?? null) ?? 'bilinmiyor',
+      domain: extractDomain(email) ?? 'bilinmiyor',
       subject: (row.subject as string) ?? '(konu yok)',
+      state,
+      nextAction: DRAFT_NEXT_ACTION[state],
     })
   }
   return out
@@ -328,9 +366,16 @@ async function loadRevenue(): Promise<RevenueStrip> {
 
 export async function getTodayCockpit(nowMs: number = Date.now()): Promise<TodayCockpit> {
   const nowIso = new Date(nowMs).toISOString()
-  const [leadsToCall, pendingSends, replies, overdueFollowups, sendIssues, hotLeads, revenue] =
+  const [callResult, pendingSends, replies, overdueFollowups, sendIssues, hotLeads, revenue] =
     await Promise.all([
-      panel(() => loadLeadsToCall(nowIso)),
+      loadLeadsToCall(nowIso).then(
+        (r) => ({ items: r.list, duplicates: r.duplicates, error: null as string | null }),
+        (err: unknown) => ({
+          items: [] as CallLead[],
+          duplicates: [] as CallDuplicate[],
+          error: err instanceof Error ? err.message : 'bilinmeyen hata',
+        })
+      ),
       panel(loadPendingSends),
       panel(loadReplies),
       panel(() => loadOverdueFollowups(nowIso)),
@@ -341,5 +386,14 @@ export async function getTodayCockpit(nowMs: number = Date.now()): Promise<Today
         (err: unknown) => ({ data: null, error: err instanceof Error ? err.message : 'hata' })
       ),
     ])
-  return { leadsToCall, pendingSends, replies, overdueFollowups, sendIssues, hotLeads, revenue }
+  return {
+    leadsToCall: { items: callResult.items, error: callResult.error },
+    callDuplicates: callResult.duplicates,
+    pendingSends,
+    replies,
+    overdueFollowups,
+    sendIssues,
+    hotLeads,
+    revenue,
+  }
 }
