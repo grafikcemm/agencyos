@@ -21,7 +21,9 @@ export async function POST(req: Request) {
     const { message_id } = await parseJsonBody(req, SendSchema)
 
     const result = await markMessageSent(message_id)
-    return NextResponse.json(result, { status: result.ok ? 200 : 500 })
+    // blocked = politika reddi (email kanalı bu endpoint'ten sent olamaz) → 422.
+    const status = result.ok ? 200 : result.blocked ? 422 : 500
+    return NextResponse.json(result, { status })
   } catch (error: unknown) {
     if (error instanceof BadRequestError) {
       return NextResponse.json({ error: error.message }, { status: 400 })

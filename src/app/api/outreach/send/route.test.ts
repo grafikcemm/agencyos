@@ -61,6 +61,18 @@ describe('POST /api/outreach/send — auth + input validation', () => {
     expect(res.status).toBe(400)
   })
 
+  it('email kanalı satırı (blocked) → 422 — manuel sent bypass İMKÂNSIZ (Faz 3)', async () => {
+    markMessageSentMock.mockResolvedValue({
+      ok: false,
+      blocked: true,
+      error: 'Email kanalı manuel olarak sent işaretlenemez',
+    })
+    const res = await POST(makeRequest({ auth: true }))
+    expect(res.status).toBe(422)
+    const json = await res.json()
+    expect(json.error).toContain('sent işaretlenemez')
+  })
+
   it('cross-origin istek 403 alır', async () => {
     const res = await POST(makeRequest({ auth: true, origin: 'https://kotu-site.example' }))
     expect(res.status).toBe(403)
