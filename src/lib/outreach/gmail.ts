@@ -21,11 +21,25 @@ import { createHash } from 'node:crypto'
 import { supabaseAdmin } from '@/lib/supabase'
 import { computeActionDigest } from '@/lib/brain/gate'
 import { buildApprovalDraft, DEFAULT_APPROVAL_TTL_MS } from '@/lib/approvals/integrity'
-import { getApproval, markApprovalExecuted } from '@/lib/approvals/repo'
-import { markMessageSent } from '@/lib/outreach/email'
+import { getApproval } from '@/lib/approvals/repo'
 import { auditCompliance, extractDomain } from '@/lib/outreach/auditCompliance'
 import { isGmailSendEnabled } from '@/lib/outreach/flags'
 import { redactForLog } from '@/lib/redact'
+import {
+  claimSendAttempt,
+  markSending,
+  markSentProvider,
+  markFailed,
+  markUnknown,
+  finalizeSend,
+  getSendAttempt,
+  reconcileSendAttempt,
+  buildRfcMessageId,
+  createDryRunTransport,
+  GmailTransportError,
+  type GmailTransport,
+  type SendAttempt,
+} from '@/lib/outreach/sendMachine'
 
 export const SEND_GMAIL_ACTION = 'send-gmail'
 
@@ -216,6 +230,14 @@ export interface SendGmailOutcome {
   ok: boolean
   dryRun?: boolean
   alreadySent?: boolean
+  /** Başka bir istek claim'i tutuyor — provider'a dokunulmadı. */
+  inProgress?: boolean
+  /** Sonuç belirsiz (timeout/5xx ya da bayat claim) — KÖR RETRY YASAK;
+   *  /reconcile ile çözülür. */
+  needsReconciliation?: boolean
+  /** Provider gönderdi ama kalıcı kayıt (finalize) tamamlanamadı — retry
+   *  provider'ı BİR DAHA ÇAĞIRMAZ, yalnız finalize'ı tekrarlar. */
+  finalizePending?: boolean
   blockedReasons?: string[]
   error?: string
   gmailMessageId?: string | null
@@ -239,121 +261,108 @@ async function loadActiveGmailAccount(): Promise<GmailAccountRow | null> {
   return (data as GmailAccountRow) ?? null
 }
 
-// Gerçek Gmail REST gönderimi — YALNIZ flag açık + aktif hesap + OAuth env
+// Gerçek Gmail REST transport'u — YALNIZ flag açık + aktif hesap + OAuth env
 // hazırken yürür. Token akışı (refresh→access, Vault okuma) kullanıcı OAuth'u
 // + bağımsız güvenlik incelemesi sonrası doldurulacak (19 §5). O zamana kadar
-// açıklayıcı hata: sessiz düşüş YOK.
-async function sendViaGmailRest(account: GmailAccountRow, raw: string): Promise<{ id: string; threadId: string }> {
-  void account
-  void raw // OAuth + güvenlik incelemesi sonrası gerçek REST çağrısında kullanılacak
-  throw new Error(
-    'Gerçek Gmail gönderimi henüz yapılandırılmadı: OAuth istemcisi (GMAIL_OAUTH_CLIENT_ID/GMAIL_OAUTH_CLIENT_SECRET) ' +
-      've Vault token akışı güvenlik incelemesinden geçmeli. GMAIL_SEND_ENABLED=false yapın (dry-run) veya OAuth kurulumunu tamamlayın.'
-  )
+// KESİN (ambiguous=false) hatayla reddeder: provider'a hiç çıkılmadı →
+// attempt 'failed' olur ve güvenle yeniden denenebilir. Sessiz düşüş YOK.
+export function createGmailRestTransport(account: GmailAccountRow): GmailTransport {
+  void account // OAuth + güvenlik incelemesi sonrası gerçek REST çağrısında kullanılacak
+  return {
+    async send() {
+      throw new GmailTransportError(
+        'Gerçek Gmail gönderimi henüz yapılandırılmadı: OAuth istemcisi (GMAIL_OAUTH_CLIENT_ID/GMAIL_OAUTH_CLIENT_SECRET) ' +
+          've Vault token akışı güvenlik incelemesinden geçmeli. GMAIL_SEND_ENABLED=false yapın (dry-run) veya OAuth kurulumunu tamamlayın.',
+        false
+      )
+    },
+    async findByRfcMessageId() {
+      throw new GmailTransportError('Gmail araması için OAuth (gmail.readonly) yapılandırılmadı.', false)
+    },
+  }
 }
 
-// RFC 2822 düz-metin mesaj → base64url (Gmail API raw formatı).
-export function buildRawMessage(opts: { from: string; to: string; subject: string; body: string }): string {
+// RFC 2822 düz-metin mesaj → base64url (Gmail API raw formatı). Message-ID
+// deterministik (outreach id türevi) — retry'da değişmez, reconciliation ankrajı.
+export function buildRawMessage(opts: {
+  from: string
+  to: string
+  subject: string
+  body: string
+  messageId?: string
+}): string {
   const encodedSubject = `=?UTF-8?B?${Buffer.from(opts.subject, 'utf8').toString('base64')}?=`
-  const message = [
+  const lines = [
     `From: ${opts.from}`,
     `To: ${opts.to}`,
     `Subject: ${encodedSubject}`,
+  ]
+  if (opts.messageId) lines.push(`Message-ID: ${opts.messageId}`)
+  lines.push(
     'MIME-Version: 1.0',
     'Content-Type: text/plain; charset="UTF-8"',
     'Content-Transfer-Encoding: 8bit',
     '',
-    opts.body,
-  ].join('\r\n')
-  return Buffer.from(message, 'utf8').toString('base64url')
+    opts.body
+  )
+  return Buffer.from(lines.join('\r\n'), 'utf8').toString('base64url')
 }
 
-async function upsertThreadAndMessage(opts: {
+interface SendContext {
   row: OutreachRow
+  /** Guard'dan geçmiş, null olmayan alıcı adresi. */
   toAddress: string
-  fromAddress: string
   subject: string
   body: string
-  gmailMessageId: string
-  gmailThreadId: string
-  sentAtIso: string
-}): Promise<{ ok: boolean; error?: string }> {
-  // Thread: gmail_thread_id ile bul/oluştur (dry-run'da mock id de tekil).
-  const { data: thread, error: threadErr } = await supabaseAdmin
-    .from('email_threads')
-    .upsert(
-      {
-        lead_id: opts.row.lead_id,
-        gmail_thread_id: opts.gmailThreadId,
-        subject: opts.subject || null,
-        updated_at: opts.sentAtIso,
-      },
-      { onConflict: 'gmail_thread_id' }
-    )
-    .select('id')
-    .maybeSingle()
-  if (threadErr || !thread) return { ok: false, error: `email_threads yazılamadı: ${threadErr?.message ?? '?'}` }
-
-  const { error: msgErr } = await supabaseAdmin.from('email_messages').insert({
-    thread_id: thread.id,
-    outreach_message_id: opts.row.id,
-    gmail_message_id: opts.gmailMessageId,
-    direction: 'outbound',
-    from_address: opts.fromAddress,
-    to_address: opts.toAddress,
-    subject: opts.subject || null,
-    body: opts.body,
-    sent_at: opts.sentAtIso,
-  })
-  // UNIQUE ihlali (23505) = mesaj zaten kayıtlı → idempotent no-op (T6).
-  if (msgErr && !/duplicate key|23505/i.test(msgErr.message)) {
-    return { ok: false, error: `email_messages yazılamadı: ${msgErr.message}` }
-  }
-  return { ok: true }
 }
 
-/** TEK gönderim yolu (T5). Onaysız/digest-uyuşmasız/suppress'li gönderim
- *  YAPISAL olarak yürümez. GMAIL_SEND_ENABLED=false → dry-run (send mock,
- *  kalan her adım gerçek). */
-export async function sendGmailMessage(opts: {
-  outreachMessageId: string
-  approvalId: string
-  nowMs?: number
-}): Promise<SendGmailOutcome> {
-  const nowMs = opts.nowMs ?? Date.now()
-  const row = await loadOutreachRow(opts.outreachMessageId)
-  if (!row) return { ok: false, error: 'Taslak bulunamadı' }
+/** Ortak ön-kontroller: satır + lead + HITL onay + digest + compliance.
+ *  Provider'a ve claim'e dokunmaz — hepsi read-only (compliance yazımı hariç). */
+async function validateSendPreconditions(
+  outreachMessageId: string,
+  approvalId: string,
+  nowMs: number
+): Promise<{ ok: true; ctx: SendContext } | { ok: false; outcome: SendGmailOutcome }> {
+  const row = await loadOutreachRow(outreachMessageId)
+  if (!row) return { ok: false, outcome: { ok: false, error: 'Taslak bulunamadı' } }
 
-  // İdempotency katman 1: zaten gönderilmiş → no-op (T6).
+  // İdempotency katman 1: outreach satırı zaten gönderilmiş → no-op (T6).
   if (row.sent_at || row.status === 'sent') {
-    return { ok: true, alreadySent: true, gmailMessageId: row.gmail_message_id, gmailThreadId: row.gmail_thread_id }
+    return {
+      ok: false,
+      outcome: { ok: true, alreadySent: true, gmailMessageId: row.gmail_message_id, gmailThreadId: row.gmail_thread_id },
+    }
   }
-  if (!row.lead_id) return { ok: false, error: 'Taslağın lead bağı yok' }
+  if (!row.lead_id) return { ok: false, outcome: { ok: false, error: 'Taslağın lead bağı yok' } }
 
   const lead = await loadLeadContact(row.lead_id)
-  if (!lead?.email) return { ok: false, error: 'Lead e-posta adresi yok' }
+  if (!lead?.email) return { ok: false, outcome: { ok: false, error: 'Lead e-posta adresi yok' } }
   const { subject, body } = effectiveContent(row)
 
   // HITL kapısı (T5): approved + süresi geçmemiş + digest birebir.
-  const approval = await getApproval(opts.approvalId)
-  if (!approval) return { ok: false, error: 'Onay kaydı bulunamadı — onaysız gönderim yapılamaz' }
-  if (approval.action !== SEND_GMAIL_ACTION) return { ok: false, error: 'Onay farklı bir eyleme ait' }
+  const approval = await getApproval(approvalId)
+  if (!approval) return { ok: false, outcome: { ok: false, error: 'Onay kaydı bulunamadı — onaysız gönderim yapılamaz' } }
+  if (approval.action !== SEND_GMAIL_ACTION) return { ok: false, outcome: { ok: false, error: 'Onay farklı bir eyleme ait' } }
   if (approval.status === 'executed') {
-    return { ok: false, error: 'Bu onay zaten yürütüldü (çift gönderim engellendi)' }
+    return { ok: false, outcome: { ok: false, error: 'Bu onay zaten yürütüldü (çift gönderim engellendi)' } }
   }
   if (approval.status !== 'approved') {
-    return { ok: false, error: `Onay durumu '${approval.status}' — gönderim için 'approved' gerekir` }
+    return { ok: false, outcome: { ok: false, error: `Onay durumu '${approval.status}' — gönderim için 'approved' gerekir` } }
   }
   if (Date.parse(approval.expires_at) < nowMs) {
-    return { ok: false, error: 'Onay süresi dolmuş — yeniden onay isteyin' }
+    return { ok: false, outcome: { ok: false, error: 'Onay süresi dolmuş — yeniden onay isteyin' } }
   }
   const expectedDigest = computeActionDigest(SEND_GMAIL_ACTION, computeSendArgs(row.id, lead.email, subject, body))
   if (approval.approved_digest !== expectedDigest) {
-    return { ok: false, error: 'Digest uyuşmazlığı: onaylanan içerik ile gönderilecek içerik farklı — yeniden onay isteyin' }
+    return {
+      ok: false,
+      outcome: { ok: false, error: 'Digest uyuşmazlığı: onaylanan içerik ile gönderilecek içerik farklı — yeniden onay isteyin' },
+    }
   }
 
   // Deterministik kapı yürütme anında TEKRAR (suppression onaydan sonra
-  // eklenmiş olabilir — pre-send kapısı atlanamaz, T8).
+  // eklenmiş olabilir — pre-send kapısı atlanamaz, T8). Provider'dan ve
+  // claim'den ÖNCE: bloke ise provider çağrı sayısı SIFIR.
   const audit = await auditCompliance({ toAddress: lead.email, body, doNotContact: lead.do_not_contact })
   if (!audit.ok) {
     await supabaseAdmin
@@ -361,71 +370,225 @@ export async function sendGmailMessage(opts: {
       .update({ error: `audit-compliance bloke (send): ${audit.failures.join(', ')}` })
       .eq('id', row.id)
     console.warn(`[outreach.blocked] stage=send outreach=${row.id} reasons=${audit.failures.join(',')}`)
-    return { ok: false, blockedReasons: audit.failures }
+    return { ok: false, outcome: { ok: false, blockedReasons: audit.failures } }
   }
 
-  // Send: gerçek (flag + aktif hesap) veya dry-run mock.
+  return { ok: true, ctx: { row, toAddress: lead.email, subject, body } }
+}
+
+/** TEK gönderim yolu (T5). At-most-once garantisi sendMachine ile:
+ *  claim (atomik INSERT) → sending (CAS) → provider → sent (CAS) →
+ *  finalize (tek-transaction RPC). Onaysız/digest-uyuşmasız/suppress'li
+ *  gönderim YAPISAL olarak yürümez. GMAIL_SEND_ENABLED=false → dry-run
+ *  (transport mock, kalan her adım gerçek). */
+export async function sendGmailMessage(opts: {
+  outreachMessageId: string
+  approvalId: string
+  nowMs?: number
+  /** Test dikişi — verilmezse flag'e göre gerçek REST ya da dry-run transport. */
+  transport?: GmailTransport
+}): Promise<SendGmailOutcome> {
+  const nowMs = opts.nowMs ?? Date.now()
+
+  const pre = await validateSendPreconditions(opts.outreachMessageId, opts.approvalId, nowMs)
+  if (!pre.ok) return pre.outcome
+  const { row, toAddress, subject, body } = pre.ctx
+
+  // Transport seçimi (claim'den önce hazır — claim sonrası hızlı yol).
   const sendEnabled = isGmailSendEnabled()
   const account = sendEnabled ? await loadActiveGmailAccount() : null
-  let gmailMessageId: string
-  let gmailThreadId: string
-  let dryRun: boolean
-
-  if (sendEnabled) {
-    if (!account) {
-      return { ok: false, error: 'GMAIL_SEND_ENABLED=true ama aktif gmail_accounts kaydı yok — OAuth kurulumunu tamamlayın' }
-    }
-    const raw = buildRawMessage({ from: account.email_address, to: lead.email, subject, body })
-    try {
-      const sent = await sendViaGmailRest(account, raw)
-      gmailMessageId = sent.id
-      gmailThreadId = sent.threadId
-      dryRun = false
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Gmail API hatası'
-      return { ok: false, error: msg }
-    }
-  } else {
-    // DRY-RUN: send mock'lanır; kayıt/idempotency/audit akışı GERÇEK.
-    gmailMessageId = `dryrun-${row.id}`
-    gmailThreadId = row.gmail_thread_id ?? `dryrun-thread-${row.id}`
-    dryRun = true
+  if (sendEnabled && !account) {
+    return { ok: false, error: 'GMAIL_SEND_ENABLED=true ama aktif gmail_accounts kaydı yok — OAuth kurulumunu tamamlayın' }
   }
-
-  const sentAtIso = new Date(nowMs).toISOString()
+  const dryRun = !sendEnabled
+  const transport =
+    opts.transport ?? (dryRun ? createDryRunTransport(row.id, row.gmail_thread_id) : createGmailRestTransport(account!))
   const fromAddress = account?.email_address ?? 'dry-run@local'
 
-  // Kayıt sırası: gmail id'leri + final_body → markMessageSent (mevcut
-  // idempotent DB-kayıt rolü, E3) → thread/message → approval executed.
-  const { error: updateErr } = await supabaseAdmin
-    .from('outreach_messages')
-    .update({
-      gmail_message_id: gmailMessageId,
-      gmail_thread_id: gmailThreadId,
-      final_body: body,
-      error: null,
-      updated_at: sentAtIso,
-    })
-    .eq('id', row.id)
-  if (updateErr) return { ok: false, error: `outreach_messages güncellenemedi: ${updateErr.message}` }
-
-  const marked = await markMessageSent(row.id)
-  if (!marked.ok) return { ok: false, error: marked.error ?? 'markMessageSent başarısız' }
-
-  const persisted = await upsertThreadAndMessage({
-    row, toAddress: lead.email, fromAddress, subject, body, gmailMessageId, gmailThreadId, sentAtIso,
+  // ── At-most-once claim (atomik INSERT; kaybeden provider'a ULAŞAMAZ) ──
+  const expectedDigest = computeActionDigest(SEND_GMAIL_ACTION, computeSendArgs(row.id, toAddress, subject, body))
+  const claim = await claimSendAttempt({
+    outreachMessageId: row.id,
+    approvalId: opts.approvalId,
+    actionDigest: expectedDigest,
+    nowMs,
   })
-  if (!persisted.ok) {
-    console.error('[outreach.persist] thread/message kaydı başarısız:', persisted.error)
-    // Gönderim gerçekleşti; kayıt hatası gönderimi geri alamaz — hata raporlanır.
+
+  switch (claim.kind) {
+    case 'alreadySent': {
+      // Provider zaten göndermiş; finalize yarıda kaldıysa idempotent onar.
+      const outcome = await repairFinalizeIfPending(claim.attempt, opts.approvalId, {
+        fromAddress,
+        toAddress,
+        subject,
+        body,
+      })
+      return {
+        ok: true,
+        alreadySent: true,
+        dryRun: claim.attempt.provider_message_id?.startsWith('dryrun-') ?? undefined,
+        finalizePending: outcome.finalizePending,
+        gmailMessageId: claim.attempt.provider_message_id,
+        gmailThreadId: claim.attempt.provider_thread_id,
+      }
+    }
+    case 'inProgress':
+      return { ok: false, inProgress: true, error: 'Gönderim başka bir istek tarafından yürütülüyor — bekleyin' }
+    case 'needsReconciliation':
+      return {
+        ok: false,
+        needsReconciliation: true,
+        error: 'Önceki gönderim denemesinin sonucu belirsiz — otomatik tekrar YAPILMAZ; reconciliation gerekli',
+      }
+    case 'error':
+      return { ok: false, error: claim.error }
+    case 'claimed':
+      break
+  }
+  const attempt = claim.attempt
+
+  // claimed → sending (CAS). Kaybedersek provider'a dokunmadan çık.
+  const sending = await markSending(attempt)
+  if (!sending) {
+    return { ok: false, inProgress: true, error: 'Claim geçişi kaybedildi — başka bir istek yürütüyor' }
   }
 
-  await markApprovalExecuted(opts.approvalId)
+  // ── Provider çağrısı (bu noktaya AYNI outreach için tek process ulaşır) ──
+  const raw = buildRawMessage({
+    from: fromAddress,
+    to: toAddress,
+    subject,
+    body,
+    messageId: buildRfcMessageId(row.id),
+  })
 
-  // email.sent event (05-event-contracts) — adres maskeli, domain açık.
+  let providerResult: { id: string; threadId: string }
+  try {
+    providerResult = await transport.send({ fromAddress, raw })
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Gmail API hatası'
+    const ambiguous = err instanceof GmailTransportError ? err.ambiguous : true
+    if (ambiguous) {
+      // Mail gitmiş OLABİLİR → unknown; kör retry yasak (audit bulgu #2).
+      await markUnknown(sending, message)
+      console.warn(`[email.send_unknown] outreach=${row.id} err=${redactForLog(message, 200)}`)
+      return { ok: false, needsReconciliation: true, error: `Gönderim sonucu belirsiz: ${message}` }
+    }
+    // Kesin reddetme → failed (yeniden denenebilir).
+    await markFailed(sending, message)
+    return { ok: false, error: message }
+  }
+
+  // sending → sent (küçük CAS — provider id'leri hemen güvenceye alınır).
+  const sentAttempt = await markSentProvider(sending, providerResult.id, providerResult.threadId, nowMs)
+  const attemptForFinalize: SendAttempt =
+    sentAttempt ??
+    ({ ...sending, state: 'sent', provider_message_id: providerResult.id, provider_thread_id: providerResult.threadId } as SendAttempt)
+  if (!sentAttempt) {
+    // Provider GÖNDERDİ ama durum yazılamadı — asla yeniden gönderme;
+    // finalize yine denenir (claim_token hâlâ bizde), olmazsa reconciliation.
+    console.error(`[email.sent_state_write_failed] outreach=${row.id} providerMessageId=${providerResult.id}`)
+  }
+
+  // ── Tek-transaction kalıcı kayıt (outreach + thread + message + approval) ──
+  const sentAtIso = new Date(nowMs).toISOString()
+  const fin = await finalizeSend({
+    attempt: attemptForFinalize,
+    approvalId: opts.approvalId,
+    gmailMessageId: providerResult.id,
+    gmailThreadId: providerResult.threadId,
+    fromAddress,
+    toAddress,
+    subject,
+    body,
+    sentAtIso,
+  })
+  if (!fin.ok) {
+    // Provider gönderdi; kalıcı kayıt eksik. email.sent İZİ YOK — ayrı
+    // reconciliation eventi düşülür; retry yalnız finalize'ı tekrarlar.
+    console.error(`[email.finalize_pending] outreach=${row.id} providerMessageId=${providerResult.id} err=${fin.error}`)
+    return {
+      ok: true,
+      dryRun,
+      finalizePending: true,
+      gmailMessageId: providerResult.id,
+      gmailThreadId: providerResult.threadId,
+      error: `Gönderildi ama kalıcı kayıt tamamlanamadı: ${fin.error}`,
+    }
+  }
+
+  // email.sent event (05-event-contracts) — YALNIZ finalize başarılıysa.
   console.log(
-    `[email.sent] outreach=${row.id} lead=${row.lead_id} domain=${extractDomain(lead.email)} dryRun=${dryRun} gmailMessageId=${gmailMessageId} preview=${redactForLog(subject, 80)}`
+    `[email.sent] outreach=${row.id} lead=${row.lead_id} domain=${extractDomain(toAddress)} dryRun=${dryRun} gmailMessageId=${providerResult.id} preview=${redactForLog(subject, 80)}`
   )
 
-  return { ok: true, dryRun, gmailMessageId, gmailThreadId }
+  return { ok: true, dryRun, gmailMessageId: providerResult.id, gmailThreadId: providerResult.threadId }
 }
+
+/** alreadySent yolunda finalize yarıda kalmışsa idempotent onarır (provider'a
+ *  dokunmaz). */
+async function repairFinalizeIfPending(
+  attempt: SendAttempt,
+  approvalId: string,
+  content: { fromAddress: string; toAddress: string; subject: string; body: string }
+): Promise<{ finalizePending?: boolean }> {
+  if (attempt.finalized || !attempt.provider_message_id) return {}
+  const fin = await finalizeSend({
+    attempt,
+    approvalId,
+    gmailMessageId: attempt.provider_message_id,
+    gmailThreadId: attempt.provider_thread_id ?? '',
+    fromAddress: content.fromAddress,
+    toAddress: content.toAddress,
+    subject: content.subject,
+    body: content.body,
+    sentAtIso: attempt.sent_at ?? new Date().toISOString(),
+  })
+  if (!fin.ok) {
+    console.error(`[email.finalize_pending] outreach=${attempt.outreach_message_id} repair err=${fin.error}`)
+    return { finalizePending: true }
+  }
+  return {}
+}
+
+// ── Reconciliation (belirsiz sonuç çözümü — kör retry alternatifi) ───────────
+
+export interface ReconcileOutcome {
+  ok: boolean
+  outcome?: string
+  error?: string
+}
+
+/** 'unknown' ya da bayat 'sending' attempt'i çözer: Gmail'de deterministik
+ *  Message-ID araması → bulunursa reconciled+finalize, bulunamazsa failed
+ *  (yeniden claim edilebilir). Dry-run transport'ta arama her zaman boş →
+ *  failed; gerçek arama OAuth (gmail.readonly) gerektirir. */
+export async function reconcileOutreachSend(outreachMessageId: string): Promise<ReconcileOutcome> {
+  const attempt = await getSendAttempt(outreachMessageId)
+  if (!attempt) return { ok: false, error: 'Gönderim denemesi kaydı yok' }
+
+  const row = await loadOutreachRow(outreachMessageId)
+  if (!row?.lead_id) return { ok: false, error: 'Taslak/lead bulunamadı' }
+  const lead = await loadLeadContact(row.lead_id)
+  if (!lead?.email) return { ok: false, error: 'Lead e-posta adresi yok' }
+  const { subject, body } = effectiveContent(row)
+
+  const sendEnabled = isGmailSendEnabled()
+  const account = sendEnabled ? await loadActiveGmailAccount() : null
+  const transport =
+    sendEnabled && account ? createGmailRestTransport(account) : createDryRunTransport(row.id, row.gmail_thread_id)
+
+  const result = await reconcileSendAttempt({
+    attempt,
+    transport,
+    approvalId: attempt.approval_id,
+    fromAddress: account?.email_address ?? 'dry-run@local',
+    toAddress: lead.email,
+    subject,
+    body,
+  })
+  if (result.outcome === 'error') return { ok: false, outcome: result.outcome, error: result.error }
+  return { ok: true, outcome: result.outcome }
+}
+
+export { getSendAttempt }

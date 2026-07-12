@@ -3,7 +3,7 @@
 import { NextResponse } from 'next/server'
 import { requireApiAccess } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
-import { findSendApproval } from '@/lib/outreach/gmail'
+import { findSendApproval, getSendAttempt } from '@/lib/outreach/gmail'
 import { isGmailSendEnabled } from '@/lib/outreach/flags'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -22,6 +22,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     if (!row) return NextResponse.json({ success: false, error: 'Taslak bulunamadı' }, { status: 404 })
 
     const approval = row.sent_at ? null : await findSendApproval(id)
+    const attempt = await getSendAttempt(id)
     return NextResponse.json({
       success: true,
       data: {
@@ -29,6 +30,16 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         gmailMessageId: row.gmail_message_id,
         lastError: row.error,
         approval: approval ? { id: approval.id, status: approval.status, expiresAt: approval.expires_at } : null,
+        // At-most-once state machine görünürlüğü (mig 054): unknown →
+        // reconciliation gerekir; sending/claimed → başka istek yürütüyor.
+        attempt: attempt
+          ? {
+              state: attempt.state,
+              attemptCount: attempt.attempt_count,
+              finalized: attempt.finalized,
+              lastError: attempt.last_error,
+            }
+          : null,
         dryRunMode: !isGmailSendEnabled(),
       },
     })
