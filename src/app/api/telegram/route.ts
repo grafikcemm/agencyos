@@ -535,7 +535,11 @@ export async function POST(req: Request): Promise<NextResponse> {
       } else {
         // Unknown preference — fall through to unknown handler
         await sendTelegram(
-          'Komutlar:\n/plan — Bugünün planı\n/durum — Anlık durum\n/bonuslar — Bugünün bonusları\n/saglik — Sağlık minimumu\n/finans — Finans notu\n/kitap — Okuma hedefi\n/shutdown — Günü kapat\n\nYa da yaz: "normal", "yoğun", "dağılmış", "tamam", "pas", "ertele", "bugün ne yiyeceğim"'
+          'Komutlar:\n' +
+            '<b>İş:</b> /bugun /aranacaklar /taslaklar /takipler /sorunlar /pipeline\n' +
+            '<b>Hayat:</b> /plan /durum /bonuslar /saglik /finans /kitap /shutdown\n\n' +
+            'Satır aksiyonu: "&lt;işletme&gt; arandı / ulaşılamadı / görüşme oldu / daha sonra ara yarın / not: …"\n' +
+            'Ya da yaz: "normal", "yoğun", "dağılmış", "tamam", "pas", "ertele", "bugün ne yiyeceğim", "görev ekle: …"'
         );
       }
       return NextResponse.json({ ok: true });

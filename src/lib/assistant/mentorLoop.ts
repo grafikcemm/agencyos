@@ -219,9 +219,11 @@ export function capabilitiesReply(): string {
     "Buradayım Cem — hem ajans hem günlük hayat tarafında yanındayım.",
     "",
     "<b>Konuşarak:</b> aklındakini yaz — odak, takılma, kafa karışıklığı, iş kararı, motivasyon. Düşünmene yardım ederim, öğüt yağdırmam.",
-    "<b>İş:</b> müşteri/lead, kimi arayayım, pipeline, teklif → veriyle cevap veririm.",
-    "<b>Komutlar:</b> /plan /durum /saglik /finans /kitap /ritimler /shutdown",
-    "<b>Hızlı:</b> enerji (düşük/orta/yüksek), 'tamam' / 'pas' / 'ertele', 'bugün ne yiyeyim'",
+    "<b>İş komutları:</b> /bugun (satış özeti) /aranacaklar /taslaklar /takipler /sorunlar /pipeline",
+    "<b>Satır aksiyonu:</b> '&lt;işletme&gt; arandı / ulaşılamadı / görüşme oldu / daha sonra ara yarın / not: …'",
+    "<b>Taslak:</b> '&lt;işletme&gt; için cold email hazırla' → taslak kaydı (gönderim YALNIZ /bugun kokpitinden onayla).",
+    "<b>Hayat komutları:</b> /plan /durum /saglik /finans /kitap /ritimler /shutdown",
+    "<b>Hızlı:</b> enerji (düşük/orta/yüksek), 'tamam' / 'pas' / 'ertele', 'bugün ne yiyeyim', 'görev ekle: …'",
   ].join("\n");
 }
 
