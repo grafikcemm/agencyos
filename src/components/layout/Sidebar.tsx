@@ -23,7 +23,8 @@ import {
   Flame,
   Sparkles,
   ShieldCheck,
-  ListChecks
+  ListChecks,
+  Sunrise
 } from 'lucide-react'
 
 // Sidebar en tepesindeki sabit yüzeyler (kullanıcının en kritik günlük yüzeyleri):
@@ -55,6 +56,7 @@ const NAV_GROUPS = [
   {
     title: 'PIPELINE',
     items: [
+      { label: 'Bugün',             icon: Sunrise,   href: '/bugun' },
       { label: 'Lead Radar',        icon: Map,       href: '/harita' },
       { label: 'Bugünün Fırsatları', icon: Target,   href: '/firsatlar' },
       { label: 'Pipeline',          icon: GitMerge,  href: '/pipeline' },
