@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireApiUser } from '@/lib/auth'
 import { isAllowedOrder } from '@/lib/db/orderGuard'
-import { enforceSameOrigin, sanitizeWriteBody, BadRequestError } from '@/lib/api/guards'
+import { z } from 'zod'
+import { enforceSameOrigin, sanitizeWriteBody, parseJsonBody, BadRequestError } from '@/lib/api/guards'
+
+// Yapısal üst-şema: düz JSON nesnesi + boyut sınırı (parseJsonBody). Alan
+// düzeyi doğrulama tablo-başına allowlist'te (WRITE_FIELDS + sanitizeWriteBody).
+const WriteBodySchema = z.record(z.string(), z.unknown())
 import {
   missingProposalFields,
   proposalGateMessage,
@@ -137,7 +142,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ table: 
     const guard = tableGuard(table, true)
     if (guard) return guard
 
-    const body = applyFieldAllowlist(table, sanitizeWriteBody(await req.json()))
+    const body = applyFieldAllowlist(table, sanitizeWriteBody(await parseJsonBody(req, WriteBodySchema)))
     const { data, error } = await withTimeout(supabaseAdmin.from(table).insert(body).select())
     if (error) throw error
     return NextResponse.json(data)
@@ -161,7 +166,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ table:
     const guard = tableGuard(table, true)
     if (guard) return guard
 
-    const { id, ...rawUpdates } = sanitizeWriteBody(await req.json())
+    const { id, ...rawUpdates } = sanitizeWriteBody(await parseJsonBody(req, WriteBodySchema))
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
     const updates = applyFieldAllowlist(table, rawUpdates)
 

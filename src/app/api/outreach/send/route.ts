@@ -4,24 +4,28 @@
 // (email / WhatsApp / Instagram) so the final touch comes from a real person,
 // then calls this endpoint to record the message as 'sent'.
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { requireApiUser } from '@/lib/auth'
+import { enforceSameOrigin, parseJsonBody, BadRequestError } from '@/lib/api/guards'
 import { markMessageSent } from '@/lib/outreach/email'
+
+const SendSchema = z.object({ message_id: z.string().uuid() }).strict()
 
 export async function POST(req: Request) {
   try {
-    const auth = await requireApiUser()
+    const auth = await requireApiUser(req)
     if ('response' in auth) return auth.response
+    const originErr = enforceSameOrigin(req)
+    if (originErr) return originErr
 
-    const body = await req.json()
-    const { message_id } = body
-
-    if (!message_id) {
-      return NextResponse.json({ error: 'message_id zorunludur.' }, { status: 400 })
-    }
+    const { message_id } = await parseJsonBody(req, SendSchema)
 
     const result = await markMessageSent(message_id)
     return NextResponse.json(result, { status: result.ok ? 200 : 500 })
   } catch (error: unknown) {
+    if (error instanceof BadRequestError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
     const msg = error instanceof Error ? error.message : 'Sunucu hatası'
     return NextResponse.json({ error: msg }, { status: 500 })
   }

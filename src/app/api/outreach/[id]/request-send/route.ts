@@ -2,9 +2,17 @@
 // Opsiyonel { subject, finalBody } düzenlemesi persist edilir; digest düzenleme
 // SONRASI içeriğe bağlanır. Suppression/uyum bloke ise onay kartı doğmaz.
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { requireApiAccess } from '@/lib/auth'
-import { enforceSameOrigin } from '@/lib/api/guards'
+import { enforceSameOrigin, parseJsonBody, BadRequestError } from '@/lib/api/guards'
 import { requestSendApproval } from '@/lib/outreach/gmail'
+
+const RequestSendSchema = z
+  .object({
+    subject: z.string().min(1).max(500).optional(),
+    finalBody: z.string().min(1).max(50_000).optional(),
+  })
+  .strict()
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -16,10 +24,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { id } = await params
     if (!id) return NextResponse.json({ success: false, error: 'id zorunludur' }, { status: 400 })
 
-    const body = (await req.json().catch(() => ({}))) as { subject?: string; finalBody?: string }
+    const body = await parseJsonBody(req, RequestSendSchema)
     const result = await requestSendApproval(id, {
-      subject: typeof body.subject === 'string' ? body.subject : undefined,
-      finalBody: typeof body.finalBody === 'string' ? body.finalBody : undefined,
+      subject: body.subject,
+      finalBody: body.finalBody,
     })
 
     if (!result.ok) {
@@ -28,6 +36,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
     return NextResponse.json({ success: true, data: { approvalId: result.approvalId, status: result.status } })
   } catch (error: unknown) {
+    if (error instanceof BadRequestError) {
+      return NextResponse.json({ success: false, error: error.message }, { status: 400 })
+    }
     const msg = error instanceof Error ? error.message : 'Sunucu hatası'
     return NextResponse.json({ success: false, error: msg }, { status: 500 })
   }

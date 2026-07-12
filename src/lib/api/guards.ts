@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import type { z } from 'zod'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // API güvenlik yardımcıları — state-değiştiren route handler'lar için.
@@ -41,6 +42,41 @@ export class BadRequestError extends Error {}
  * güvenliği sağlar. İleride her writable tablo için zod şeması/alan allowlist'i
  * eklenmeli (bkz. /api/db/[table] follow-up).
  */
+/** Varsayılan gövde üst sınırı (byte, UTF-16 kod birimi yaklaşıklığı). */
+export const MAX_JSON_BODY_BYTES = 100_000
+
+/**
+ * Boyut-sınırlı + Zod-doğrulamalı JSON gövde okuyucu. State-değiştiren route
+ * handler'larda `await req.json()` yerine kullanılır: (1) ham metin uzunluğu
+ * sınırı aşarsa reddeder, (2) JSON parse hatasında reddeder, (3) şema
+ * doğrulamasında ilk hataları özetleyen BadRequestError fırlatır.
+ */
+export async function parseJsonBody<Schema extends z.ZodTypeAny>(
+  req: Request,
+  schema: Schema,
+  maxBytes: number = MAX_JSON_BODY_BYTES,
+): Promise<z.infer<Schema>> {
+  const text = await req.text()
+  if (text.length > maxBytes) {
+    throw new BadRequestError(`Gövde çok büyük (üst sınır ${maxBytes} bayt).`)
+  }
+  let raw: unknown
+  try {
+    raw = text.length === 0 ? {} : JSON.parse(text)
+  } catch {
+    throw new BadRequestError('Gövde geçerli JSON değil.')
+  }
+  const parsed = schema.safeParse(raw)
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .slice(0, 3)
+      .map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`)
+      .join('; ')
+    throw new BadRequestError(`Geçersiz gövde — ${issues}`)
+  }
+  return parsed.data
+}
+
 export function sanitizeWriteBody(body: unknown): Record<string, unknown> {
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
     throw new BadRequestError('Gövde tek bir JSON nesnesi olmalı.')
