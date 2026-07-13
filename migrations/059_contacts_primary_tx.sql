@@ -17,14 +17,24 @@
 -- Rollback: 059_contacts_primary_tx_rollback.sql
 -- ─────────────────────────────────────────────────────────────────────────────
 
--- Ön-temizlik: aynı lead'de birden çok primary kaldıysa en YENİSİ kalır.
+-- Ön-temizlik (Sprint-3 Faz 6.1 — DETERMİNİSTİK): aynı lead'de birden çok
+-- primary kaldıysa (created_at DESC, id DESC) sırasında İLK satır kalır.
+-- Eski sürüm yalnız created_at karşılaştırıyordu → EŞİT timestamp'lerde
+-- (toplu import) İKİ satır da hayatta kalır ve unique index CREATE'i düşerdi.
+-- id tie-break'i bunu kapatır (test: eşit created_at senaryosu, aşağıda).
+with ranked as (
+  select id,
+         row_number() over (
+           partition by lead_id
+           order by created_at desc, id desc
+         ) as rn
+  from public.contacts
+  where is_primary
+)
 update public.contacts c
 set is_primary = false
-where is_primary
-  and exists (
-    select 1 from public.contacts c2
-    where c2.lead_id = c.lead_id and c2.is_primary and c2.created_at > c.created_at
-  );
+from ranked r
+where c.id = r.id and r.rn > 1;
 
 create unique index if not exists contacts_one_primary_per_lead
   on public.contacts (lead_id) where is_primary;
