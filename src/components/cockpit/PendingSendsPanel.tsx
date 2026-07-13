@@ -6,10 +6,103 @@
 // at-most-once state machine + digest-lock arkasında; bu panel yalnız tetikler.
 
 import { useState } from 'react'
-import { MailCheck, Check, Send } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { MailCheck, Check, Send, UserPlus } from 'lucide-react'
 import type { PanelResult, PendingSendDraft, DraftState } from '@/lib/cockpit/shared'
 
 type RowState = { status: string | null; busy: boolean; error: string | null; sent: boolean; dryRun?: boolean }
+
+// Faz 2.2: recipient_missing satırından ÇIKMADAN kişi ekleme — lead drawer'a
+// gitmek gerekmez. Kayıt sonrası canonical recipient server'da yeniden çözülür
+// (router.refresh) ve durum approval_missing'e ilerler.
+function InlineContactForm({ leadId, onDone }: { leadId: string; onDone: () => void }) {
+  const [form, setForm] = useState({ fullName: '', role: 'owner', email: '', source: 'manual', isPrimary: true })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/leads/${leadId}/contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: form.fullName.trim(),
+          role: form.role,
+          email: form.email.trim(),
+          source: form.source,
+          isPrimary: form.isPrimary,
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
+      onDone()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'kayıt hatası')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const input = 'bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded px-2 py-1 text-[11px] text-[var(--text-primary)]'
+  return (
+    <form onSubmit={submit} data-testid={`inline-contact-${leadId}`} className="mt-1.5 flex flex-wrap items-center gap-1.5">
+      <input
+        required
+        minLength={2}
+        placeholder="Ad Soyad"
+        value={form.fullName}
+        onChange={(e) => setForm((f) => ({ ...f, fullName: e.target.value }))}
+        className={`${input} w-32`}
+        data-testid={`inline-contact-name-${leadId}`}
+      />
+      <select value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value }))} className={input}>
+        <option value="owner">Sahip</option>
+        <option value="marketing">Pazarlama</option>
+        <option value="operations">Operasyon</option>
+        <option value="cto">CTO</option>
+        <option value="cfo">CFO</option>
+        <option value="other">Diğer</option>
+      </select>
+      <input
+        required
+        type="email"
+        placeholder="E-posta"
+        value={form.email}
+        onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+        className={`${input} w-44`}
+        data-testid={`inline-contact-email-${leadId}`}
+      />
+      <select value={form.source} onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))} className={input}>
+        <option value="manual">Manuel</option>
+        <option value="website">Web sitesi</option>
+        <option value="instagram">Instagram</option>
+        <option value="apollo">Apollo</option>
+        <option value="referral">Referans</option>
+      </select>
+      <label className="flex items-center gap-1 text-[10px] text-[var(--text-secondary)]">
+        <input
+          type="checkbox"
+          checked={form.isPrimary}
+          onChange={(e) => setForm((f) => ({ ...f, isPrimary: e.target.checked }))}
+        />
+        Primary
+      </label>
+      <button
+        type="submit"
+        disabled={busy}
+        data-testid={`inline-contact-save-${leadId}`}
+        className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded bg-[var(--accent)] text-white hover:brightness-110 disabled:opacity-50"
+      >
+        <UserPlus className="w-3 h-3" /> {busy ? 'Kaydediliyor…' : 'Kaydet'}
+      </button>
+      {error && <span className="text-[10px] text-red-400">{error}</span>}
+    </form>
+  )
+}
 
 const STATE_BADGE: Record<DraftState, { label: string; cls: string }> = {
   recipient_missing: { label: 'Alıcı eksik', cls: 'bg-red-500/15 text-red-400' },
@@ -24,11 +117,13 @@ const STATE_BADGE: Record<DraftState, { label: string; cls: string }> = {
 }
 
 export function PendingSendsPanel({ initial }: { initial: PanelResult<PendingSendDraft> }) {
+  const router = useRouter()
   const [rows, setRows] = useState<Record<string, RowState>>(() =>
     Object.fromEntries(
       initial.items.map((d) => [d.draftId, { status: d.approvalStatus, busy: false, error: null, sent: false }])
     )
   )
+  const [savedContacts, setSavedContacts] = useState<Record<string, boolean>>({})
 
   function patch(id: string, p: Partial<RowState>) {
     setRows((prev) => ({ ...prev, [id]: { ...prev[id], ...p } }))
@@ -143,6 +238,20 @@ export function PendingSendsPanel({ initial }: { initial: PanelResult<PendingSen
                   )}
                   {st.error && <span className="text-[11px] text-red-400 truncate">{st.error}</span>}
                 </div>
+                {/* Faz 2.2: alıcı eksikse kişi satırdan eklenir; kayıt sonrası
+                    server canonical recipient'ı yeniden çözer (refresh). */}
+                {effectiveState === 'recipient_missing' && d.leadId && !savedContacts[d.draftId] && (
+                  <InlineContactForm
+                    leadId={d.leadId}
+                    onDone={() => {
+                      setSavedContacts((prev) => ({ ...prev, [d.draftId]: true }))
+                      router.refresh()
+                    }}
+                  />
+                )}
+                {savedContacts[d.draftId] && (
+                  <span className="text-[10px] text-emerald-400">Kişi kaydedildi — alıcı güncelleniyor…</span>
+                )}
               </li>
             )
           })}

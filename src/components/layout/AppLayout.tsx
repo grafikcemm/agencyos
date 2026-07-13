@@ -6,6 +6,7 @@ import { Bell, Menu, Search, X } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 
 const PAGE_TITLES: Record<string, string> = {
+  '/bugun': 'Bugün',
   '/command-center': 'Command Center',
   '/agents': 'Ajanlar',
   '/tasks': 'Görev Kuyruğu',
@@ -37,7 +38,7 @@ export function AppLayout({ children }: AppLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const pathname = usePathname()
-  const pageTitle = PAGE_TITLES[pathname] ?? 'Dashboard'
+  const pageTitle = PAGE_TITLES[pathname] ?? 'Bugün'
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[var(--bg-base)] text-[var(--text-primary)]">

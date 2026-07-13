@@ -168,6 +168,8 @@ export default function HaritaPage() {
 
   // Drawer
   const [selectedLead, setSelectedLead] = useState<EnrichedLead | null>(null)
+  // 2.4: /bugun "Detay →" derin linki (?lead=<id>) doğru drawer'ı açar — bir kez.
+  const [deepLinkApplied, setDeepLinkApplied] = useState(false)
 
   // Görünüm: işletme leadleri vs kişi/pozisyon leadleri
   const [view, setView] = useState<'businesses' | 'people'>('businesses')
@@ -233,6 +235,17 @@ export default function HaritaPage() {
       setPersonScanning(false)
     }
   }
+
+  // 2.4: leadler yüklenince ?lead=<id> hedefini drawer'da aç (tek sefer).
+  useEffect(() => {
+    if (deepLinkApplied || allLeads.length === 0) return
+    const target = new URLSearchParams(window.location.search).get('lead')
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setDeepLinkApplied(true)
+    if (!target) return
+    const hit = allLeads.find((l) => l.id === target)
+    if (hit) setSelectedLead(hit)
+  }, [allLeads, deepLinkApplied])
 
   // Kayıtlı işletme tipleri (settings JSON) — mount'ta yükle.
   useEffect(() => {

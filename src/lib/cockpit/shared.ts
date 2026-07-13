@@ -58,19 +58,23 @@ export type DraftState =
 
 export interface PendingSendDraft {
   draftId: string
+  /** Faz 2.2: inline contact ekleme bu id ile satırdan yapılır. */
+  leadId: string | null
   approvalId: string | null
   approvalStatus: string | null
   businessName: string
   domain: string
   subject: string
   state: DraftState
+  /** Alıcının nereden çözüldüğü (primary contact / lead.email / yok). */
+  recipientSource: 'primary_contact' | 'lead_email' | 'none'
   /** Bu durum için TEK güvenli sonraki adım (operatöre gösterilir). */
   nextAction: string
 }
 
 /** Durum → tek güvenli aksiyon. */
 export const DRAFT_NEXT_ACTION: Record<DraftState, string> = {
-  recipient_missing: 'Alıcı e-postası ekle (lead detayından)',
+  recipient_missing: 'Alıcıyı bu satırdan ekle (kişi + e-posta)',
   compliance_blocked: 'Suppression kaydını incele — bu adrese gönderim yasak',
   approval_missing: 'Onay isteği oluştur',
   approval_pending: 'Onayı bekle veya incele',
@@ -91,11 +95,16 @@ export function classifyDraftState(input: {
   hasRecipient: boolean
   suppressed: boolean
   approvalStatus: string | null
+  /** Faz 2.4: outreach satırının kendi statüsü — legacy 'sent' satırlar
+   *  (attempt kaydı olmadan gönderilmiş) recipient_missing GÖRÜNMEZ. */
+  rowStatus?: string | null
 }): DraftState {
   // Gönderim makinesine girmiş taslaklar önce attempt durumuna göre sınıflanır.
   if (input.attemptState === 'sent') return input.attemptFinalized ? 'sent' : 'finalize_pending'
   if (input.attemptState === 'unknown') return 'unknown'
   if (input.attemptState === 'failed') return 'failed'
+  // Legacy gönderilmiş satır (attempt izi yok) → sent; darboğaz değildir.
+  if (input.rowStatus === 'sent') return 'sent'
   // Henüz gönderilmemiş: darboğaz sırası alıcı → compliance → onay.
   if (!input.hasRecipient) return 'recipient_missing'
   if (input.suppressed) return 'compliance_blocked'

@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { enforceSameOrigin, parseJsonBody, BadRequestError } from '@/lib/api/guards'
 import { requireApiUser, requireApiAccess } from '@/lib/auth'
 import { supabaseAdmin } from '@/lib/supabase'
+import { createContact } from '@/lib/contacts/contactService'
 
 const ContactSchema = z
   .object({
@@ -48,32 +49,23 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const body = await parseJsonBody(req, ContactSchema)
     const { id } = await ctx.params
 
-    // isPrimary=true → önce diğerlerini indir (tek birincil kişi).
-    if (body.isPrimary) {
-      await supabaseAdmin.from('contacts').update({ is_primary: false }).eq('lead_id', id)
+    // Faz 2.1: TEK servis — mig 059 canlıysa tek transaction (eski primary
+    // insert hatasında KAYBOLMAZ); değilse legacy yol atomic:false ile görünür.
+    const result = await createContact({
+      leadId: id,
+      fullName: body.fullName,
+      role: body.role,
+      email: body.email ?? null,
+      phone: body.phone ?? null,
+      linkedinUrl: body.linkedinUrl ?? null,
+      source: body.source,
+      notes: body.notes ?? null,
+      isPrimary: body.isPrimary,
+    })
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error, atomic: result.atomic }, { status: result.duplicate ? 409 : 500 })
     }
-
-    const { data, error } = await supabaseAdmin
-      .from('contacts')
-      .insert({
-        lead_id: id,
-        full_name: body.fullName,
-        role: body.role,
-        email: body.email ?? null,
-        phone: body.phone ?? null,
-        linkedin_url: body.linkedinUrl ?? null,
-        source: body.source,
-        is_primary: body.isPrimary,
-        notes: body.notes ?? null,
-      })
-      .select('id')
-      .single()
-    if (error) {
-      // 23505 = aynı lead+email zaten var (unique index).
-      const status = error.code === '23505' ? 409 : 500
-      return NextResponse.json({ error: error.message }, { status })
-    }
-    return NextResponse.json({ ok: true, id: data.id }, { status: 201 })
+    return NextResponse.json({ ok: true, id: result.id, atomic: result.atomic }, { status: 201 })
   } catch (err) {
     if (err instanceof BadRequestError) {
       return NextResponse.json({ error: err.message }, { status: 400 })

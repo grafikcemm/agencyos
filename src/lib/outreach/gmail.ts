@@ -24,7 +24,8 @@ import { buildApprovalDraft, DEFAULT_APPROVAL_TTL_MS } from '@/lib/approvals/int
 import { getApproval } from '@/lib/approvals/repo'
 import { auditCompliance, extractDomain } from '@/lib/outreach/auditCompliance'
 import { evaluateOutboundText, type GateVerdict } from '@/lib/outreach/outboundGate'
-import { recordVoiceDelta } from '@/lib/outreach/voiceDna'
+import { resolveCanonicalRecipient } from '@/lib/contacts/contactService'
+import { recordVoiceDelta, getBannedPhrases } from '@/lib/outreach/voiceDna'
 import { isGmailSendEnabled } from '@/lib/outreach/flags'
 import { redactForLog } from '@/lib/redact'
 import {
@@ -74,13 +75,27 @@ async function loadOutreachRow(id: string): Promise<OutreachRow | null> {
   return (data as OutreachRow) ?? null
 }
 
-async function loadLeadContact(leadId: string): Promise<LeadContact | null> {
+/** Faz 2.3: alıcı TEK resolver'dan çözülür (primary contact → lead.email).
+ *  Gmail load/approval/send üçü de bu fonksiyonu kullanır — kopya kural yok. */
+async function loadLeadContact(leadId: string): Promise<(LeadContact & {
+  contactId: string | null
+  contactName: string | null
+}) | null> {
   const { data } = await supabaseAdmin
     .from('leads')
     .select('id, business_name, email, do_not_contact')
     .eq('id', leadId)
     .maybeSingle()
-  return (data as LeadContact) ?? null
+  if (!data) return null
+  const recipient = await resolveCanonicalRecipient(leadId)
+  return {
+    id: data.id as string,
+    business_name: (data.business_name as string) ?? null,
+    do_not_contact: (data.do_not_contact as boolean) ?? null,
+    email: recipient.email,
+    contactId: recipient.contactId,
+    contactName: recipient.contactName,
+  }
 }
 
 function effectiveContent(row: OutreachRow): { subject: string; body: string } {
@@ -96,9 +111,12 @@ export function computeSendArgs(
   subject: string,
   body: string,
   qualityDigest?: string,
+  /** Faz 2.3: alıcı snapshot bağı — primary contact id (yoksa lead.email fallback işareti). */
+  recipientContactId?: string | null,
 ) {
+  const recipientRef = recipientContactId ?? 'lead-email'
   const contentDigest = createHash('sha256')
-    .update(`${subject}\n\n${body}${qualityDigest ? `\n\nq:${qualityDigest}` : ''}`)
+    .update(`${subject}\n\n${body}${qualityDigest ? `\n\nq:${qualityDigest}` : ''}\n\nr:${recipientRef}`)
     .digest('hex')
   return { action: SEND_GMAIL_ACTION, outreachMessageId, to: to.toLowerCase(), contentDigest }
 }
@@ -200,9 +218,10 @@ export async function requestSendApproval(
     }
   }
 
-  // Kalite dijesti approval digest'ine bağlanır: onaydan sonra kalite girdisi
-  // (yasaklı ifade listesi/kanıt) değişirse send-anı digest'i eşleşmez.
-  const args = computeSendArgs(outreachMessageId, lead.email, subject, body, quality.digest)
+  // Kalite dijesti + alıcı snapshot'ı (contact id) approval digest'ine bağlanır:
+  // onaydan sonra kalite girdisi, alıcı e-postası VEYA primary contact değişirse
+  // send-anı digest'i eşleşmez → onay geçersizleşir (Faz 1.3 + 2.3).
+  const args = computeSendArgs(outreachMessageId, lead.email, subject, body, quality.digest, lead.contactId)
   const domain = extractDomain(lead.email) ?? 'bilinmiyor'
   // Alıcı domain onay kartında GÖRÜNÜR (T10) — redactPreview e-postayı maskeler,
   // domain'i ayrıca düz yazıyoruz.
@@ -270,7 +289,7 @@ export async function findSendApproval(outreachMessageId: string): Promise<{ id:
   } catch {
     return null // fail-closed: kalite değerlendirilemedi → onay "yok" görünür.
   }
-  const args = computeSendArgs(outreachMessageId, lead.email, subject, body, quality.digest)
+  const args = computeSendArgs(outreachMessageId, lead.email, subject, body, quality.digest, lead.contactId)
   const draft = buildApprovalDraft({
     runId: `outreach:${outreachMessageId}`,
     stepId: SEND_GMAIL_ACTION,
@@ -288,6 +307,82 @@ export async function findSendApproval(outreachMessageId: string): Promise<{ id:
     .eq('idempotency_key', draft.idempotencyKey)
     .maybeSingle()
   return (data as { id: string; status: string; expires_at: string }) ?? null
+}
+
+// ── Toplu onay durumu (Faz 2.4 — kokpit) ─────────────────────────────────────
+
+export interface DraftApprovalLookupItem {
+  draftId: string
+  leadId: string
+  businessName: string | null
+  /** Canonical resolver çıktısı (primary contact → lead.email). */
+  email: string | null
+  contactId: string | null
+  subject: string
+  body: string
+}
+
+/**
+ * findSendApproval'ın TOPLU hâli: banned-phrase 1 sorgu + evidence 1 sorgu +
+ * approvals 1 sorgu (draft başına ayrı DB turu YOK). Digest formülü tekil
+ * yol ile birebir aynı (içerik + kalite + alıcı) — sapma olursa onay
+ * 'bulunamaz' görünür ve UI yeniden onay ister (güvenli yön).
+ */
+export async function findSendApprovalsBatch(
+  items: DraftApprovalLookupItem[],
+): Promise<Map<string, { id: string; status: string; expires_at: string }>> {
+  const out = new Map<string, { id: string; status: string; expires_at: string }>()
+  const candidates = items.filter((i) => i.email)
+  if (candidates.length === 0) return out
+
+  let banned: string[]
+  try {
+    banned = await getBannedPhrases()
+  } catch {
+    return out // fail-closed: kalite girdisi yok → onay "yok" görünür.
+  }
+  const leadIds = [...new Set(candidates.map((i) => i.leadId))]
+  const { data: evidence } = await supabaseAdmin
+    .from('lead_evidence')
+    .select('id, lead_id')
+    .in('lead_id', leadIds)
+  const evidenceByLead = new Map<string, string[]>()
+  for (const e of evidence ?? []) {
+    const arr = evidenceByLead.get(e.lead_id as string) ?? []
+    arr.push(e.id as string)
+    evidenceByLead.set(e.lead_id as string, arr)
+  }
+
+  const keyToDraft = new Map<string, string>()
+  for (const item of candidates) {
+    const quality = await evaluateOutboundText(
+      { leadId: item.leadId, businessName: item.businessName ?? '', subject: item.subject, body: item.body, kind: 'cold_email' },
+      { bannedPhrases: banned, validEvidenceIds: evidenceByLead.get(item.leadId) ?? [] },
+    )
+    const args = computeSendArgs(item.draftId, item.email!, item.subject, item.body, quality.digest, item.contactId)
+    const draft = buildApprovalDraft({
+      runId: `outreach:${item.draftId}`,
+      stepId: SEND_GMAIL_ACTION,
+      action: SEND_GMAIL_ACTION,
+      args,
+      previewText: '-',
+      permissionScopes: ['email:send'],
+      riskLevel: 'high',
+      dataSensitivity: 'confidential',
+      nowMs: Date.now(),
+    })
+    keyToDraft.set(draft.idempotencyKey, item.draftId)
+  }
+
+  const { data: approvals } = await supabaseAdmin
+    .from('approval_requests')
+    .select('id, status, expires_at, idempotency_key')
+    .in('idempotency_key', [...keyToDraft.keys()])
+  for (const a of approvals ?? []) {
+    const draftId = keyToDraft.get(a.idempotency_key as string)
+    if (draftId) out.set(draftId, { id: a.id as string, status: a.status as string, expires_at: a.expires_at as string })
+  }
+  return out
 }
 
 // ── Gönderim ─────────────────────────────────────────────────────────────────
@@ -383,6 +478,8 @@ interface SendContext {
   toAddress: string
   subject: string
   body: string
+  /** Onay anındakiyle AYNI formülle (içerik+kalite+alıcı) hesaplanan digest. */
+  actionDigest: string
 }
 
 /** Ortak ön-kontroller: satır + lead + HITL onay + digest + compliance.
@@ -433,11 +530,14 @@ async function validateSendPreconditions(
   if (!sendQuality.ok) {
     return { ok: false, outcome: { ok: false, blockedReasons: sendQuality.violations.map((v) => v.code) } }
   }
-  const expectedDigest = computeActionDigest(SEND_GMAIL_ACTION, computeSendArgs(row.id, lead.email, subject, body, sendQuality.digest))
+  const expectedDigest = computeActionDigest(
+    SEND_GMAIL_ACTION,
+    computeSendArgs(row.id, lead.email, subject, body, sendQuality.digest, lead.contactId),
+  )
   if (approval.approved_digest !== expectedDigest) {
     return {
       ok: false,
-      outcome: { ok: false, error: 'Digest uyuşmazlığı: onaylanan içerik ile gönderilecek içerik farklı — yeniden onay isteyin' },
+      outcome: { ok: false, error: 'Digest uyuşmazlığı: onaylanan içerik/alıcı ile gönderilecek farklı — yeniden onay isteyin' },
     }
   }
 
@@ -454,7 +554,7 @@ async function validateSendPreconditions(
     return { ok: false, outcome: { ok: false, blockedReasons: audit.failures } }
   }
 
-  return { ok: true, ctx: { row, toAddress: lead.email, subject, body } }
+  return { ok: true, ctx: { row, toAddress: lead.email, subject, body, actionDigest: expectedDigest } }
 }
 
 /** TEK gönderim yolu (T5). At-most-once garantisi sendMachine ile:
@@ -473,7 +573,7 @@ export async function sendGmailMessage(opts: {
 
   const pre = await validateSendPreconditions(opts.outreachMessageId, opts.approvalId, nowMs)
   if (!pre.ok) return pre.outcome
-  const { row, toAddress, subject, body } = pre.ctx
+  const { row, toAddress, subject, body, actionDigest } = pre.ctx
 
   // Transport seçimi (claim'den önce hazır — claim sonrası hızlı yol).
   const sendEnabled = isGmailSendEnabled()
@@ -487,11 +587,11 @@ export async function sendGmailMessage(opts: {
   const fromAddress = account?.email_address ?? 'dry-run@local'
 
   // ── At-most-once claim (atomik INSERT; kaybeden provider'a ULAŞAMAZ) ──
-  const expectedDigest = computeActionDigest(SEND_GMAIL_ACTION, computeSendArgs(row.id, toAddress, subject, body))
+  // Digest, precondition'da onay anındakiyle AYNI formülle hesaplandı.
   const claim = await claimSendAttempt({
     outreachMessageId: row.id,
     approvalId: opts.approvalId,
-    actionDigest: expectedDigest,
+    actionDigest,
     nowMs,
   })
 

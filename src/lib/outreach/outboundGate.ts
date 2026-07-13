@@ -87,13 +87,19 @@ async function loadEvidenceIds(leadId: string | null): Promise<string[]> {
  * TEK kapı. claimEvidence verildiyse id'ler lead_evidence'a karşı doğrulanır;
  * lead'e ait olmayan id'li eşlemeler DÜŞÜRÜLÜR (o iddia kanıtsız kalır).
  */
-export async function evaluateOutboundText(opts: EvaluateDraftOpts): Promise<GateVerdict> {
-  const validIds = new Set(await loadEvidenceIds(opts.leadId))
+/** Faz 2.4: toplu çağıranlar (kokpit) DB turlarını bir kez yapıp buraya verir. */
+export interface GatePreloaded {
+  bannedPhrases: string[]
+  validEvidenceIds: string[]
+}
+
+export async function evaluateOutboundText(opts: EvaluateDraftOpts, preloaded?: GatePreloaded): Promise<GateVerdict> {
+  const validIds = new Set(preloaded ? preloaded.validEvidenceIds : await loadEvidenceIds(opts.leadId))
   const claimEvidence = (opts.claimEvidence ?? [])
     .map((e) => ({ claim: e.claim, evidenceIds: e.evidenceIds.filter((id) => validIds.has(id)) }))
     .filter((e) => e.evidenceIds.length > 0)
 
-  const banned = await getBannedPhrases()
+  const banned = preloaded ? preloaded.bannedPhrases : await getBannedPhrases()
   const lint = lintOutreachDraft({
     subject: opts.subject,
     body: opts.body,

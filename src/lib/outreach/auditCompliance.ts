@@ -98,6 +98,36 @@ export async function isSuppressed(address: string): Promise<SuppressionVerdict>
   }
 }
 
+/** Toplu suppression kontrolü (Faz 2.4 — kokpit N+1 yerine 2 sorgu).
+ *  isSuppressed ile AYNI semantik (email scope + domain scope).
+ *  FAIL-CLOSED: sorgu hatasında TÜM adresler suppressed sayılır. */
+export async function getSuppressedSet(addresses: string[]): Promise<Set<string>> {
+  const normalized = [...new Set(addresses.map((a) => a.trim().toLowerCase()).filter(Boolean))]
+  if (normalized.length === 0) return new Set()
+  const domains = [...new Set(normalized.map((a) => extractDomain(a)).filter((d): d is string => Boolean(d)))]
+  try {
+    const [emailQ, domainQ] = await Promise.all([
+      supabaseAdmin.from('suppression_list').select('address').eq('scope', 'email').in('address', normalized),
+      domains.length
+        ? supabaseAdmin.from('suppression_list').select('address').eq('scope', 'domain').in('address', domains)
+        : Promise.resolve({ data: [] as Array<{ address: string }>, error: null }),
+    ])
+    if (emailQ.error) throw new Error(emailQ.error.message)
+    if (domainQ.error) throw new Error(domainQ.error.message)
+    const suppressedEmails = new Set((emailQ.data ?? []).map((r) => String(r.address).toLowerCase()))
+    const suppressedDomains = new Set((domainQ.data ?? []).map((r) => String(r.address).toLowerCase()))
+    return new Set(
+      normalized.filter((a) => {
+        const d = extractDomain(a)
+        return suppressedEmails.has(a) || (d ? suppressedDomains.has(d) : false)
+      }),
+    )
+  } catch (err) {
+    console.error('[audit-compliance] toplu suppression kontrolü başarısız (fail-closed):', err instanceof Error ? err.message : 'bilinmeyen')
+    return new Set(normalized) // fail-closed: hepsi bloklu görünür.
+  }
+}
+
 async function loadComplianceEnabled(): Promise<boolean> {
   try {
     const { data } = await supabaseAdmin

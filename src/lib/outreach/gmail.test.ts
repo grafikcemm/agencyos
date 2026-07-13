@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 let seq = 0
 const db: Record<string, Array<Record<string, unknown>>> = {
-  outreach_messages: [], leads: [], approval_requests: [],
+  outreach_messages: [], leads: [], approval_requests: [], contacts: [],
   email_threads: [], email_messages: [], settings: [], suppression_list: [], gmail_accounts: [],
   outreach_send_attempts: [],
 }
@@ -171,6 +171,29 @@ vi.mock('@/lib/outreach/voiceDna', () => ({
   getBannedPhrases: async () => [],
 }))
 
+// Faz 2.3: canonical recipient — in-memory db üzerinden gerçek sıralamayla
+// (primary contact email → lead.email). contactService'in kendi birim testleri ayrı.
+vi.mock('@/lib/contacts/contactService', () => ({
+  resolveCanonicalRecipient: async (leadId: string) => {
+    const primaries = db.contacts
+      .filter((c) => c.lead_id === leadId && c.is_primary && c.email)
+      .sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')))
+    if (primaries[0]) {
+      return {
+        email: String(primaries[0].email).toLowerCase(),
+        contactId: primaries[0].id as string,
+        contactName: (primaries[0].full_name as string) ?? null,
+        source: 'primary_contact',
+      }
+    }
+    const lead = db.leads.find((l) => l.id === leadId)
+    if (lead?.email) {
+      return { email: String(lead.email).toLowerCase(), contactId: null, contactName: null, source: 'lead_email' }
+    }
+    return { email: null, contactId: null, contactName: null, source: 'none' }
+  },
+}))
+
 import { requestSendApproval, findSendApproval, sendGmailMessage, reconcileOutreachSend, computeSendArgs, SEND_GMAIL_ACTION, buildRawMessage } from './gmail'
 import { GmailTransportError, type GmailTransport } from './sendMachine'
 import { computeActionDigest } from '@/lib/brain/gate'
@@ -283,6 +306,23 @@ describe('requestSendApproval (HITL onay isteği)', () => {
     approve(req.approvalId as string)
     // Onay sonrası yasaklı-ifade listesi değişti → kalite dijesti farklı.
     gateResult = { ok: true, violations: [], digest: 'q-digest-DEGISTI' }
+    const out = await sendGmailMessage({ outreachMessageId: DRAFT_ID, approvalId: req.approvalId as string })
+    expect(out.ok).toBe(false)
+    expect(out.error).toContain('Digest uyuşmazlığı')
+  })
+
+  it('Faz 2.3: primary contact e-postası lead.email\'i EZER (canonical resolver)', async () => {
+    db.contacts.push({ id: 'c-1', lead_id: LEAD_ID, full_name: 'Ayşe Yılmaz', email: 'AYSE@klinik.com', is_primary: true, created_at: '2026-07-13' })
+    const r = await requestSendApproval(DRAFT_ID)
+    expect(r.ok).toBe(true)
+    expect(String(db.approval_requests[0].redacted_preview)).toContain('alıcı-domain: klinik.com')
+  })
+
+  it('Faz 2.3: onaydan SONRA primary contact değişirse approval GEÇERSİZ (digest mismatch)', async () => {
+    const req = await requestSendApproval(DRAFT_ID) // lead.email ile onaylandı
+    approve(req.approvalId as string)
+    // Alıcı değişti: yeni primary contact eklendi.
+    db.contacts.push({ id: 'c-2', lead_id: LEAD_ID, full_name: 'Yeni Kişi', email: 'yeni@klinik.com', is_primary: true, created_at: '2026-07-13' })
     const out = await sendGmailMessage({ outreachMessageId: DRAFT_ID, approvalId: req.approvalId as string })
     expect(out.ok).toBe(false)
     expect(out.error).toContain('Digest uyuşmazlığı')

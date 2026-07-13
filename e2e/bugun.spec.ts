@@ -174,6 +174,35 @@ test('Faz 0.4: aynı güne İKİ FARKLI not kaydolur; aynı operation id retry d
   expect(data?.status).toBe('contacted') // not, arama tamamlama/statü geçişi DEĞİL
 })
 
+test('Faz 2.2: recipient_missing satırından INLINE contact → primary yazılır, alıcı çözülür, drawer gerekmez', async ({ page }) => {
+  const db = supabaseAdmin()
+  const seeded = await seedDraft('kokpit-alicisiz')
+  await db.from('leads').update({ email: null }).eq('id', seeded.leadId) // alıcı yok
+
+  await login(page)
+  await page.goto('/bugun')
+
+  const row = page.getByTestId(`send-draft-${seeded.draftId}`)
+  await expect(row.getByTestId(`draft-state-${seeded.draftId}`)).toContainText('Alıcı eksik')
+
+  // Satırdan çıkmadan kişi ekle (ad + rol + e-posta + source + primary).
+  await row.getByTestId(`inline-contact-name-${seeded.leadId}`).fill('E2E İnline Kişi')
+  await row.getByTestId(`inline-contact-email-${seeded.leadId}`).fill(`inline-kisi@${E2E_EMAIL_DOMAIN}`)
+  await row.getByTestId(`inline-contact-save-${seeded.leadId}`).click()
+
+  // DB kanıtı: primary contact satırı yazıldı.
+  await expect
+    .poll(async () => {
+      const { data } = await db.from('contacts').select('is_primary, email').eq('lead_id', seeded.leadId)
+      return data?.length === 1 && data[0].is_primary === true
+    }, { timeout: 10_000 })
+    .toBe(true)
+
+  // Panel yeniden yüklenince canonical recipient çözülür → durum ilerler.
+  await page.reload()
+  await expect(row.getByTestId(`draft-state-${seeded.draftId}`)).toContainText('Onay yok')
+})
+
 test('kokpitten tam HITL akışı: Onayla → Gönder (dry-run) → Gönderildi + DB kanıtı', async ({ page, request }) => {
   const seeded = await seedDraft('kokpit-akis')
   const req1 = await requestSend(request, seeded.draftId)

@@ -6,8 +6,9 @@
 
 import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
-import { findSendApproval } from '@/lib/outreach/gmail'
-import { extractDomain, isSuppressed } from '@/lib/outreach/auditCompliance'
+import { findSendApprovalsBatch } from '@/lib/outreach/gmail'
+import { extractDomain, getSuppressedSet } from '@/lib/outreach/auditCompliance'
+import { resolveCanonicalRecipients } from '@/lib/contacts/contactService'
 
 // Paylaşılan tipler + saf yardımcılar client-safe modülde (shared.ts) — build:
 // 'use client' paneller server-only olan bu dosyadan DEĞER import edemez.
@@ -215,64 +216,107 @@ async function loadLeadsToCall(nowIso: string): Promise<{ list: CallLead[]; dupl
 }
 
 async function loadPendingSends(): Promise<PendingSendDraft[]> {
-  // TÜM email taslakları görünür — onayı olmayanlar da (finding #5-6: eskiden
-  // approval'sız taslaklar gizleniyordu → operatör darboğazı göremiyordu).
+  // TÜM email taslakları görünür — onayı olmayanlar da (finding #5-6).
+  // Faz 2.4: draft başına DB turu YOK — attempts/recipients/suppression/
+  // approvals TOPLU sorgulanır (p95 hedefi ≤1.5 sn).
   const { data, error } = await supabaseAdmin
     .from('outreach_messages')
-    .select('id, subject, status, lead_id, leads(business_name, email)')
+    .select('id, subject, body, final_body, status, lead_id, created_at, leads(business_name)')
     .eq('channel', 'email')
     .in('status', ['draft', 'sent'])
     .order('created_at', { ascending: false })
-    .limit(12)
+    .limit(24) // dedupe sonrası 12 dolabilsin
   if (error) throw new Error(error.message)
+  const rows = (data ?? []) as Array<{
+    id: string
+    subject: string | null
+    body: string | null
+    final_body: string | null
+    status: string
+    lead_id: string | null
+    leads?: { business_name?: string }
+  }>
 
-  const out: PendingSendDraft[] = []
-  for (const row of data ?? []) {
-    const draftId = row.id as string
-    const lead = (row as { leads?: { business_name?: string; email?: string } }).leads
-    const email = lead?.email ?? null
-
-    // Attempt durumu (send makinesi kaydı) — yoksa null.
-    const { data: attempt } = await supabaseAdmin
-      .from('outreach_send_attempts')
-      .select('state, finalized')
-      .eq('outreach_message_id', draftId)
-      .maybeSingle()
-
-    const approval = await findSendApproval(draftId)
-
-    let suppressed = false
-    if (email) {
-      try {
-        const verdict = await isSuppressed(email)
-        suppressed = verdict.suppressed
-      } catch {
-        // fail-closed: suppression kontrol edilemiyorsa gönderime giden yol zaten
-        // auditCompliance'ta bloke — burada görünürlük için blocked say.
-        suppressed = true
-      }
+  // Aynı lead için birden çok AÇIK draft → yalnız en yenisi listede (dedupe).
+  // Gönderilmiş satırlar dedupe'a girmez (tarihçe değil darboğaz listesi bu).
+  const seenOpenLead = new Set<string>()
+  const picked: typeof rows = []
+  for (const row of rows) {
+    if (row.status === 'draft' && row.lead_id) {
+      if (seenOpenLead.has(row.lead_id)) continue
+      seenOpenLead.add(row.lead_id)
     }
+    picked.push(row)
+    if (picked.length >= 12) break
+  }
 
-    const state = classifyDraftState({
-      attemptState: (attempt?.state as string) ?? null,
-      attemptFinalized: Boolean(attempt?.finalized),
-      hasRecipient: Boolean(email),
-      suppressed,
-      approvalStatus: approval?.status ?? null,
-    })
+  const draftIds = picked.map((r) => r.id)
+  const leadIds = [...new Set(picked.map((r) => r.lead_id).filter((x): x is string => Boolean(x)))]
 
-    out.push({
-      draftId,
-      approvalId: approval?.id ?? null,
-      approvalStatus: approval?.status ?? null,
-      businessName: lead?.business_name ?? '—',
-      domain: extractDomain(email) ?? 'bilinmiyor',
-      subject: (row.subject as string) ?? '(konu yok)',
-      state,
-      nextAction: DRAFT_NEXT_ACTION[state],
+  // Toplu: attempts + canonical recipients (primary contact → lead.email).
+  const [attemptsQ, recipients] = await Promise.all([
+    supabaseAdmin
+      .from('outreach_send_attempts')
+      .select('outreach_message_id, state, finalized')
+      .in('outreach_message_id', draftIds),
+    resolveCanonicalRecipients(leadIds),
+  ])
+  const attemptByDraft = new Map<string, { state: string; finalized: boolean }>()
+  for (const a of attemptsQ.data ?? []) {
+    attemptByDraft.set(a.outreach_message_id as string, {
+      state: a.state as string,
+      finalized: Boolean(a.finalized),
     })
   }
-  return out
+
+  // Toplu suppression (fail-closed) + toplu onay durumu (digest formülü tekil yolla aynı).
+  const emails = [...recipients.values()].map((r) => r.email).filter((e): e is string => Boolean(e))
+  const [suppressedSet, approvals] = await Promise.all([
+    getSuppressedSet(emails),
+    findSendApprovalsBatch(
+      picked
+        .filter((r) => r.lead_id && r.status === 'draft')
+        .map((r) => {
+          const rec = recipients.get(r.lead_id as string)
+          return {
+            draftId: r.id,
+            leadId: r.lead_id as string,
+            businessName: r.leads?.business_name ?? null,
+            email: rec?.email ?? null,
+            contactId: rec?.contactId ?? null,
+            subject: r.subject ?? '',
+            body: (r.final_body ?? r.body ?? '').trim(),
+          }
+        }),
+    ),
+  ])
+
+  return picked.map((row) => {
+    const rec = row.lead_id ? recipients.get(row.lead_id) : undefined
+    const email = rec?.email ?? null
+    const attempt = attemptByDraft.get(row.id) ?? null
+    const approval = approvals.get(row.id) ?? null
+    const state = classifyDraftState({
+      attemptState: attempt?.state ?? null,
+      attemptFinalized: Boolean(attempt?.finalized),
+      hasRecipient: Boolean(email),
+      suppressed: email ? suppressedSet.has(email) : false,
+      approvalStatus: approval?.status ?? null,
+      rowStatus: row.status,
+    })
+    return {
+      draftId: row.id,
+      leadId: row.lead_id,
+      approvalId: approval?.id ?? null,
+      approvalStatus: approval?.status ?? null,
+      businessName: row.leads?.business_name ?? '—',
+      domain: extractDomain(email) ?? 'bilinmiyor',
+      subject: row.subject ?? '(konu yok)',
+      state,
+      recipientSource: rec?.source ?? 'none',
+      nextAction: DRAFT_NEXT_ACTION[state],
+    }
+  })
 }
 
 async function loadReplies(): Promise<InboundReply[]> {

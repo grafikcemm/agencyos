@@ -70,9 +70,9 @@ export function CallListPanel({
   const backlog = items.slice(MUST_TODAY_COUNT)
   const visible = expanded ? items : mustToday
 
-  const doneCount = items.filter((l) => rows[l.id]?.done).length
-  // 1.1: süre tahmini YALNIZ 'mutlaka bugün' (ilk 5) işleri sayar — backlog hariç.
-  const mustRemaining = mustToday.filter((l) => !rows[l.id]?.done).length
+  // 2.4: ilerleme ZORUNLU 5 iş (mutlaka bugün) üzerinden — süre tahminiyle tutarlı.
+  const mustDone = mustToday.filter((l) => rows[l.id]?.done).length
+  const mustRemaining = mustToday.length - mustDone
   const remainingMinutes = mustRemaining * MINUTES_PER_CALL
   const nextBest = items.find((l) => !rows[l.id]?.done)
 
@@ -140,8 +140,11 @@ export function CallListPanel({
           Bugün Aranacaklar
         </h2>
         {items.length > 0 && (
-          <span className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-[var(--accent)]/15 text-[var(--accent)]">
-            {doneCount}/{items.length}
+          <span
+            className="ml-auto text-[11px] font-bold px-2 py-0.5 rounded-full bg-[var(--accent)]/15 text-[var(--accent)]"
+            title={`Zorunlu ${mustToday.length} işten ${mustDone} tamam (backlog hariç)`}
+          >
+            {mustDone}/{mustToday.length}
           </span>
         )}
       </div>
@@ -217,7 +220,7 @@ export function CallListPanel({
                           data-testid={`lead-action-${a}-${l.id}`}
                           className="text-[10px] font-semibold px-2 py-1 rounded bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--accent)]/15 active:scale-95 transition disabled:opacity-50"
                         >
-                          {a === 'called' ? 'Arandı' : a === 'no_answer' ? 'Ulaşılamadı' : a === 'meeting' ? 'Görüşme' : a === 'later' ? 'Sonra (yarın)' : 'Not'}
+                          {a === 'called' ? 'Arandı' : a === 'no_answer' ? 'Ulaşılamadı' : a === 'meeting' ? 'Görüşme' : a === 'later' ? 'Daha sonra' : 'Not'}
                         </button>
                       ))
                     )}
