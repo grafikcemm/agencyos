@@ -28,6 +28,8 @@ export default defineConfig({
         'src/lib/ai/toolCostLog.ts': { statements: 90, branches: 85 },
         // Sprint-3 Faz 2 — follow-up queue dayanıklılığı:
         'src/lib/outreach/sequences.ts': { lines: 90, branches: 85 },
+        // Sprint-3 Faz 5 — teklif motoru:
+        'src/lib/proposals/proposalService.ts': { lines: 90, branches: 85 },
         // Sprint-3 Faz 1 — Telegram teslimat zinciri (≥90 line / ≥85 branch):
         'src/app/api/telegram/route.ts': { lines: 90, branches: 85 },
         'src/lib/telegram/replyDelivery.ts': { lines: 90, branches: 85 },
