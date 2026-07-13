@@ -155,6 +155,22 @@ vi.mock('@/lib/supabase', () => ({
   },
 }))
 
+// Faz 1.3: kalite kapısı gmail çekirdeğinde BLOCKING. Bu suite send-machine'e
+// odaklı — kapı kararı kontrol edilebilir mock'tur (kapının kendi mantığı
+// qualityLint.test'te). gateThrow → fail-closed senaryosu.
+let gateResult = { ok: true, violations: [] as Array<{ code: string; detail: string; fix: string }>, digest: 'q-digest-1' }
+let gateThrow = false
+vi.mock('@/lib/outreach/outboundGate', () => ({
+  evaluateOutboundText: async () => {
+    if (gateThrow) throw new Error('gate down')
+    return gateResult
+  },
+}))
+vi.mock('@/lib/outreach/voiceDna', () => ({
+  recordVoiceDelta: async () => {},
+  getBannedPhrases: async () => [],
+}))
+
 import { requestSendApproval, findSendApproval, sendGmailMessage, reconcileOutreachSend, computeSendArgs, SEND_GMAIL_ACTION, buildRawMessage } from './gmail'
 import { GmailTransportError, type GmailTransport } from './sendMachine'
 import { computeActionDigest } from '@/lib/brain/gate'
@@ -185,6 +201,8 @@ beforeEach(() => {
   seed()
   rpcFailNext = false
   sentCasFailsOnce = false
+  gateResult = { ok: true, violations: [], digest: 'q-digest-1' }
+  gateThrow = false
   delete process.env.GMAIL_SEND_ENABLED
 })
 
@@ -237,6 +255,48 @@ describe('requestSendApproval (HITL onay isteği)', () => {
     warnSpy.mockRestore()
   })
 
+  it('Faz 1.3: kalite kapısı GEÇMEZSE approval OLUŞMAZ (blocking, advisory değil)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    gateResult = {
+      ok: false,
+      violations: [{ code: 'CLAIM_WITHOUT_EVIDENCE', detail: 'iddia kanıtsız', fix: 'iddiayı sil' }],
+      digest: 'q-bad',
+    }
+    const r = await requestSendApproval(DRAFT_ID)
+    expect(r.ok).toBe(false)
+    expect(r.blockedReasons).toContain('CLAIM_WITHOUT_EVIDENCE')
+    expect(r.quality?.violations[0].fix).toBe('iddiayı sil')
+    expect(db.approval_requests).toHaveLength(0) // onay kartı DOĞMADI
+    warnSpy.mockRestore()
+  })
+
+  it('Faz 1.3: kalite servisi HATA verirse fail-closed — onay isteği oluşmaz', async () => {
+    gateThrow = true
+    const r = await requestSendApproval(DRAFT_ID)
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('fail-closed')
+    expect(db.approval_requests).toHaveLength(0)
+  })
+
+  it('Faz 1.3: onaydan SONRA kalite girdisi değişirse (digest farklı) gönderim bloke', async () => {
+    const req = await requestSendApproval(DRAFT_ID)
+    approve(req.approvalId as string)
+    // Onay sonrası yasaklı-ifade listesi değişti → kalite dijesti farklı.
+    gateResult = { ok: true, violations: [], digest: 'q-digest-DEGISTI' }
+    const out = await sendGmailMessage({ outreachMessageId: DRAFT_ID, approvalId: req.approvalId as string })
+    expect(out.ok).toBe(false)
+    expect(out.error).toContain('Digest uyuşmazlığı')
+  })
+
+  it('Faz 1.3: gönderim ANINDA kalite geçmiyorsa bloke (onay olsa bile)', async () => {
+    const req = await requestSendApproval(DRAFT_ID)
+    approve(req.approvalId as string)
+    gateResult = { ok: false, violations: [{ code: 'VOICE_BANNED_PHRASE', detail: 'x', fix: 'y' }], digest: 'q-digest-1' }
+    const out = await sendGmailMessage({ outreachMessageId: DRAFT_ID, approvalId: req.approvalId as string })
+    expect(out.ok).toBe(false)
+    expect(out.blockedReasons).toContain('VOICE_BANNED_PHRASE')
+  })
+
   it('email-dışı kanal / zaten-gönderilmiş / lead\'siz taslak → açıklayıcı red', async () => {
     db.outreach_messages.push(
       { id: 'wa-1', lead_id: LEAD_ID, channel: 'whatsapp', status: 'draft', subject: 'x', body: VALID_BODY, final_body: null, sent_at: null, gmail_message_id: null, gmail_thread_id: null, error: null },
@@ -267,7 +327,8 @@ describe('requestSendApproval (HITL onay isteği)', () => {
     expect(r.ok).toBe(true)
     const row = db.outreach_messages[0]
     expect(row.final_body).toBe(edited)
-    const expected = computeActionDigest(SEND_GMAIL_ACTION, computeSendArgs(DRAFT_ID, 'info@testklinik.com', 'Web siteniz', edited))
+    // Faz 1.3: digest içerik + KALİTE dijesti üzerinden hesaplanır.
+    const expected = computeActionDigest(SEND_GMAIL_ACTION, computeSendArgs(DRAFT_ID, 'info@testklinik.com', 'Web siteniz', edited, 'q-digest-1'))
     expect(db.approval_requests[0].action_digest).toBe(expected)
   })
 })

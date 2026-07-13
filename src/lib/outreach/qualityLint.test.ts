@@ -15,6 +15,8 @@ function base(overrides: Partial<QualityLintInput> = {}): QualityLintInput {
     businessName: 'Güler Klinik',
     contactName: 'Ayşe',
     evidenceIds: ['ev-1'],
+    // Faz 1.2: gözlem iddiası ("baktım") SPESİFİK kanıtla eşlenmiş.
+    claimEvidence: [{ claim: 'baktım', evidenceIds: ['ev-1'] }],
     bannedPhrases: [],
     channel: 'email',
     ...overrides,
@@ -53,6 +55,7 @@ describe('lintOutreachDraft — golden set', () => {
     const r = lintOutreachDraft(
       base({
         evidenceIds: [],
+        claimEvidence: [],
         body:
           'Merhaba Ayşe Hanım, Güler Klinik için %40 daha fazla randevu garanti edebilirim, 3 kat artış gördüm. ' +
           '15 dakika uygun musunuz? İstemiyorsanız listeden çıkarayım.',
@@ -63,16 +66,50 @@ describe('lintOutreachDraft — golden set', () => {
     expect(codes).toContain('SPAM_RISK_LANGUAGE') // "garanti"
   })
 
-  it('aynı iddialar evidence_id İLE → CLAIM_WITHOUT_EVIDENCE YOK', () => {
+  it('Faz 1.2: lead\'de evidence VAR ama iddia EŞLENMEMİŞ → yine bloklanır (genel kanıt yeterli değil)', () => {
+    const r = lintOutreachDraft(
+      base({
+        evidenceIds: ['ev-1', 'ev-2'], // lead'de kanıt kayıtları var…
+        claimEvidence: [], // …ama bu iddiaya SPESİFİK bağ yok.
+        body:
+          'Merhaba Ayşe Hanım, Güler Klinik için %40 daha fazla randevu mümkün. ' +
+          '15 dakika uygun musunuz? İstemiyorsanız listeden çıkarayım.',
+      }),
+    )
+    expect(r.violations.map((v) => v.code)).toContain('CLAIM_WITHOUT_EVIDENCE')
+  })
+
+  it('aynı iddia SPESİFİK claimEvidence eşlemesiyle → CLAIM_WITHOUT_EVIDENCE YOK', () => {
     const r = lintOutreachDraft(
       base({
         evidenceIds: ['ev-9'],
+        claimEvidence: [{ claim: 'randevu formunu inceledim', evidenceIds: ['ev-9'] }],
         body:
           'Merhaba Ayşe Hanım, Güler Klinik randevu formunu inceledim — mobilde çalışmıyor. ' +
           '15 dakika uygun musunuz? İstemiyorsanız listeden çıkarayım.',
       }),
     )
     expect(r.violations.map((v) => v.code)).not.toContain('CLAIM_WITHOUT_EVIDENCE')
+  })
+
+  it('Faz 1.2 zorunlu blok örnekleri: süre/%,X-katı/ciro/cevap-davranışı iddiaları kanıtsız GEÇEMEZ', () => {
+    const cases = [
+      'sorunu 1 haftada çözüyoruz',
+      'randevularınızı %35 artırabiliriz',
+      '90 günde 3X büyüme mümkün',
+      'müşteriler mesaj atıyor ama cevap alamıyor',
+      'bu doğrudan ciro artışı demek',
+    ]
+    for (const claim of cases) {
+      const r = lintOutreachDraft(
+        base({
+          evidenceIds: [],
+          claimEvidence: [],
+          body: `Merhaba Ayşe Hanım, Güler Klinik için not: ${claim}. 15 dakika uygun musunuz? İstemiyorsanız listeden çıkarayım.`,
+        }),
+      )
+      expect(r.violations.map((v) => v.code), claim).toContain('CLAIM_WITHOUT_EVIDENCE')
+    }
   })
 
   it('cliché açılış → GENERIC_CLICHE', () => {

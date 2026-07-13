@@ -23,6 +23,8 @@ import { computeActionDigest } from '@/lib/brain/gate'
 import { buildApprovalDraft, DEFAULT_APPROVAL_TTL_MS } from '@/lib/approvals/integrity'
 import { getApproval } from '@/lib/approvals/repo'
 import { auditCompliance, extractDomain } from '@/lib/outreach/auditCompliance'
+import { evaluateOutboundText, type GateVerdict } from '@/lib/outreach/outboundGate'
+import { recordVoiceDelta } from '@/lib/outreach/voiceDna'
 import { isGmailSendEnabled } from '@/lib/outreach/flags'
 import { redactForLog } from '@/lib/redact'
 import {
@@ -85,11 +87,37 @@ function effectiveContent(row: OutreachRow): { subject: string; body: string } {
   return { subject: row.subject ?? '', body: (row.final_body ?? row.body ?? '').trim() }
 }
 
-// ONAYLANAN içerik dijesti — konu+gövde+alıcı; onaydan sonra içerik değişirse
+// ONAYLANAN içerik dijesti — konu+gövde+alıcı (+Faz 1.3: kalite dijesti);
+// onaydan sonra içerik VEYA kalite girdileri (yasaklı ifadeler/kanıt) değişirse
 // yürütme anındaki digest eşleşmez ve gönderim yürümez (§13 bütünlük).
-export function computeSendArgs(outreachMessageId: string, to: string, subject: string, body: string) {
-  const contentDigest = createHash('sha256').update(`${subject}\n\n${body}`).digest('hex')
+export function computeSendArgs(
+  outreachMessageId: string,
+  to: string,
+  subject: string,
+  body: string,
+  qualityDigest?: string,
+) {
+  const contentDigest = createHash('sha256')
+    .update(`${subject}\n\n${body}${qualityDigest ? `\n\nq:${qualityDigest}` : ''}`)
+    .digest('hex')
   return { action: SEND_GMAIL_ACTION, outreachMessageId, to: to.toLowerCase(), contentDigest }
+}
+
+/** Faz 1.3: gönderim yolundaki TEK kalite değerlendirmesi. Hata fırlatırsa
+ *  çağıran fail-closed davranır (onay doğmaz / gönderim yürümez). */
+async function evaluateDraftQuality(
+  leadId: string,
+  businessName: string | null,
+  subject: string,
+  body: string,
+): Promise<GateVerdict> {
+  return evaluateOutboundText({
+    leadId,
+    businessName: businessName ?? '',
+    subject,
+    body,
+    kind: 'cold_email',
+  })
 }
 
 // ── Onay isteği (HITL) ───────────────────────────────────────────────────────
@@ -100,6 +128,8 @@ export interface RequestSendResult {
   status?: string
   blockedReasons?: string[]
   error?: string
+  /** Faz 1.3: blocking kalite kararı (onay kartında/UI'da görünür). */
+  quality?: { ok: boolean; violations: Array<{ code: string; detail: string; fix: string }> }
 }
 
 /** Gmail gönderimi için approval_requests satırı oluşturur (idempotent).
@@ -124,6 +154,12 @@ export async function requestSendApproval(
 
   // Operatör düzenlemesi (Senaryo 2: taslak → düzenle → onayla)
   if (edits && (edits.subject !== undefined || edits.finalBody !== undefined)) {
+    // Voice DNA v0: operatör gövdeyi düzenlediyse silinenleri öğren (aday
+    // sayacı; otomatik yasaklama yok — onay operatörde). Best-effort.
+    const originalBody = (row.final_body ?? row.body ?? '') as string
+    if (edits.finalBody && edits.finalBody !== originalBody) {
+      await recordVoiceDelta(originalBody, edits.finalBody).catch(() => {})
+    }
     const patch: Record<string, unknown> = { updated_at: new Date(nowMs).toISOString() }
     if (edits.subject !== undefined) patch.subject = edits.subject
     if (edits.finalBody !== undefined) patch.final_body = edits.finalBody
@@ -146,7 +182,27 @@ export async function requestSendApproval(
     return { ok: false, blockedReasons: audit.failures }
   }
 
-  const args = computeSendArgs(outreachMessageId, lead.email, subject, body)
+  // Faz 1.3: BLOCKING kalite kapısı — approval yaratılmadan ÖNCE.
+  // Değerlendirme hatası → FAIL-CLOSED (onay kartı doğmaz).
+  let quality: GateVerdict
+  try {
+    quality = await evaluateDraftQuality(row.lead_id, lead.business_name, subject, body)
+  } catch {
+    return { ok: false, error: 'Kalite kapısı değerlendirilemedi — onay isteği oluşturulmadı (fail-closed)' }
+  }
+  if (!quality.ok) {
+    const codes = quality.violations.map((v) => v.code)
+    console.warn(`[outreach.blocked] stage=quality outreach=${outreachMessageId} reasons=${codes.join(',')}`)
+    return {
+      ok: false,
+      blockedReasons: codes,
+      quality: { ok: false, violations: quality.violations },
+    }
+  }
+
+  // Kalite dijesti approval digest'ine bağlanır: onaydan sonra kalite girdisi
+  // (yasaklı ifade listesi/kanıt) değişirse send-anı digest'i eşleşmez.
+  const args = computeSendArgs(outreachMessageId, lead.email, subject, body, quality.digest)
   const domain = extractDomain(lead.email) ?? 'bilinmiyor'
   // Alıcı domain onay kartında GÖRÜNÜR (T10) — redactPreview e-postayı maskeler,
   // domain'i ayrıca düz yazıyoruz.
@@ -173,7 +229,9 @@ export async function requestSendApproval(
     .select('id, status')
     .eq('idempotency_key', draft.idempotencyKey)
     .maybeSingle()
-  if (existing) return { ok: true, approvalId: existing.id as string, status: existing.status as string }
+  if (existing) {
+    return { ok: true, approvalId: existing.id as string, status: existing.status as string, quality: { ok: true, violations: [] } }
+  }
 
   const { data: inserted, error: insertErr } = await supabaseAdmin
     .from('approval_requests')
@@ -194,17 +252,25 @@ export async function requestSendApproval(
     .single()
   if (insertErr || !inserted) return { ok: false, error: `Onay isteği oluşturulamadı: ${insertErr?.message ?? '?'}` }
 
-  return { ok: true, approvalId: inserted.id as string, status: 'pending' }
+  return { ok: true, approvalId: inserted.id as string, status: 'pending', quality: { ok: true, violations: [] } }
 }
 
-/** Mevcut içerik için onay durumunu bulur (idempotency_key ile — FK kolonu yok). */
+/** Mevcut içerik için onay durumunu bulur (idempotency_key ile — FK kolonu yok).
+ *  Kalite dijesti digest'e dahil (Faz 1.3): kalite girdileri değiştiyse eski
+ *  onay bulunamaz → UI yeniden onay ister (istenen davranış). */
 export async function findSendApproval(outreachMessageId: string): Promise<{ id: string; status: string; expires_at: string } | null> {
   const row = await loadOutreachRow(outreachMessageId)
   if (!row || !row.lead_id) return null
   const lead = await loadLeadContact(row.lead_id)
   if (!lead?.email) return null
   const { subject, body } = effectiveContent(row)
-  const args = computeSendArgs(outreachMessageId, lead.email, subject, body)
+  let quality: GateVerdict
+  try {
+    quality = await evaluateDraftQuality(row.lead_id, lead.business_name, subject, body)
+  } catch {
+    return null // fail-closed: kalite değerlendirilemedi → onay "yok" görünür.
+  }
+  const args = computeSendArgs(outreachMessageId, lead.email, subject, body, quality.digest)
   const draft = buildApprovalDraft({
     runId: `outreach:${outreachMessageId}`,
     stepId: SEND_GMAIL_ACTION,
@@ -355,7 +421,19 @@ async function validateSendPreconditions(
   if (Date.parse(approval.expires_at) < nowMs) {
     return { ok: false, outcome: { ok: false, error: 'Onay süresi dolmuş — yeniden onay isteyin' } }
   }
-  const expectedDigest = computeActionDigest(SEND_GMAIL_ACTION, computeSendArgs(row.id, lead.email, subject, body))
+  // Faz 1.3: kalite kapısı yürütme anında da BLOCKING — değerlendirilemezse
+  // veya geçmezse gönderim yürümez (fail-closed); digest kalite dijestiyle
+  // hesaplanır → onaydan sonra kalite girdisi değiştiyse eşleşmez.
+  let sendQuality: GateVerdict
+  try {
+    sendQuality = await evaluateDraftQuality(row.lead_id, lead.business_name, subject, body)
+  } catch {
+    return { ok: false, outcome: { ok: false, error: 'Kalite kapısı değerlendirilemedi — gönderim yürütülmedi (fail-closed)' } }
+  }
+  if (!sendQuality.ok) {
+    return { ok: false, outcome: { ok: false, blockedReasons: sendQuality.violations.map((v) => v.code) } }
+  }
+  const expectedDigest = computeActionDigest(SEND_GMAIL_ACTION, computeSendArgs(row.id, lead.email, subject, body, sendQuality.digest))
   if (approval.approved_digest !== expectedDigest) {
     return {
       ok: false,

@@ -7,6 +7,13 @@
 // referansı olmayan iddialar CLAIM_WITHOUT_EVIDENCE ile yakalanır.
 // ─────────────────────────────────────────────────────────────────────────────
 
+export interface ClaimEvidenceEntry {
+  /** İddianın metindeki (yaklaşık) hâli — eşleşme fold'lu substring iledir. */
+  claim: string
+  /** Bu iddiayı destekleyen SPESİFİK lead_evidence id'leri (≥1 zorunlu). */
+  evidenceIds: string[]
+}
+
 export interface QualityLintInput {
   subject: string | null
   body: string
@@ -14,6 +21,12 @@ export interface QualityLintInput {
   contactName?: string | null
   /** Taslağın dayandığı kanıt kimlikleri (lead_evidence). Boş → kanıt iddiası yasak. */
   evidenceIds: string[]
+  /**
+   * Faz 1.2: iddia → SPESİFİK kanıt eşlemesi. "Lead'in herhangi bir evidence
+   * kaydı var" YETERLİ DEĞİLDİR — tespit edilen HER iddia burada ≥1 evidence
+   * id ile eşlenmiş olmalı; eşlenmemiş iddia CLAIM_WITHOUT_EVIDENCE bloklar.
+   */
+  claimEvidence?: ClaimEvidenceEntry[]
   /** Voice DNA v0: operatör onaylı yasak ifadeler (settings.voice_banned_phrases). */
   bannedPhrases: string[]
   channel: 'email' | 'whatsapp' | 'instagram'
@@ -88,14 +101,32 @@ const CTA_PATTERNS = [
   /arayabilir miyim/gi,
 ]
 
-/** Kanıt gerektiren iddia kalıpları: sayı/başarı/gözlem cümleleri. */
+/** Kanıt gerektiren iddia kalıpları: sayı/süre/yüzde/performans/sonuç/gözlem. */
 const CLAIM_PATTERNS = [
-  /%\s?\d{1,3}/g, // yüzde iddiası
+  /%\s?\d{1,3}/g, // yüzde iddiası ("%35")
   /\d+\s*(kat|misli)\b/gi, // "3 kat artış"
+  /\d+\s*[xX]\b/g, // "3X"
   /\d+\s*(yeni\s+)?müşteri/gi,
   /\d+\s*(yeni\s+)?musteri/gi,
+  /\b\d+\s*(hafta|gün|gun|ay)(da|de|ta|te|\s*içinde|\s*icinde)\b/gi, // süre vaadi ("1 haftada", "90 günde")
+  /(ciro|gelir|sat[ıi]ş|satis)\s*art[ıi]ş/gi, // sonuç vaadi ("doğrudan ciro artışı")
+  /cevap\s*(alam[ıi]yor|veremiyor|alm[ıi]yor)/gi, // müşteri-davranışı gözlemi
+  /(rakibe|rakiplere)\s*geç/gi, // davranış iddiası ("rakibe geçiyor") — canlı T1 şablonu
+  /yar[ıi]ya\s*(indir|düşür|dusur)/gi, // performans vaadi ("no-show'u yarıya indiren") — canlı T5
   /(gördüm|gordum|fark ettim|inceledim|baktım|baktim)/gi, // gözlem iddiası
 ]
+
+/** Metindeki iddia parçalarını (snippet) toplar — kapsam kontrolü parça bazında. */
+export function detectClaims(body: string): string[] {
+  const found: string[] = []
+  for (const p of CLAIM_PATTERNS) {
+    p.lastIndex = 0
+    for (const m of body.matchAll(new RegExp(p.source, p.flags))) {
+      if (m[0]) found.push(m[0])
+    }
+  }
+  return [...new Set(found)]
+}
 
 function fold(s: string): string {
   return s
@@ -152,16 +183,26 @@ export function lintOutreachDraft(input: QualityLintInput): QualityLintResult {
   if (ctaCount === 0) violations.push({ code: 'NO_CTA', detail: 'Net bir CTA yok' })
   if (ctaCount > 1) violations.push({ code: 'MULTIPLE_CTA', detail: `${ctaCount} CTA — tek olmalı` })
 
-  // Kanıtsız iddia: sayı/başarı/gözlem VAR ama evidence referansı YOK.
-  const hasClaims = CLAIM_PATTERNS.some((p) => {
-    p.lastIndex = 0
-    return p.test(body)
-  })
-  if (hasClaims && input.evidenceIds.length === 0) {
-    violations.push({
-      code: 'CLAIM_WITHOUT_EVIDENCE',
-      detail: 'Sayı/başarı/gözlem iddiası var ama evidence_id bağlanmamış — uydurma riski',
+  // Kanıtsız iddia (Faz 1.2): tespit edilen HER iddia SPESİFİK evidence
+  // eşlemesi ister. Lead'de "herhangi bir evidence var" YETERLİ DEĞİL.
+  const claims = detectClaims(body)
+  if (claims.length > 0) {
+    const map = input.claimEvidence ?? []
+    const uncovered = claims.filter((snippet) => {
+      const fs = fold(snippet)
+      return !map.some(
+        (e) =>
+          e.evidenceIds.length > 0 &&
+          e.claim.trim().length > 0 &&
+          (fold(e.claim).includes(fs) || fs.includes(fold(e.claim))),
+      )
     })
+    for (const snippet of uncovered) {
+      violations.push({
+        code: 'CLAIM_WITHOUT_EVIDENCE',
+        detail: `İddia "${snippet}" spesifik evidence_id ile eşlenmemiş — uydurma riski`,
+      })
+    }
   }
 
   // Opt-out / compliance (email zorunlu).

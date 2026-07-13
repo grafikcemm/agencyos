@@ -25,15 +25,22 @@ export const E2E_EMAIL_DOMAIN = 'e2e-test.example'
 
 // Opt-out marker'ı auditCompliance.OPT_OUT_MARKER ile hizalı (import edilemez:
 // dosya server-only). Marker değişirse bu sabit de güncellenmeli.
-export const VALID_BODY = [
-  'Merhaba,',
-  '',
-  'Web sitenizde e2e testine özel kısa bir öneri.',
-  '',
-  '—',
-  'Grafikcem',
-  'Bu tür e-postaları almak istemezseniz "ret" yanıtlamanız yeterlidir.',
-].join('\n')
+// Faz 1.3'ten beri kalite lint'i BLOCKING: gövde işletme adını, TEK CTA'yı ve
+// opt-out cümlesini içermeli; kanıtsız sayı/başarı iddiası içermemeli.
+export function validBodyFor(businessName: string): string {
+  return [
+    'Merhaba,',
+    '',
+    `${businessName} web siteniz için e2e testine özel kısa bir öneri hazırladım.`,
+    'Kısa bir görüşme için 15 dakika uygun musunuz?',
+    '',
+    '—',
+    'Grafikcem',
+    // Hem auditCompliance OPT_OUT_MARKER ("yanıtlamanız yeterlidir") hem
+    // qualityLint opt-out kalıbı ("istemiyorsanız") tek cümlede.
+    'Bu tür e-postaları istemiyorsanız "ret" yanıtlamanız yeterlidir.',
+  ].join('\n')
+}
 
 export interface SeededDraft {
   leadId: string
@@ -45,12 +52,13 @@ export interface SeededDraft {
 export async function seedDraft(suffix: string): Promise<SeededDraft> {
   const db = supabaseAdmin()
   const email = `kisi-${suffix}@${E2E_EMAIL_DOMAIN}`
+  const businessName = `E2E Test İşletmesi ${suffix} (${E2E_MARK})`
   const { data: lead, error: leadErr } = await db
     .from('leads')
     .insert({
       // E2E_MARK işareti business_name içinde — cleanup bu kalıpla siler
       // (leads tablosunda 'source' kolonu yok).
-      business_name: `E2E Test İşletmesi ${suffix} (${E2E_MARK})`,
+      business_name: businessName,
       email,
       status: 'new',
     })
@@ -65,7 +73,7 @@ export async function seedDraft(suffix: string): Promise<SeededDraft> {
       channel: 'email',
       status: 'draft',
       subject: `E2E konu ${suffix}`,
-      body: VALID_BODY,
+      body: validBodyFor(businessName),
     })
     .select('id')
     .single()

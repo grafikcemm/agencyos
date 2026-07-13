@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { E2E_PASSWORD } from '../playwright.config'
 import {
-  AUTH_HEADERS, E2E_EMAIL_DOMAIN, seedDraft, cleanupE2E,
+  AUTH_HEADERS, E2E_EMAIL_DOMAIN, E2E_MARK, validBodyFor, seedDraft, cleanupE2E,
   requestSend, approve, sendGmail, supabaseAdmin,
 } from './helpers'
 
@@ -122,8 +122,12 @@ test('Akış 6 — onaydan sonra içerik değişti → digest mismatch bloke', a
   const approvalId = req1.body.data.approvalId as string
   await approve(request, approvalId)
 
+  // Tamper: kalite lint'inden GEÇEN ama onaylanandan FARKLI içerik —
+  // böylece bloklayan katmanın kalite değil DIGEST kilidi olduğu kanıtlanır.
+  // (Lint'ten geçmeyen tamper zaten daha erken, kalite kapısında 422 yer.)
   const db = supabaseAdmin()
-  await db.from('outreach_messages').update({ final_body: 'SONRADAN DEĞİŞTİRİLMİŞ içerik.' }).eq('id', seeded.draftId)
+  const tampered = validBodyFor(`E2E Test İşletmesi akis6 (${E2E_MARK})`) + '\nEk tamper satırı.'
+  await db.from('outreach_messages').update({ final_body: tampered }).eq('id', seeded.draftId)
 
   const sent = await sendGmail(request, seeded.draftId, approvalId)
   expect(sent.status).toBe(409)

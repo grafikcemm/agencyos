@@ -47,9 +47,43 @@ function normalizeTrPhone(phone: string): string {
   return d
 }
 
-function waLink(phone: string, text?: string): string {
-  const d = normalizeTrPhone(phone)
-  return `https://wa.me/${d}${text ? `?text=${encodeURIComponent(text)}` : ''}`
+// ── Faz 1.1: canonical outbound gate (server-side) ───────────────────────────
+// Kapıdan GEÇMEYEN metin: wa.me prefill'e giremez, kopyalanamaz,
+// "gönderilebilir" gösterilemez. Client evidence doğrulayamaz → karar serverda.
+type GateInfo = { ok: boolean; violations: Array<{ code: string; detail: string; fix: string }> }
+type GateItem = { key: string; kind: string; text: string; subject?: string | null }
+
+const GATE_UNAVAILABLE: GateInfo = {
+  ok: false,
+  violations: [{ code: 'GATE_UNAVAILABLE', detail: 'Kalite kapısı değerlendirilemedi', fix: 'Bağlantıyı kontrol edip tekrar dene' }],
+}
+
+/** Saf fetch (setState yok): sonuç key→karar; hata/başarısızlıkta FAIL-CLOSED blok. */
+async function fetchGateResults(leadId: string, items: GateItem[]): Promise<Record<string, GateInfo>> {
+  const failClosed = Object.fromEntries(items.map((i) => [i.key, GATE_UNAVAILABLE]))
+  try {
+    const res = await fetch('/api/outbound/gate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ leadId, items }),
+    })
+    const data = await res.json()
+    if (data?.success && data.results) return data.results as Record<string, GateInfo>
+    return failClosed
+  } catch {
+    return failClosed
+  }
+}
+
+function GateNote({ gate }: { gate: GateInfo | undefined }) {
+  if (!gate) return <p className="text-[9px] text-[var(--text-muted)]">Kalite kapısı kontrol ediliyor…</p>
+  if (gate.ok) return null
+  const v = gate.violations[0]
+  return (
+    <p className="text-[9px] text-amber-400 leading-snug" data-testid="gate-blocked">
+      ⛔ {v.code}: {v.detail} → <span className="font-semibold">{v.fix}</span>
+    </p>
+  )
 }
 
 const SUB_SCORE_LABELS: Record<string, string> = {
@@ -99,6 +133,8 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
   const [gmailBusy, setGmailBusy] = useState(false)
   const [gmailNote, setGmailNote] = useState<string | null>(null)
   const [statusDraftId, setStatusDraftId] = useState<string | null>(null)
+  // Faz 1.1: metin anahtarı → server gate kararı (undefined = değerlendiriliyor).
+  const [gates, setGates] = useState<Record<string, GateInfo | undefined>>({})
 
   // Taslak değişince gönderim durumu render-anında sıfırlanır (adjust-state-
   // during-render deseni — effect içinde sync setState cascade'i yok).
@@ -114,6 +150,39 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
       .then(data => setApolloConfigured(!!data.configured))
       .catch(() => setApolloConfigured(false))
   }, [])
+
+  // Canonical gate çağrısı — başarısızlıkta FAIL-CLOSED (raw metin kullanılmaz).
+  const runGate = (items: GateItem[]) => {
+    if (!items.length) return
+    fetchGateResults(rawLead.id, items).then((results) => setGates((prev) => ({ ...prev, ...results })))
+  }
+
+  // Drawer açılışında lead metinleri kapıya girer.
+  useEffect(() => {
+    const items: GateItem[] = []
+    if (lead.first_message) items.push({ key: 'first_message', kind: 'first_message', text: lead.first_message })
+    if (lead.first_30_seconds_pitch) items.push({ key: 'pitch', kind: 'pitch', text: lead.first_30_seconds_pitch })
+    if (!items.length) return
+    let cancelled = false
+    fetchGateResults(rawLead.id, items).then((results) => {
+      if (!cancelled) setGates((prev) => ({ ...prev, ...results }))
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawLead.id])
+
+  // Cold email taslağı her değiştiğinde yeniden değerlendirilir.
+  useEffect(() => {
+    if (!emailDraft) return
+    let cancelled = false
+    fetchGateResults(rawLead.id, [
+      { key: `email-${emailDraft.id}`, kind: 'cold_email', text: emailDraft.body, subject: emailDraft.subject },
+    ]).then((results) => {
+      if (!cancelled) setGates((prev) => ({ ...prev, ...results }))
+    })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emailDraft])
 
   // Drawer açıldığında lead'in son soğuk e-posta taslağını yükle.
   useEffect(() => {
@@ -318,6 +387,11 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
       offerIds,
     })
     setProposal(p)
+    // Faz 1.1: teklif metinleri de kapıdan geçmeden kopyalanamaz.
+    runGate([
+      { key: 'proposal_whatsapp', kind: 'proposal_whatsapp', text: p.whatsappText },
+      { key: 'proposal_email', kind: 'proposal_email', text: p.emailText, subject: `Teklif — ${lead.business_name}` },
+    ])
   }
 
   const handleConvertToProject = async () => {
@@ -336,6 +410,12 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     })
+  }
+
+  /** Kapı ok değilse KOPYALANMAZ (Faz 1.1) — buton zaten disabled; savunma katmanı. */
+  const copyGated = (gateKey: string, text: string) => {
+    if (!gates[gateKey]?.ok) return
+    copyText(text)
   }
 
   const subScores = lead.scores || {
@@ -379,10 +459,22 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
               <Phone className="w-4 h-4" />
               Ara
             </a>
+            {/* Faz 1.1: prefill YALNIZ kapıdan geçen first_message ile — aksi hâlde
+                link metinsiz sohbet açar; neden başlıkta görünür. */}
             <a
-              href={waLink(lead.phone, lead.first_message || undefined)}
+              href={`https://wa.me/${normalizeTrPhone(lead.phone)}${
+                lead.first_message && gates['first_message']?.ok
+                  ? `?text=${encodeURIComponent(lead.first_message)}`
+                  : ''
+              }`}
               target="_blank"
               rel="noopener noreferrer"
+              data-testid="wa-primary"
+              title={
+                lead.first_message && gates['first_message'] && !gates['first_message'].ok
+                  ? `Prefill bloke — ${gates['first_message'].violations[0]?.code}: ${gates['first_message'].violations[0]?.fix}`
+                  : undefined
+              }
               className="flex items-center justify-center gap-2 py-2.5 bg-[#25D366]/15 border border-[#25D366]/40 hover:bg-[#25D366]/25 text-[#25D366] text-sm font-bold rounded-lg transition-all"
             >
               <MessageCircle className="w-4 h-4" />
@@ -577,10 +669,15 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-[10px] text-[var(--success)] font-bold tracking-widest uppercase">📞 30 Saniyelik Açılış</h3>
-                <button onClick={() => copyText(lead.first_30_seconds_pitch ?? '')} className="text-[9px] text-[var(--accent)] hover:text-[var(--accent-hover)] flex items-center gap-1">
+                <button
+                  onClick={() => copyGated('pitch', lead.first_30_seconds_pitch ?? '')}
+                  disabled={!gates['pitch']?.ok}
+                  className="text-[9px] text-[var(--accent)] hover:text-[var(--accent-hover)] flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
                   <Copy className="w-3 h-3" /> Kopyala
                 </button>
               </div>
+              <GateNote gate={gates['pitch']} />
               <div className="bg-[var(--success)]/5 border border-[var(--success)]/20 rounded-lg p-3 text-[11px] text-[var(--text-primary)] leading-relaxed whitespace-pre-wrap">
                 {lead.first_30_seconds_pitch}
               </div>
@@ -591,10 +688,16 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <h3 className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase">İlk Mesaj (WhatsApp)</h3>
-                <button onClick={() => copyText(lead.first_message || '')} className="text-[9px] text-[var(--accent)] hover:text-[var(--accent-hover)] flex items-center gap-1">
+                <button
+                  onClick={() => copyGated('first_message', lead.first_message || '')}
+                  disabled={!gates['first_message']?.ok}
+                  data-testid="copy-first-message"
+                  className="text-[9px] text-[var(--accent)] hover:text-[var(--accent-hover)] flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
                   <Copy className="w-3 h-3" /> Kopyala
                 </button>
               </div>
+              <GateNote gate={gates['first_message']} />
               <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg p-3 text-[11px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">
                 {lead.first_message}
               </div>
@@ -637,17 +740,23 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
                 {emailDraft.subject && (
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-[11px] font-bold text-[var(--text-primary)] truncate">{emailDraft.subject}</div>
-                    <button onClick={() => copyText(emailDraft.subject || '')} className="text-[9px] text-[var(--accent)] hover:text-[var(--accent-hover)] flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => copyGated(`email-${emailDraft.id}`, emailDraft.subject || '')}
+                      disabled={!gates[`email-${emailDraft.id}`]?.ok}
+                      className="text-[9px] text-[var(--accent)] hover:text-[var(--accent-hover)] flex items-center gap-1 shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
                       <Copy className="w-3 h-3" /> Konu
                     </button>
                   </div>
                 )}
+                <GateNote gate={gates[`email-${emailDraft.id}`]} />
                 <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg p-3 text-[11px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto scrollbar-thin">
                   {emailDraft.body}
                 </div>
                 <button
-                  onClick={() => copyText(emailDraft.body)}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-[var(--bg-base)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[10px] font-bold text-[var(--text-primary)] rounded-md"
+                  onClick={() => copyGated(`email-${emailDraft.id}`, emailDraft.body)}
+                  disabled={!gates[`email-${emailDraft.id}`]?.ok}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-[var(--bg-base)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[10px] font-bold text-[var(--text-primary)] rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Copy className="w-3 h-3" /> {copied ? 'Kopyalandı ✓' : 'Gövdeyi kopyala'}
                 </button>
@@ -714,12 +823,19 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
                 <ValueStat label="Aylık" value={formatTL(proposal.monthlyPrice)} accent />
                 <ValueStat label="Süre" value={proposal.timeline} />
               </div>
+              <GateNote gate={gates[proposalView === 'whatsapp' ? 'proposal_whatsapp' : 'proposal_email']} />
               <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg p-3 text-[10px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap max-h-80 overflow-y-auto scrollbar-thin">
                 {proposalView === 'whatsapp' ? proposal.whatsappText : proposal.emailText}
               </div>
               <button
-                onClick={() => copyText(proposalView === 'whatsapp' ? proposal.whatsappText : proposal.emailText)}
-                className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-[var(--bg-base)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[10px] font-bold text-[var(--text-primary)] rounded-md"
+                onClick={() =>
+                  copyGated(
+                    proposalView === 'whatsapp' ? 'proposal_whatsapp' : 'proposal_email',
+                    proposalView === 'whatsapp' ? proposal.whatsappText : proposal.emailText,
+                  )
+                }
+                disabled={!gates[proposalView === 'whatsapp' ? 'proposal_whatsapp' : 'proposal_email']?.ok}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-[var(--bg-base)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[10px] font-bold text-[var(--text-primary)] rounded-md disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <Copy className="w-3 h-3" /> {copied ? 'Kopyalandı ✓' : 'Tüm metni kopyala'}
               </button>
