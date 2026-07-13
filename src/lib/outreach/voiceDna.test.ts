@@ -88,3 +88,34 @@ describe('Voice DNA v0 (Faz D1)', () => {
     expect(await getPhraseCandidates()).toEqual([])
   })
 })
+
+
+// ── Faz 4.1: yapısal stil profili ─────────────────────────────────────────────
+import { analyzeStyleDelta } from './voiceDna'
+
+describe('analyzeStyleDelta (Faz 4.1 — yapısal profil, saf)', () => {
+  it('resmiyet artışı + kısa cümle + CTA biçimi + kanıt korunumu çıkarılır', () => {
+    const original =
+      'Selam, sana çok uzun ve dolambaçlı bir şekilde anlatmak istediğim bir konu var ve bu cümle gerçekten gereksiz uzun. Görüşelim mi?'
+    const final =
+      'Merhaba Ayşe Hanım. Randevu formunuzu inceledim. Sizinle 15 dakika uygun musunuz?'
+    const d = analyzeStyleDelta(original, final)
+    expect(d.formalityDelta).toBe(1) // sen→siz/hanım
+    expect(d.sentenceLen).toBe('shorter')
+    expect(d.ctaForm).toBe('soru-15dk')
+    expect(d.keepsEvidence).toBe(true) // "inceledim" korunmuş
+    expect(d.finalOpening).toContain('Merhaba')
+  })
+
+  it('PII içeren açılış profile SIZMAZ', () => {
+    const d = analyzeStyleDelta('x', 'ayse@klinik.com adresine yazdım bugün. Görüşelim mi?')
+    expect(d.finalOpening === null || !d.finalOpening.includes('@')).toBe(true)
+  })
+
+  it('fark yoksa deltalar nötr', () => {
+    const body = 'Merhaba, kısa bir not. Görüşelim mi?'
+    const d = analyzeStyleDelta(body, body)
+    expect(d.formalityDelta).toBe(0)
+    expect(d.sentenceLen).toBe('same')
+  })
+})

@@ -25,7 +25,7 @@ import { getApproval } from '@/lib/approvals/repo'
 import { auditCompliance, extractDomain } from '@/lib/outreach/auditCompliance'
 import { evaluateOutboundText, type GateVerdict } from '@/lib/outreach/outboundGate'
 import { resolveCanonicalRecipient } from '@/lib/contacts/contactService'
-import { recordVoiceDelta, getBannedPhrases } from '@/lib/outreach/voiceDna'
+import { recordVoiceDelta, recordStyleDelta, getBannedPhrases } from '@/lib/outreach/voiceDna'
 import { isGmailSendEnabled } from '@/lib/outreach/flags'
 import { redactForLog } from '@/lib/redact'
 import {
@@ -177,6 +177,9 @@ export async function requestSendApproval(
     const originalBody = (row.final_body ?? row.body ?? '') as string
     if (edits.finalBody && edits.finalBody !== originalBody) {
       await recordVoiceDelta(originalBody, edits.finalBody).catch(() => {})
+      // Faz 4.1: yapısal stil gözlemi (açılış/resmiyet/cümle/CTA/kanıt) — aday
+      // kural üretir; otomatik aktivasyon YOK (operatör onayı gerekir).
+      await recordStyleDelta(originalBody, edits.finalBody).catch(() => {})
     }
     const patch: Record<string, unknown> = { updated_at: new Date(nowMs).toISOString() }
     if (edits.subject !== undefined) patch.subject = edits.subject

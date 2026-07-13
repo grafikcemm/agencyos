@@ -165,3 +165,193 @@ export async function approveBannedPhrase(phrase: string): Promise<void> {
     await writeSetting('voice_banned_phrases', JSON.stringify(banned))
   }
 }
+
+// ── Faz 4.1: YAPISAL stil profili — yalnız silinen ifade değil ───────────────
+// Onaylı original→final düzenlemelerinden yapı çıkarılır: açılış biçimi,
+// resmiyet, cümle uzunluğu, CTA biçimi, kanıt kullanımı. Sektör varyantı
+// opsiyonel anahtarla ayrışır. HİÇBİR kural otomatik aktive OLMAZ:
+// candidate → (operatör onayı) → approved → active. Veri sıfırken profil
+// 'baseline' etiketlidir — "kullanıcının dili öğrenildi" İDDİA EDİLMEZ.
+
+const FORMAL_MARKERS = /\b(siz|sizin|sizinle|rica|memnun olurum|bey|hanım|hanim)\b/gi
+const INFORMAL_MARKERS = /\b(sen|senin|selam|naber|kanka)\b/gi
+const CTA_FORMS: Array<{ label: string; re: RegExp }> = [
+  { label: 'soru-15dk', re: /15\s*dakika.*(uygun|müsait|musait)/i },
+  { label: 'soru-kisa-gorusme', re: /k[ıi]sa bir g[öo]r[üu][şs]me/i },
+  { label: 'izin-arama', re: /arayabilir miyim/i },
+  { label: 'oneri-gorusme', re: /g[öo]r[üu][şs]elim mi/i },
+]
+const EVIDENCE_MARKERS = /(inceledim|bakt[ıi]m|fark ettim|g[öo]rd[üu]m|g[öo]r[üu]n[üu]yor)/i
+
+function countMatches(re: RegExp, s: string): number {
+  re.lastIndex = 0
+  return [...s.matchAll(new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g'))].length
+}
+
+function avgSentenceWords(s: string): number {
+  const sentences = s.split(/[.!?\n]+/).map((x) => x.trim()).filter((x) => x.length > 3)
+  if (!sentences.length) return 0
+  const words = sentences.reduce((acc, x) => acc + x.split(/\s+/).length, 0)
+  return words / sentences.length
+}
+
+export interface StyleDelta {
+  /** Operatörün finalde kullandığı açılış parçası (PII'siz, ≤60 kr) — yoksa null. */
+  finalOpening: string | null
+  /** 1 = final daha resmi, -1 = daha samimi, 0 = fark yok. */
+  formalityDelta: -1 | 0 | 1
+  sentenceLen: 'shorter' | 'longer' | 'same'
+  /** Finalde hayatta kalan CTA biçimi etiketi (yoksa null). */
+  ctaForm: string | null
+  /** Final kanıt/gözlem dili içeriyor mu (operatör kanıtı korudu/ekledi). */
+  keepsEvidence: boolean
+}
+
+/** SAF: onaylı düzenlemeden yapısal stil deltası çıkarır. */
+export function analyzeStyleDelta(originalBody: string, finalBody: string): StyleDelta {
+  const openingRaw = splitPhrases(finalBody)[0] ?? null
+  const finalOpening = openingRaw && !containsPii(openingRaw) ? openingRaw.slice(0, 60) : null
+
+  const formalFinal = countMatches(FORMAL_MARKERS, fold(finalBody))
+  const informalFinal = countMatches(INFORMAL_MARKERS, fold(finalBody))
+  const formalOrig = countMatches(FORMAL_MARKERS, fold(originalBody))
+  const informalOrig = countMatches(INFORMAL_MARKERS, fold(originalBody))
+  const scoreFinal = formalFinal - informalFinal
+  const scoreOrig = formalOrig - informalOrig
+  const formalityDelta: -1 | 0 | 1 = scoreFinal > scoreOrig ? 1 : scoreFinal < scoreOrig ? -1 : 0
+
+  const lenOrig = avgSentenceWords(originalBody)
+  const lenFinal = avgSentenceWords(finalBody)
+  const sentenceLen: StyleDelta['sentenceLen'] =
+    lenFinal < lenOrig * 0.85 ? 'shorter' : lenFinal > lenOrig * 1.15 ? 'longer' : 'same'
+
+  const ctaForm = CTA_FORMS.find((c) => c.re.test(finalBody))?.label ?? null
+  const keepsEvidence = EVIDENCE_MARKERS.test(finalBody)
+
+  return { finalOpening, formalityDelta, sentenceLen, ctaForm, keepsEvidence }
+}
+
+interface StyleObservations {
+  total: number
+  openings: Record<string, number>
+  formality: { formal: number; informal: number; same: number }
+  sentenceLen: Record<'shorter' | 'longer' | 'same', number>
+  cta: Record<string, number>
+  evidenceKept: number
+  /** Sektör varyantı: sektör → aynı sayaçların küçültülmüş hâli. */
+  sectors: Record<string, { total: number; formality: { formal: number; informal: number; same: number } }>
+}
+
+const EMPTY_OBS: StyleObservations = {
+  total: 0,
+  openings: {},
+  formality: { formal: 0, informal: 0, same: 0 },
+  sentenceLen: { shorter: 0, longer: 0, same: 0 },
+  cta: {},
+  evidenceKept: 0,
+  sectors: {},
+}
+
+async function readObservations(): Promise<StyleObservations> {
+  try {
+    const raw = await readSetting('voice_style_observations')
+    return raw ? { ...EMPTY_OBS, ...(JSON.parse(raw) as StyleObservations) } : { ...EMPTY_OBS }
+  } catch {
+    return { ...EMPTY_OBS }
+  }
+}
+
+/** Onaylı düzenlemeden yapısal gözlem biriktir (best-effort; akış düşmez). */
+export async function recordStyleDelta(
+  originalBody: string,
+  finalBody: string,
+  sector?: string | null,
+): Promise<void> {
+  try {
+    const d = analyzeStyleDelta(originalBody, finalBody)
+    const obs = await readObservations()
+    obs.total += 1
+    if (d.finalOpening) obs.openings[fold(d.finalOpening)] = (obs.openings[fold(d.finalOpening)] ?? 0) + 1
+    const fKey = d.formalityDelta === 1 ? 'formal' : d.formalityDelta === -1 ? 'informal' : 'same'
+    obs.formality[fKey] += 1
+    obs.sentenceLen[d.sentenceLen] += 1
+    if (d.ctaForm) obs.cta[d.ctaForm] = (obs.cta[d.ctaForm] ?? 0) + 1
+    if (d.keepsEvidence) obs.evidenceKept += 1
+    if (sector) {
+      const s = obs.sectors[sector] ?? { total: 0, formality: { formal: 0, informal: 0, same: 0 } }
+      s.total += 1
+      s.formality[fKey] += 1
+      obs.sectors[sector] = s
+    }
+    await writeSetting('voice_style_observations', JSON.stringify(obs))
+  } catch {
+    /* best-effort */
+  }
+}
+
+export interface StyleRuleCandidate {
+  rule: string
+  polarity: 'positive' | 'negative'
+  count: number
+  readyForReview: boolean
+}
+
+/** Gözlemlerden ADAY kurallar (onaysız hiçbiri aktif değildir). */
+export async function getStyleCandidates(): Promise<StyleRuleCandidate[]> {
+  const obs = await readObservations()
+  const out: StyleRuleCandidate[] = []
+  const push = (rule: string, polarity: 'positive' | 'negative', count: number) =>
+    out.push({ rule, polarity, count, readyForReview: count >= PROMOTE_THRESHOLD })
+
+  for (const [opening, count] of Object.entries(obs.openings)) {
+    if (count >= 2) push(`Açılış biçimi: "${opening}"`, 'positive', count)
+  }
+  if (obs.formality.formal > 0) push('Daha resmi ton (siz dili)', 'positive', obs.formality.formal)
+  if (obs.formality.informal > 0) push('Daha samimi ton', 'positive', obs.formality.informal)
+  if (obs.sentenceLen.shorter > 0) push('Daha kısa cümleler', 'positive', obs.sentenceLen.shorter)
+  if (obs.sentenceLen.longer > 0) push('Daha uzun/açıklayıcı cümleler', 'positive', obs.sentenceLen.longer)
+  for (const [cta, count] of Object.entries(obs.cta)) {
+    push(`CTA biçimi: ${cta}`, 'positive', count)
+  }
+  if (obs.evidenceKept > 0) push('Somut gözlem/kanıt cümlesi korunur', 'positive', obs.evidenceKept)
+  return out.sort((a, b) => b.count - a.count)
+}
+
+export interface VoiceProfile {
+  /** true → hiç onaylı veri yok; profesyonel BASELINE kullanılıyor ("öğrenildi" DENMEZ). */
+  baseline: boolean
+  observationCount: number
+  approved: { positive: string[]; negative: string[] }
+  bannedPhrases: string[]
+}
+
+export async function getApprovedStyleRules(): Promise<{ positive: string[]; negative: string[] }> {
+  try {
+    const raw = await readSetting('voice_style_rules')
+    const parsed = raw ? (JSON.parse(raw) as { positive?: string[]; negative?: string[] }) : {}
+    return { positive: parsed.positive ?? [], negative: parsed.negative ?? [] }
+  } catch {
+    return { positive: [], negative: [] }
+  }
+}
+
+/** Operatör onayı: stil kuralını aktif profile taşır (tek yönlü, açık eylem). */
+export async function approveStyleRule(rule: string, polarity: 'positive' | 'negative'): Promise<void> {
+  const rules = await getApprovedStyleRules()
+  const list = rules[polarity]
+  if (!list.includes(rule)) {
+    list.push(rule)
+    await writeSetting('voice_style_rules', JSON.stringify(rules))
+  }
+}
+
+/** Üretim tarafının kullanacağı profil — sıfır veri = dürüst baseline. */
+export async function getVoiceProfile(): Promise<VoiceProfile> {
+  const [rules, banned, obs] = await Promise.all([
+    getApprovedStyleRules(),
+    getBannedPhrases(),
+    readObservations(),
+  ])
+  const baseline = rules.positive.length === 0 && rules.negative.length === 0
+  return { baseline, observationCount: obs.total, approved: rules, bannedPhrases: banned }
+}

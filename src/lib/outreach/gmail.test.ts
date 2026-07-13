@@ -168,6 +168,7 @@ vi.mock('@/lib/outreach/outboundGate', () => ({
 }))
 vi.mock('@/lib/outreach/voiceDna', () => ({
   recordVoiceDelta: async () => {},
+  recordStyleDelta: async () => {},
   getBannedPhrases: async () => [],
 }))
 

@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { fetchSettings, saveSetting } from '@/lib/repositories/settings'
 import { SIGNATURE_SETTING_KEYS, SIGNATURE_DEFAULTS, COMPLIANCE_SETTING_KEYS } from '@/lib/coldEmail'
 import { TelegramDiagnostics } from '@/components/settings/TelegramDiagnostics'
+import { VoiceDnaPanel } from '@/components/settings/VoiceDnaPanel'
 
 interface ConfigHealth {
   success: boolean
@@ -180,6 +181,7 @@ export default function SettingsPage() {
 
         {/* Telegram durum paneli (Faz B7) — read-only, secret gostermez */}
         <TelegramDiagnostics />
+        <VoiceDnaPanel />
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Agency info */}
