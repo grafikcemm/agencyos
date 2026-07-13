@@ -1,0 +1,161 @@
+// Telegram SUCCESS-PATH E2E (Faz 5) — prod build'e karşı, TAMAMEN İZOLE:
+// - LIFE erişimi TEST DB'sine yönlendirilmiş (playwright.config webServer env)
+//   → canlı LIFE DB'ye SIFIR iz.
+// - Bot token BOŞ + TELEGRAM_FAKE_TRANSPORT=success → dış Telegram çağrısı
+//   yapısal imkânsız; cevap teslimi delivery ledger'da DB kanıtıyla izlenir.
+// Zincir kanıtı: geçerli update → durable claim (fencing token) → handler →
+// App DB mutasyonu → fake transport → delivery 'sent' → claim 'completed'.
+
+import { test, expect } from '@playwright/test'
+import {
+  E2E_TELEGRAM_SECRET,
+  E2E_TELEGRAM_CHAT_ID,
+  E2E_TELEGRAM_USER_ID,
+} from '../playwright.config'
+import { seedDraft, cleanupE2E, supabaseAdmin } from './helpers'
+
+const WEBHOOK = '/api/telegram'
+// Her koşuda çakışmayan update_id aralığı (bigint).
+const BASE_ID = 910_000_000 + (Date.now() % 1_000_000)
+
+function tgHeaders() {
+  return { 'x-telegram-bot-api-secret-token': E2E_TELEGRAM_SECRET, 'content-type': 'application/json' }
+}
+
+function update(updateId: number, text: string) {
+  return {
+    update_id: updateId,
+    message: {
+      message_id: updateId,
+      text,
+      chat: { id: Number(E2E_TELEGRAM_CHAT_ID) },
+      from: { id: Number(E2E_TELEGRAM_USER_ID) },
+    },
+  }
+}
+
+test.describe.configure({ mode: 'serial' })
+
+test.afterAll(async () => {
+  const db = supabaseAdmin()
+  // LIFE-mimic izleri: bu koşunun update aralığı + e2e görev başlıkları.
+  await db.from('telegram_outbound_deliveries').delete().gte('update_id', 910_000_000)
+  await db.from('telegram_update_claims').delete().gte('update_id', 910_000_000)
+  await db.from('telegram_conversations').delete().ilike('message', '%e2e-tg%')
+  await db.from('telegram_conversations').delete().eq('intent', 'sales:bugun')
+  await db.from('telegram_pending_actions').delete().eq('chat_key', E2E_TELEGRAM_CHAT_ID)
+  await db.from('active_tasks').delete().ilike('title', '%e2e-tg görev%')
+  await cleanupE2E()
+})
+
+test('success-path: /bugun → durable claim(completed, token) + fake delivery(sent) + conversation log', async ({ request }) => {
+  const db = supabaseAdmin()
+  const id = BASE_ID + 1
+
+  const res = await request.post(WEBHOOK, { headers: tgHeaders(), data: update(id, '/bugun') })
+  expect(res.status()).toBe(200)
+  expect((await res.json()).ok).toBe(true)
+
+  // Durable claim: state makinesi 'completed' + fencing token yazılmış.
+  const { data: claim } = await db.from('telegram_update_claims').select('*').eq('update_id', id).single()
+  expect(claim?.status).toBe('completed')
+  expect(claim?.claim_token).toBeTruthy()
+  expect(claim?.attempt_count).toBe(1)
+
+  // Cevap teslimi: fake transport başarı + ledger 'sent' + deterministik key.
+  const { data: deliveries } = await db
+    .from('telegram_outbound_deliveries')
+    .select('delivery_key, status, message_id')
+    .eq('update_id', id)
+  expect(deliveries!.length).toBeGreaterThanOrEqual(1)
+  expect(deliveries![0].status).toBe('sent')
+  expect(Number(deliveries![0].message_id)).toBeGreaterThan(900_000_000) // fake transport kanıtı
+})
+
+test('duplicate delivery: aynı update ikinci kez → deduped, İKİNCİ cevap/log YOK', async ({ request }) => {
+  const db = supabaseAdmin()
+  const id = BASE_ID + 1 // önceki testin update'i (completed)
+
+  const { data: before } = await db.from('telegram_outbound_deliveries').select('id').eq('update_id', id)
+  const res = await request.post(WEBHOOK, { headers: tgHeaders(), data: update(id, '/bugun') })
+  expect(res.status()).toBe(200)
+  expect((await res.json()).deduped).toBe(true)
+
+  const { data: after } = await db.from('telegram_outbound_deliveries').select('id').eq('update_id', id)
+  expect(after?.length).toBe(before?.length) // provider'a İKİNCİ mesaj gitmedi
+})
+
+test('failed claim devralma (stale-worker kurtarması): failed satır YENİ attempt ile işlenir', async ({ request }) => {
+  const db = supabaseAdmin()
+  const id = BASE_ID + 2
+  // Crash sonrası durumu simüle et: claim 'failed' (lease bitti, eski worker öldü).
+  await db.from('telegram_update_claims').insert({
+    update_id: id, status: 'failed', attempt_count: 1, last_error: 'e2e: simulated crash',
+  })
+
+  const res = await request.post(WEBHOOK, { headers: tgHeaders(), data: update(id, '/bugun') })
+  expect(res.status()).toBe(200)
+
+  const { data: claim } = await db.from('telegram_update_claims').select('*').eq('update_id', id).single()
+  expect(claim?.status).toBe('completed')
+  expect(claim?.attempt_count).toBe(2) // takeover kanıtı — mesaj KAYBOLMADI
+})
+
+test('lead action Telegram\'dan: "<işletme> arandı" → App DB contacted + audit(channel=telegram)', async ({ request }) => {
+  const db = supabaseAdmin()
+  const seeded = await seedDraft('tg-aksiyon')
+  await db.from('leads').update({ status: 'new', phone: '+90 555 999 88 77' }).eq('id', seeded.leadId)
+  const businessName = `E2E Test İşletmesi tg-aksiyon (e2e-sprint-p0)`
+
+  const res = await request.post(WEBHOOK, {
+    headers: tgHeaders(),
+    data: update(BASE_ID + 3, `${businessName} arandı`),
+  })
+  expect(res.status()).toBe(200)
+
+  await expect
+    .poll(async () => {
+      const { data } = await db.from('leads').select('status').eq('id', seeded.leadId).single()
+      return data?.status
+    }, { timeout: 10_000 })
+    .toBe('contacted')
+
+  const { data: audit } = await db
+    .from('lead_action_audit')
+    .select('action, channel')
+    .eq('lead_id', seeded.leadId)
+  expect(audit).toHaveLength(1)
+  expect(audit![0]).toMatchObject({ action: 'called', channel: 'telegram' })
+})
+
+test('pending add-task: "görev ekle" → durable pending → "1" → active_tasks satırı + pending tüketildi', async ({ request }) => {
+  const db = supabaseAdmin()
+
+  const r1 = await request.post(WEBHOOK, {
+    headers: tgHeaders(),
+    data: update(BASE_ID + 4, 'görev ekle: e2e-tg görev başlığı'),
+  })
+  expect(r1.status()).toBe(200)
+  // Pending aksiyon DURABLE (memory değil) — kanıt: LIFE-mimic tabloda satır.
+  const { data: pending } = await db
+    .from('telegram_pending_actions')
+    .select('action_type, payload')
+    .eq('chat_key', E2E_TELEGRAM_CHAT_ID)
+    .maybeSingle()
+  expect(pending?.action_type).toBe('add_task_choice')
+
+  const r2 = await request.post(WEBHOOK, { headers: tgHeaders(), data: update(BASE_ID + 5, '1') })
+  expect(r2.status()).toBe(200)
+
+  const { data: tasks } = await db.from('active_tasks').select('title, category').ilike('title', '%e2e-tg görev%')
+  expect(tasks).toHaveLength(1)
+  expect(tasks![0].category).toBe('active')
+
+  // Tek-kullanımlık: pending tüketildi.
+  const { data: consumed } = await db
+    .from('telegram_pending_actions')
+    .select('chat_key')
+    .eq('chat_key', E2E_TELEGRAM_CHAT_ID)
+    .maybeSingle()
+  expect(consumed).toBeNull()
+})

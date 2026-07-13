@@ -1545,6 +1545,7 @@ WITH cols AS (
   JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum > 0 AND NOT a.attisdropped
   LEFT JOIN pg_catalog.pg_attrdef d ON d.adrelid = c.oid AND d.adnum = a.attnum
   WHERE c.relkind = 'r'
+    AND c.relname NOT LIKE 'telegram\_%' AND c.relname <> 'active_tasks'
   GROUP BY c.relname
 ),
 cons AS (
@@ -1554,6 +1555,7 @@ cons AS (
   JOIN pg_catalog.pg_class rel ON rel.oid = con.conrelid
   JOIN pg_catalog.pg_namespace n ON n.oid = rel.relnamespace AND n.nspname = 'public'
   WHERE con.contype IN ('p','u','c','f')
+    AND rel.relname NOT LIKE 'telegram\_%' AND rel.relname <> 'active_tasks'
   GROUP BY rel.relname
 ),
 idx AS (
@@ -1561,6 +1563,7 @@ idx AS (
          string_agg(i.indexdef, E'\n' ORDER BY i.indexname) AS txt
   FROM pg_catalog.pg_indexes i
   WHERE i.schemaname = 'public'
+    AND i.tablename NOT LIKE 'telegram\_%' AND i.tablename <> 'active_tasks'
     AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint c2
                     WHERE c2.conname = i.indexname AND c2.connamespace = 'public'::regnamespace)
   GROUP BY i.tablename
@@ -1570,6 +1573,7 @@ rls AS (
   FROM pg_catalog.pg_class c
   JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'
   WHERE c.relkind = 'r'
+    AND c.relname NOT LIKE 'telegram\_%' AND c.relname <> 'active_tasks'
 ),
 tables AS (
   SELECT r.tbl,
@@ -1589,7 +1593,7 @@ fns AS (
   SELECT md5(coalesce(string_agg(replace(pg_catalog.pg_get_functiondef(p.oid), E'\r', ''), E'\n' ORDER BY p.proname), '')) AS h
   FROM pg_catalog.pg_proc p
   JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace AND n.nspname = 'public'
-  WHERE p.proname NOT LIKE 'e2e\_%'
+  WHERE p.proname NOT LIKE 'e2e\_%' AND p.proname NOT LIKE 'telegram\_%'
 ),
 trg AS (
   SELECT md5(coalesce(string_agg(pg_catalog.pg_get_triggerdef(t.oid), E'\n' ORDER BY t.tgname), '')) AS h
@@ -1608,3 +1612,11 @@ $e2e$;
 
 REVOKE ALL ON FUNCTION public.e2e_schema_fingerprint() FROM public;
 GRANT EXECUTE ON FUNCTION public.e2e_schema_fingerprint() TO anon, authenticated, service_role;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Faz 5 — IZOLE LIFE test şeması (fingerprint DIŞI: telegram_% + active_tasks).
+-- Telegram success-path E2E, canlı LIFE DB'ye dokunmadan bu tablolara yazar.
+-- Test DB'ye 2026-07-13'te e2e_life_telegram_schema +
+-- e2e_life_active_tasks_and_fingerprint_exclusions migration'larıyla uygulandı.
+-- Şekiller supabase/life-migrations/005 + 006 (v2, claim_token) ile hizalı.
+-- ─────────────────────────────────────────────────────────────────────────────

@@ -100,6 +100,8 @@ export interface SendMessageOpts {
  * 429'da retry_after (≤5 sn) kadar bekleyip TEK retry yapar (Telegram 429'da
  * mesajı işlememiştir → güvenli). Diğer hatalarda retry yok; retryable bayrağı döner.
  */
+let fakeMessageSeq = 0
+
 export async function sendTelegramMessage(
   text: string,
   opts: SendMessageOpts = {},
@@ -107,6 +109,19 @@ export async function sendTelegramMessage(
   const chatId = opts.chatId ?? process.env.TELEGRAM_CHAT_ID ?? ''
   if (!chatId) {
     return { ok: false, status: 0, error: 'TELEGRAM_CHAT_ID eksik', retryable: false }
+  }
+
+  // Faz 5 — E2E fake transport: dış Telegram'a ÇIKMADAN deterministik başarı.
+  // GUARD (fail-closed): yalnız bot token'ı BOŞKEN aktif olabilir — token'lı
+  // (gerçek gönderim yapabilen) hiçbir ortamda fake devreye giremez; yanlışlıkla
+  // set edilirse görünür CRITICAL log düşer ve bayrak YOK SAYILIR.
+  if (process.env.TELEGRAM_FAKE_TRANSPORT === 'success') {
+    if (process.env.TELEGRAM_BOT_TOKEN) {
+      console.error('[telegram] CRITICAL: TELEGRAM_FAKE_TRANSPORT set ama bot token dolu — fake YOK SAYILDI')
+    } else {
+      fakeMessageSeq += 1
+      return { ok: true, status: 200, messageId: 900_000_000 + fakeMessageSeq }
+    }
   }
   const payload: Record<string, unknown> = { chat_id: chatId, text }
   if (opts.parseMode !== null) payload.parse_mode = opts.parseMode ?? 'HTML'

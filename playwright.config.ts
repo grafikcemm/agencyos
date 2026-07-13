@@ -64,6 +64,13 @@ export default defineConfig({
       NEXT_PUBLIC_SUPABASE_URL: e2eDb?.url ?? 'https://e2e-env-eksik.invalid',
       NEXT_PUBLIC_SUPABASE_ANON_KEY: e2eDb?.anonKey ?? 'e2e-env-eksik',
       SUPABASE_SERVICE_ROLE_KEY: e2eDb?.serviceRoleKey ?? 'e2e-env-eksik',
+      // Faz 5: bos token + fake transport = success-path E2E (dis cagri sifir).
+      TELEGRAM_FAKE_TRANSPORT: 'success',
+      // Faz 5: LIFE de IZOLE test DB'sine gider (telegram_* tablolari orada;
+      // fingerprint fonksiyonu bu tablolari BILEREK dislar). Canli LIFE'a
+      // E2E'den yazim yapisal imkansiz.
+      NEXT_PUBLIC_LIFE_SUPABASE_URL: e2eDb?.url ?? 'https://e2e-env-eksik.invalid',
+      LIFE_SUPABASE_SERVICE_ROLE_KEY: e2eDb?.serviceRoleKey ?? 'e2e-env-eksik',
     },
   },
 })

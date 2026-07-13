@@ -7,17 +7,50 @@ import { requireApiAccess, requireApiUser } from '@/lib/auth'
 import { enforceSameOrigin } from '@/lib/api/guards'
 import { getMe, getWebhookInfo } from '@/lib/telegram/client'
 import { lifeSupabaseAdmin } from '@/lib/lifeSupabaseAdmin'
+import { supabaseAdmin } from '@/lib/supabase'
 import { sweepUnknownDeliveries, reconcileReminder } from '@/lib/assistant/reminderDispatch'
+
+// ── Faz 5: readiness probe'ları — YAN ETKİSİZ ────────────────────────────────
+// Statik health marker'ı hazırlık kanıtı DEĞİLDİR; gerçek hazırlık burada
+// bileşen bileşen ölçülür. 006/058 canlı değilse overall 'ready' DENMEZ.
+
+/** LIFE 006: claim_token kolonu + delivery ledger tablosu (yalnız SELECT probe). */
+async function probeLife006(): Promise<{ claimStateReady: boolean; deliveryLedgerReady: boolean }> {
+  const [claims, ledger] = await Promise.all([
+    lifeSupabaseAdmin.from('telegram_update_claims').select('claim_token').limit(1),
+    lifeSupabaseAdmin.from('telegram_outbound_deliveries').select('id').limit(1),
+  ])
+  return { claimStateReady: !claims.error, deliveryLedgerReady: !ledger.error }
+}
+
+/** App 058: apply_lead_action RPC varlığı — geçersiz aksiyonla probe:
+ *  fonksiyon ilk kontrolde 'rejected' döner, HİÇBİR yazım yapmaz. */
+async function probeApp058(): Promise<boolean> {
+  const { data, error } = await supabaseAdmin.rpc('apply_lead_action', {
+    p_lead_id: '00000000-0000-0000-0000-000000000000',
+    p_action: '__probe__',
+    p_actor: 'diagnostics',
+    p_channel: 'ui',
+    p_idempotency_key: null,
+    p_note: null,
+    p_later_at: null,
+    p_now: new Date().toISOString(),
+  })
+  if (error) return false // PGRST202/42883 = RPC yok; diğer hatalar da hazır sayılmaz.
+  return (data as { outcome?: string })?.outcome === 'rejected'
+}
 
 export async function GET(req: Request) {
   const access = await requireApiAccess(req)
   if ('response' in access) return access.response
 
-  const [me, webhook, unknownSweep] = await Promise.all([
+  const [me, webhook, unknownSweep, life006, app058] = await Promise.all([
     getMe(),
     getWebhookInfo(),
     // Faz 0.2: stale 'sending' → 'unknown_delivery' (görünürlük; otomatik resend YOK).
     sweepUnknownDeliveries(),
+    probeLife006().catch(() => ({ claimStateReady: false, deliveryLedgerReady: false })),
+    probeApp058().catch(() => false),
   ])
 
   // Son başarılı inbound/outbound (LIFE telegram_conversations — salt okuma).
@@ -74,6 +107,34 @@ export async function GET(req: Request) {
       userIdConfigured: Boolean(process.env.TELEGRAM_USER_ID),
       webhookSecretConfigured: Boolean(process.env.TELEGRAM_WEBHOOK_SECRET),
     },
+    // Faz 5: bileşen bazlı hazırlık — statik health marker'ı kanıt DEĞİLDİR.
+    readiness: (() => {
+      const envComplete =
+        Boolean(process.env.TELEGRAM_BOT_TOKEN) &&
+        Boolean(process.env.TELEGRAM_CHAT_ID) &&
+        Boolean(process.env.TELEGRAM_USER_ID) &&
+        Boolean(process.env.TELEGRAM_WEBHOOK_SECRET)
+      const webhookRegisteredAndMatching = Boolean(
+        registeredUrl && expectedWebhookUrl && registeredUrl === expectedWebhookUrl,
+      )
+      const overall =
+        envComplete &&
+        webhookRegisteredAndMatching &&
+        life006.claimStateReady &&
+        life006.deliveryLedgerReady &&
+        app058
+          ? 'ready'
+          : 'degraded'
+      return {
+        envComplete,
+        webhookRegisteredAndMatching,
+        life006ClaimState: life006.claimStateReady,
+        life006DeliveryLedger: life006.deliveryLedgerReady,
+        app058LeadActionRpc: app058,
+        // 006/058 canlı değilken 'ready' DENMEZ — degraded + eksikler yukarıda tek tek.
+        overall,
+      }
+    })(),
   })
 }
 
