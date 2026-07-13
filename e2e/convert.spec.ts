@@ -28,6 +28,22 @@ test('convert: proje + converted + tek satır DB kanıtı; ikinci istek already'
   const { data: lead } = await db.from('leads').select('status').eq('id', seeded.leadId).single()
   expect(lead?.status).toBe('converted')
 
+  // Audit ŞEFFAFLIĞI (Faz 0.5): API'nin auditRecorded iddiası DB gerçeğiyle
+  // birebir eşleşmeli. mig 060 canlı değilken legacy yol audit YAZAMAZ
+  // (057 CHECK 'convert' içermez → 23514) — bu test başarısının arkasına
+  // GİZLENMEZ: false ise burada açıkça raporlanır.
+  const { data: auditRows } = await db
+    .from('lead_action_audit')
+    .select('id')
+    .eq('lead_id', seeded.leadId)
+    .eq('action', 'convert')
+  expect(b1.auditRecorded).toBe((auditRows?.length ?? 0) > 0)
+  if (!b1.auditRecorded) {
+    console.warn(
+      '[E2E convert] BİLİNEN SINIR: audit satırı YAZILMADI (mig 060 canlı değil, 23514) — dönüşüm çalışıyor ama attribution izi eksik.',
+    )
+  }
+
   // İkinci istek → already, İKİNCİ PROJE YOK.
   const r2 = await request.post(`/api/leads/${seeded.leadId}/convert`, { headers: AUTH_HEADERS })
   expect((await r2.json()).outcome).toBe('already')

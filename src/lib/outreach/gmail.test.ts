@@ -8,7 +8,7 @@ let seq = 0
 const db: Record<string, Array<Record<string, unknown>>> = {
   outreach_messages: [], leads: [], approval_requests: [], contacts: [],
   email_threads: [], email_messages: [], settings: [], suppression_list: [], gmail_accounts: [],
-  outreach_send_attempts: [],
+  outreach_send_attempts: [], lead_evidence: [],
 }
 
 // finalize_outreach_send RPC simülasyonu — mig 054 SQL fonksiyonunun in-memory
@@ -16,6 +16,8 @@ const db: Record<string, Array<Record<string, unknown>>> = {
 // uygulanmaz). rpcFailNext ile "provider başarılı, finalize başarısız" senaryosu.
 let rpcFailNext = false
 let sentCasFailsOnce = false
+let attemptInsertFailsOnce = false
+let sendingCasFailsOnce = false
 function rpcFinalize(args: Record<string, unknown>) {
   const attempt = db.outreach_send_attempts.find(
     (a) => a.outreach_message_id === args.p_outreach_message_id && a.claim_token === args.p_claim_token
@@ -86,6 +88,11 @@ function makeQuery(table: string) {
         rows.some((r) => r.idempotency_key === payload!.idempotency_key)) {
         return { data: null, error: { message: 'duplicate key', code: '23505' } }
       }
+      // Beklenmedik DB hatası simülasyonu (claim 'error' dalı).
+      if (table === 'outreach_send_attempts' && attemptInsertFailsOnce) {
+        attemptInsertFailsOnce = false
+        return { data: null, error: { message: 'db down', code: 'XX000' } }
+      }
       // outreach_message_id UNIQUE = atomik claim çekirdeği (mig 054).
       if (table === 'outreach_send_attempts' &&
         rows.some((r) => r.outreach_message_id === payload!.outreach_message_id)) {
@@ -108,6 +115,11 @@ function makeQuery(table: string) {
       // Yarış simülasyonu: provider başarısı SONRASI sent-CAS'inin kaybı.
       if (table === 'outreach_send_attempts' && payload.state === 'sent' && sentCasFailsOnce) {
         sentCasFailsOnce = false
+        return { data: null, error: null }
+      }
+      // Yarış simülasyonu: claimed→sending CAS kaybı (başka istek devraldı).
+      if (table === 'outreach_send_attempts' && payload.state === 'sending' && sendingCasFailsOnce) {
+        sendingCasFailsOnce = false
         return { data: null, error: null }
       }
       const matched = rows.filter((r) => filters.every((f) => f(r)))
@@ -166,10 +178,14 @@ vi.mock('@/lib/outreach/outboundGate', () => ({
     return gateResult
   },
 }))
+let bannedThrow = false
 vi.mock('@/lib/outreach/voiceDna', () => ({
   recordVoiceDelta: async () => {},
   recordStyleDelta: async () => {},
-  getBannedPhrases: async () => [],
+  getBannedPhrases: async () => {
+    if (bannedThrow) throw new Error('banned phrases okunamadı')
+    return []
+  },
 }))
 
 // Faz 2.3: canonical recipient — in-memory db üzerinden gerçek sıralamayla
@@ -195,7 +211,7 @@ vi.mock('@/lib/contacts/contactService', () => ({
   },
 }))
 
-import { requestSendApproval, findSendApproval, sendGmailMessage, reconcileOutreachSend, computeSendArgs, SEND_GMAIL_ACTION, buildRawMessage } from './gmail'
+import { requestSendApproval, findSendApproval, findSendApprovalsBatch, sendGmailMessage, reconcileOutreachSend, computeSendArgs, SEND_GMAIL_ACTION, buildRawMessage } from './gmail'
 import { GmailTransportError, type GmailTransport } from './sendMachine'
 import { computeActionDigest } from '@/lib/brain/gate'
 import { OPT_OUT_MARKER } from './auditCompliance'
@@ -227,6 +243,9 @@ beforeEach(() => {
   sentCasFailsOnce = false
   gateResult = { ok: true, violations: [], digest: 'q-digest-1' }
   gateThrow = false
+  bannedThrow = false
+  attemptInsertFailsOnce = false
+  sendingCasFailsOnce = false
   delete process.env.GMAIL_SEND_ENABLED
 })
 
@@ -362,6 +381,24 @@ describe('requestSendApproval (HITL onay isteği)', () => {
     expect(await findSendApproval('draft-2')).toBeNull() // e-postasız lead
   })
 
+  it('kalite değerlendirmesi ÇÖKERSE findSendApproval null döner (fail-closed — onay "yok" görünür)', async () => {
+    await requestSendApproval(DRAFT_ID)
+    gateThrow = true
+    expect(await findSendApproval(DRAFT_ID)).toBeNull()
+  })
+
+  it('gönderim ANINDA kalite servisi ÇÖKERSE fail-closed — yürütülmez, provider 0', async () => {
+    const req = await requestSendApproval(DRAFT_ID)
+    approve(req.approvalId as string)
+    gateThrow = true
+    const { transport, calls } = countingTransport()
+    const out = await sendGmailMessage({ outreachMessageId: DRAFT_ID, approvalId: req.approvalId as string, transport })
+    expect(out.ok).toBe(false)
+    expect(out.error).toContain('fail-closed')
+    expect(calls()).toBe(0)
+    expect(db.email_messages).toHaveLength(0)
+  })
+
   it('düzenleme persist edilir ve digest düzenleme-sonrası içeriğe bağlanır', async () => {
     const edited = `${VALID_BODY}\n\nEK PARAGRAF.`
     const r = await requestSendApproval(DRAFT_ID, { finalBody: edited })
@@ -371,6 +408,67 @@ describe('requestSendApproval (HITL onay isteği)', () => {
     // Faz 1.3: digest içerik + KALİTE dijesti üzerinden hesaplanır.
     const expected = computeActionDigest(SEND_GMAIL_ACTION, computeSendArgs(DRAFT_ID, 'info@testklinik.com', 'Web siteniz', edited, 'q-digest-1'))
     expect(db.approval_requests[0].action_digest).toBe(expected)
+  })
+})
+
+describe('findSendApprovalsBatch (Faz 2.4 — kokpit toplu onay arama)', () => {
+  function itemFor(draftId: string, leadId: string, email: string | null, over?: Partial<Parameters<typeof findSendApprovalsBatch>[0][number]>) {
+    return {
+      draftId, leadId, businessName: 'Test Klinik', email, contactId: null,
+      subject: 'Web siteniz', body: VALID_BODY, ...over,
+    }
+  }
+
+  it('onaylı draft idempotency key ile bulunur; e-postasız item atlanır (tekil yolla AYNI digest)', async () => {
+    const req = await requestSendApproval(DRAFT_ID)
+    const map = await findSendApprovalsBatch([
+      itemFor(DRAFT_ID, LEAD_ID, 'info@testklinik.com'),
+      itemFor('draft-eposta-yok', 'lead-2', null),
+    ])
+    expect(map.get(DRAFT_ID)?.id).toBe(req.approvalId)
+    expect(map.get(DRAFT_ID)?.status).toBe('pending')
+    expect(map.has('draft-eposta-yok')).toBe(false)
+  })
+
+  it('hiç e-postalı item yoksa boş map (DB turu bile atılmaz)', async () => {
+    const map = await findSendApprovalsBatch([itemFor('d1', 'l1', null)])
+    expect(map.size).toBe(0)
+  })
+
+  it('yasaklı-ifade listesi OKUNAMAZSA fail-closed: boş map — onay "yok" görünür, UI yeniden onay ister', async () => {
+    await requestSendApproval(DRAFT_ID)
+    bannedThrow = true
+    const map = await findSendApprovalsBatch([itemFor(DRAFT_ID, LEAD_ID, 'info@testklinik.com')])
+    expect(map.size).toBe(0)
+  })
+
+  it('içerik onaydan SONRA değiştiyse digest eşleşmez → onay bulunmaz (güvenli yön)', async () => {
+    await requestSendApproval(DRAFT_ID)
+    const map = await findSendApprovalsBatch([
+      itemFor(DRAFT_ID, LEAD_ID, 'info@testklinik.com', { body: `${VALID_BODY}\n\nDEĞİŞTİ.` }),
+    ])
+    expect(map.has(DRAFT_ID)).toBe(false)
+  })
+
+  it('lead_evidence toplu yüklenir ve kapıya lead-bazında iletilir (iki lead karışmaz)', async () => {
+    db.lead_evidence.push(
+      { id: 'ev-1', lead_id: LEAD_ID },
+      { id: 'ev-2', lead_id: 'lead-2' },
+    )
+    db.leads.push({ id: 'lead-2', business_name: 'İkinci', email: 'x@ikinci.com', do_not_contact: false })
+    db.outreach_messages.push({
+      id: 'draft-2', lead_id: 'lead-2', channel: 'email', status: 'draft',
+      subject: 's2', body: VALID_BODY, final_body: null,
+      sent_at: null, gmail_message_id: null, gmail_thread_id: null, error: null,
+    })
+    const r1 = await requestSendApproval(DRAFT_ID)
+    const r2 = await requestSendApproval('draft-2')
+    const map = await findSendApprovalsBatch([
+      itemFor(DRAFT_ID, LEAD_ID, 'info@testklinik.com'),
+      itemFor('draft-2', 'lead-2', 'x@ikinci.com', { subject: 's2', businessName: 'İkinci' }),
+    ])
+    expect(map.get(DRAFT_ID)?.id).toBe(r1.approvalId)
+    expect(map.get('draft-2')?.id).toBe(r2.approvalId)
   })
 })
 
@@ -895,6 +993,37 @@ describe('at-most-once state machine (yarış + provider hataları)', () => {
     const r = await sendGmailMessage({ outreachMessageId: DRAFT_ID, approvalId, transport })
     expect(r.alreadySent).toBe(true)
     expect(r.dryRun).toBeUndefined()
+    expect(calls()).toBe(0)
+  })
+
+  it('onay durumu executed (attempt izi olmadan) → "zaten yürütüldü" reddi', async () => {
+    const approvalId = await approvedDraft()
+    db.approval_requests[0].status = 'executed'
+    const { transport, calls } = countingTransport()
+    const r = await sendGmailMessage({ outreachMessageId: DRAFT_ID, approvalId, transport })
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('zaten yürütüldü')
+    expect(calls()).toBe(0)
+  })
+
+  it('claim insert\'inde beklenmedik DB hatası → açıklayıcı hata, provider 0 (sessiz düşüş yok)', async () => {
+    const approvalId = await approvedDraft()
+    attemptInsertFailsOnce = true
+    const { transport, calls } = countingTransport()
+    const r = await sendGmailMessage({ outreachMessageId: DRAFT_ID, approvalId, transport })
+    expect(r.ok).toBe(false)
+    expect(r.error).toBeTruthy()
+    expect(calls()).toBe(0)
+    expect(db.email_messages).toHaveLength(0)
+  })
+
+  it('claimed→sending CAS kaybı → inProgress, provider 0', async () => {
+    const approvalId = await approvedDraft()
+    sendingCasFailsOnce = true
+    const { transport, calls } = countingTransport()
+    const r = await sendGmailMessage({ outreachMessageId: DRAFT_ID, approvalId, transport })
+    expect(r.ok).toBe(false)
+    expect(r.inProgress).toBe(true)
     expect(calls()).toBe(0)
   })
 

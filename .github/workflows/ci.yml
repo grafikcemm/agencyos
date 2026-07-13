@@ -1,8 +1,10 @@
 name: CI
 
+# Coverage kapısı (vitest.config.ts thresholds) ZORUNLU ayrı komuttur:
+# `npm test` eşikleri UYGULAMAZ; kapı `npm run test:coverage` ile geçilir.
 on:
   push:
-    branches: [main]
+    branches: [main, 'feat/**']
   pull_request:
 
 jobs:

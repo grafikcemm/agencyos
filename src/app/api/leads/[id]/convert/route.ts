@@ -22,6 +22,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       outcome: result.outcome,
       projectId: result.projectId,
       atomic: result.atomic,
+      auditRecorded: result.auditRecorded ?? null,
     })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Sunucu hatası' }, { status: 500 })

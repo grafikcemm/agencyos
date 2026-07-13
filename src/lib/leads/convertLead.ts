@@ -19,6 +19,10 @@ export interface ConvertResult {
   projectId?: string
   error?: string
   atomic: boolean
+  /** outcome 'created' iken: audit satırı gerçekten yazıldı mı?
+   *  Legacy yolda 057 CHECK 'convert' içermediğinden (mig 060 canlı değilken)
+   *  false olur — bu durum log'da DEĞİL, sonuçta görünür (Faz 0.5). */
+  auditRecorded?: boolean
 }
 
 export async function convertLeadToProject(opts: {
@@ -39,7 +43,14 @@ export async function convertLeadToProject(opts: {
   if (!error) {
     const r = data as { outcome: string; project_id?: string; error?: string }
     if (r.outcome === 'created' || r.outcome === 'already') {
-      return { ok: true, outcome: r.outcome, projectId: r.project_id, atomic: true }
+      // RPC yolu: audit INSERT transaction'ın içinde — created ise yazıldı.
+      return {
+        ok: true,
+        outcome: r.outcome,
+        projectId: r.project_id,
+        atomic: true,
+        ...(r.outcome === 'created' ? { auditRecorded: true } : {}),
+      }
     }
     return { ok: false, error: r.error ?? 'reddedildi', atomic: true }
   }
@@ -126,5 +137,11 @@ export async function convertLeadToProject(opts: {
   })
   if (auditErr) console.error('[convertLead] audit degraded', auditErr.code ?? auditErr.message)
 
-  return { ok: true, outcome: 'created', projectId: inserted.id as string, atomic: false }
+  return {
+    ok: true,
+    outcome: 'created',
+    projectId: inserted.id as string,
+    atomic: false,
+    auditRecorded: !auditErr,
+  }
 }
