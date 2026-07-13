@@ -1,5 +1,21 @@
 # Handoff — Sprint-3 Kapanış (2026-07-14)
 
+> **DÜZELTME (2026-07-14, FINALIZATION sprinti Faz 0 truth gate):** Bu
+> dokümandaki bazı ifadeler bağımsız yeniden-koşumda DOĞRULANAMADI:
+> 1. "lint 0/0" — e3ef15a'da FAIL: `OpsMetricsBar.tsx:41`
+>    `react-hooks/set-state-in-effect` (1 error). Düzeltme FINALIZATION
+>    Faz 0'da (useSyncExternalStore, davranış korunarak).
+> 2. "golden persuasion seti" 10 örnektir; 5 sektör × 6 rol × 3 aşama = 90
+>    kombinasyon matrisi YOKTUR; judge prompt'u CI'da çağrılmaz.
+> 3. "test:coverage tüm eşikler" yalnız CONFIG'TE LİSTELİ dosyalar içindir.
+>    Eşik dışı kritik modüller düşük: outboundGate 11.76L/0B, coldEmail
+>    29.57L/18.94B, voiceDna 62.5L/43.75B, cockpit/today 14.15L/5.98B.
+> 4. "Faz 0-7 TAMAM / otonom işler bitti" fazla iddialı: Telegram
+>    unledgered-send üretim yolu, /taslak'ın legacy first_message kullanımı,
+>    evidence'ın yalnız yazılıp okunmaması, follow-up'ın görünmez agent_task
+>    üretmesi ve proposal çıktılarının gerçek gate'te bloke olması açık KOD
+>    işleridir — FINALIZATION sprintinde ele alınıyor.
+
 Worktree: `agency-os-v2-sprint0` · Branch: `feat/agencyos-v2-sprint0`
 Başlangıç HEAD: `0118a00` → Kapanış HEAD: bu dokümanı içeren docs commit'i
 (`git log --oneline -1`; kod fazlarının sonuncusu `a4cc8d0`).

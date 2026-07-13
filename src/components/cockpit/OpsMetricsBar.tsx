@@ -4,7 +4,7 @@
 // (sekme görünürken sayan yerel sayaç; gün-anahtarlı localStorage) + bugün
 // TAMAMLANAN gelir aksiyonları (server audit sayımı — iddia değil kayıt).
 
-import { useEffect, useState } from 'react'
+import { useSyncExternalStore } from 'react'
 import { Timer, CheckCircle2, Mail, BadgeCheck } from 'lucide-react'
 import type { OpsMetrics } from '@/lib/cockpit/today'
 
@@ -34,21 +34,24 @@ function writeSeconds(seconds: number) {
   }
 }
 
-export function OpsMetricsBar({ metrics, error }: { metrics: OpsMetrics | null; error: string | null }) {
-  const [seconds, setSeconds] = useState<number | null>(null)
+// Sayaç localStorage'da yaşar; React ona useSyncExternalStore ile abone olur.
+// Server snapshot null ("—") olduğundan hydration uyuşmazlığı yok; interval
+// yalnız sekme görünürken saymaya devam eder (önceki davranış birebir).
+function subscribeTicker(onStoreChange: () => void): () => void {
+  const timer = setInterval(() => {
+    if (document.visibilityState !== 'visible') return
+    writeSeconds(readSeconds() + TICK_MS / 1000)
+    onStoreChange()
+  }, TICK_MS)
+  return () => clearInterval(timer)
+}
 
-  useEffect(() => {
-    setSeconds(readSeconds())
-    const timer = setInterval(() => {
-      if (document.visibilityState !== 'visible') return
-      setSeconds((prev) => {
-        const next = (prev ?? readSeconds()) + TICK_MS / 1000
-        writeSeconds(next)
-        return next
-      })
-    }, TICK_MS)
-    return () => clearInterval(timer)
-  }, [])
+function serverSnapshot(): number | null {
+  return null
+}
+
+export function OpsMetricsBar({ metrics, error }: { metrics: OpsMetrics | null; error: string | null }) {
+  const seconds = useSyncExternalStore<number | null>(subscribeTicker, readSeconds, serverSnapshot)
 
   const mins = seconds === null ? null : Math.floor(seconds / 60)
   const timeLabel =
