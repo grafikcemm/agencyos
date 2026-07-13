@@ -1,11 +1,18 @@
 {
   "_meta": {
-    "source": "Canlı App DB (proje ref: dfedehslshfyqurudwgk) pg_catalog çıkarımı",
+    "excluded_by_design": [
+      "policies",
+      "grants",
+      "event trigger (ensure_rls)",
+      "e2e_% fonksiyonlar\u0131",
+      "vault/pg_stat_statements uzant\u0131lar\u0131"
+    ],
     "generated_at": "2026-07-12",
+    "note": "e2e_schema_fingerprint() ile ayn\u0131 SELECT, App DB'de `set search_path to extensions, pg_catalog` alt\u0131nda ko\u015fturularak \u00fcretildi (deparse nitelendirmesi search_path'e ba\u011fl\u0131 \u2014 iki taraf ayn\u0131 path'i kullanmal\u0131). Yeniden \u00fcretim: e2e/schema/README.md",
     "pg_version": "17.6",
-    "note": "e2e_schema_fingerprint() ile aynı SELECT, App DB'de `set search_path to extensions, pg_catalog` altında koşturularak üretildi (deparse nitelendirmesi search_path'e bağlı — iki taraf aynı path'i kullanmalı). Yeniden üretim: e2e/schema/README.md",
-    "excluded_by_design": ["policies", "grants", "event trigger (ensure_rls)", "e2e_% fonksiyonları", "vault/pg_stat_statements uzantıları"]
+    "source": "Canl\u0131 App DB (proje ref: dfedehslshfyqurudwgk) pg_catalog \u00e7\u0131kar\u0131m\u0131"
   },
+  "functions_md5": "0753759dc495e99fdfa21562997e257f",
   "tables": {
     "agent_memory": "792a9e6cddeb7282381f01a936223159",
     "agent_messages": "8fa95e4a0a6019b9c758215e96f6884d",
@@ -17,6 +24,7 @@
     "approval_requests": "ec32f99f1d3ffe3c8259939d04d082d2",
     "autoresearch_runs": "6b1bc662d4f9c584fe66bf93fa51db69",
     "consent_records": "cb91c2b03bfd9dd801727181f3f88873",
+    "contacts": "18769a308249b48696a2837e694b1bb1",
     "council_debates": "e83b764308d6de960867374c723f7549",
     "decisions": "c55f6e38df0ce8e350058cae5e2564b7",
     "directives": "8beddf5adcc3d476e663a7ee2943490f",
@@ -33,6 +41,7 @@
     "job_application_drafts": "731a6cee965ae8707491777c387b5ace",
     "job_listings": "5c198a905bc86a0063a97d3de18c8c9c",
     "knowledge_docs": "d7f1fc8a08871d9b60e7a3abf33c26f3",
+    "lead_action_audit": "81ae72ddfb3ae7a7f580cf4cb16aa5f1",
     "lead_assessments": "706293747a9a45f658923d4d0107265f",
     "lead_evidence": "42885b412b7ddbd92e6394a370775499",
     "lead_intel_runs": "9c84af7648f5fdf3831276b7a0f950e6",
@@ -68,6 +77,7 @@
     "tool_embeddings": "49725bfcb407ad8da334ca338ebc0e8a",
     "tool_registry": "cacb20913087d474ccff6fe1cea283c2"
   },
+  "triggers_md5": "2fec56f101e2fe21be93caf015be7a74",
   "views": {
     "leads_with_status": "9183c28359ef4ad92f54f15d9f5dd9cc",
     "run_steps": "036d99b0d720233facfe00b92e797fa2",
@@ -76,7 +86,5 @@
     "sector_city_engagement_stats_v2": "febbaedff9c758cf02074fed7e2dabca",
     "sector_engagement_stats": "194e5d55bb9a13ed228bd65f9b9f4ecd",
     "sector_engagement_stats_v2": "27e327e0e65abfb56943bc7baed82b51"
-  },
-  "functions_md5": "0753759dc495e99fdfa21562997e257f",
-  "triggers_md5": "2fec56f101e2fe21be93caf015be7a74"
+  }
 }

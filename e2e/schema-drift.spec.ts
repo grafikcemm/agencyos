@@ -27,6 +27,7 @@ const REQUIRED_TABLES = [
   'email_threads', 'email_messages', 'follow_up_sequences', 'suppression_list',
   'gmail_accounts', 'settings', 'service_catalog', 'tool_cost_logs',
   'lead_evidence', 'lead_match_feedback', 'run_spans', 'directives',
+  'contacts', 'lead_action_audit', // mig 045 + 057 (2026-07-13 canli)
 ]
 
 test('şema drift: test DB fingerprint == App DB kanonik referansı', async () => {

@@ -1474,6 +1474,41 @@ GRANT SELECT ON public.leads_with_status, public.run_steps, public.runs,
   public.sector_engagement_stats, public.sector_engagement_stats_v2
   TO anon, authenticated, service_role;
 
+-- ---- mig 045 (contacts) + 057 (lead_action_audit) — App DB'ye 2026-07-13'te uygulandi ----
+CREATE TABLE public.lead_action_audit (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id uuid REFERENCES public.leads(id) ON DELETE SET NULL,
+  action text NOT NULL CHECK (action IN ('called','no_answer','meeting','later','note')),
+  actor text NOT NULL,
+  channel text NOT NULL CHECK (channel IN ('ui','telegram')),
+  idempotency_key text UNIQUE,
+  before_state jsonb NOT NULL DEFAULT '{}'::jsonb,
+  after_state jsonb NOT NULL DEFAULT '{}'::jsonb,
+  note text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX lead_action_audit_lead_idx ON public.lead_action_audit (lead_id, created_at DESC);
+
+CREATE TABLE public.contacts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lead_id uuid NOT NULL REFERENCES public.leads(id) ON DELETE CASCADE,
+  full_name text NOT NULL,
+  role text NOT NULL DEFAULT 'owner'
+    CHECK (role IN ('owner','cto','cfo','marketing','operations','other')),
+  email text,
+  phone text,
+  linkedin_url text,
+  source text NOT NULL DEFAULT 'manual'
+    CHECK (source IN ('manual','apollo','website','instagram','referral')),
+  is_primary boolean NOT NULL DEFAULT false,
+  notes text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX contacts_lead_idx ON public.contacts (lead_id);
+CREATE UNIQUE INDEX contacts_lead_email_unique
+  ON public.contacts (lead_id, lower(email)) WHERE email IS NOT NULL;
+
 -- ---- RLS (parity: enabled=true) + TEST-ONLY permissive policy ----
 DO $rls$
 DECLARE t text;

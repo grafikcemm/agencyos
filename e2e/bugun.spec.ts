@@ -131,6 +131,17 @@ test('satır aksiyonu: Arandı → contacted + follow-up planlanır (server auth
       return data?.status === 'contacted' && data?.next_follow_up_at != null && data?.last_contact_at != null
     }, { timeout: 10_000 })
     .toBe(true)
+
+  // Audit kanıtı (mig 057 canlı): before/after + actor + idempotency key kayıtlı.
+  const { data: audit } = await db
+    .from('lead_action_audit')
+    .select('action, actor, channel, before_state, after_state, idempotency_key')
+    .eq('lead_id', lead.leadId)
+  expect(audit).toHaveLength(1)
+  expect(audit![0]).toMatchObject({ action: 'called', channel: 'ui', actor: 'operator' })
+  expect((audit![0].before_state as { status: string }).status).toBe('new')
+  expect((audit![0].after_state as { status: string }).status).toBe('contacted')
+  expect(audit![0].idempotency_key).toContain(lead.leadId)
 })
 
 test('kokpitten tam HITL akışı: Onayla → Gönder (dry-run) → Gönderildi + DB kanıtı', async ({ page, request }) => {

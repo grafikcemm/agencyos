@@ -91,6 +91,9 @@ export async function cleanupE2E(): Promise<void> {
     }
     // idempotency_key hash'tir — onaylar preview'daki e2e domain izinden silinir.
     await db.from('approval_requests').delete().ilike('redacted_preview', `%${E2E_EMAIL_DOMAIN}%`)
+    // Audit satırları lead silinince SET NULL kalır — artık bırakmamak için önce sil.
+    await db.from('lead_action_audit').delete().in('lead_id', leadIds)
+    await db.from('contacts').delete().in('lead_id', leadIds) // (cascade var; açık silme = niyet belgesi)
     await db.from('leads').delete().in('id', leadIds)
   }
   await db.from('suppression_list').delete().ilike('address', `%@${E2E_EMAIL_DOMAIN}`)
