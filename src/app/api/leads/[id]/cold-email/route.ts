@@ -17,6 +17,7 @@ import {
   SIGNATURE_SETTING_KEYS,
   COMPLIANCE_SETTING_KEYS,
   type ColdEmailLead,
+  type ContactRole,
 } from '@/lib/coldEmail'
 import { COLD_EMAIL_TEMPLATES, selectColdEmailTemplate } from '@/lib/coldEmailTemplates'
 
@@ -67,10 +68,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     })
     const template = COLD_EMAIL_TEMPLATES[templateId]
 
+    // Rol-aware kişiselleştirme (Faz D2, mig 045): birincil contact varsa mesaj
+    // onun rol açısıyla çerçevelenir. Yoksa mevcut işletme-genel davranış korunur.
+    let contact: { fullName: string; role: ContactRole } | undefined
+    try {
+      const { data: primary } = await supabaseAdmin
+        .from('contacts')
+        .select('full_name, role')
+        .eq('lead_id', id)
+        .order('is_primary', { ascending: false })
+        .order('created_at', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+      if (primary?.full_name) {
+        contact = { fullName: primary.full_name as string, role: (primary.role as ContactRole) ?? 'other' }
+      }
+    } catch {
+      /* contacts okunamadı — rol açısı olmadan devam (best-effort) */
+    }
+
     const { content } = await callWithOperation(
       'draft_email',
       buildColdEmailSystemPrompt(),
-      buildColdEmailUserPrompt(lead, template),
+      buildColdEmailUserPrompt(lead, template, contact),
       700,
     )
 

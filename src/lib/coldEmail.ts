@@ -76,8 +76,44 @@ export function buildColdEmailSystemPrompt(): string {
   ].join('\n')
 }
 
-export function buildColdEmailUserPrompt(lead: ColdEmailLead, template?: ColdEmailTemplate): string {
+/** Karar-verici rolü → ikna açısı (Faz D2 — deterministik; doc 33 §1B). */
+export type ContactRole = 'owner' | 'cto' | 'cfo' | 'marketing' | 'operations' | 'other'
+
+export interface OutreachContact {
+  fullName: string
+  role: ContactRole
+}
+
+export const ROLE_ANGLES: Record<ContactRole, string> = {
+  owner:
+    'İşletme sahibi: kaybedilen MÜŞTERİ ve GELİR diliyle konuş (randevu/sipariş kaçırma, ' +
+    'rakip görünürlüğü). Teknik jargon yok; tek somut sonuç + düşük efor vurgusu.',
+  cto: 'Teknik yönetici: mevcut altyapının somut açığı (hız, mobil kırıklık, güvenlik) + ' +
+    'düşük-riskli modernizasyon. Abartısız, ölçülebilir dil.',
+  cfo: 'Finans yöneticisi: maliyet/geri dönüş çerçevesi — kaçan gelir, düşük sabit maliyet, ' +
+    'öngörülebilir aylık paket. Yatırım değil tasarruf dili.',
+  marketing:
+    'Pazarlama: dönüşüm ve marka tutarlılığı — mevcut görsel/dijital varlığın dönüşüm ' +
+    'kaybettirdiği nokta + hızlı kazanım örneği.',
+  operations:
+    'Operasyon: zaman kaybettiren manuel süreç (telefonla randevu, DM ile sipariş) + ' +
+    'otomatikleşen akışın gündelik faydası.',
+  other: 'Rol bilinmiyor: işletme-sahibi diliyle, tek somut gözlem + tek net değer önerisi.',
+}
+
+export function buildColdEmailUserPrompt(
+  lead: ColdEmailLead,
+  template?: ColdEmailTemplate,
+  contact?: OutreachContact,
+): string {
   const lines: string[] = ['İŞLETME BİLGİLERİ:', `Ad: ${lead.business_name}`]
+
+  if (contact) {
+    lines.push(
+      `Alıcı kişi: ${contact.fullName} (rol: ${contact.role})`,
+      `ROL AÇISI (mesajın çerçevesi BU olacak): ${ROLE_ANGLES[contact.role] ?? ROLE_ANGLES.other}`,
+    )
+  }
 
   if (lead.sector) lines.push(`Sektör: ${lead.sector}`)
   if (lead.district) lines.push(`Konum: ${lead.district}, İstanbul`)

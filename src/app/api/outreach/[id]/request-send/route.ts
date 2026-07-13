@@ -7,6 +7,7 @@ import { requireApiAccess } from '@/lib/auth'
 import { enforceSameOrigin, parseJsonBody, BadRequestError } from '@/lib/api/guards'
 import { requestSendApproval } from '@/lib/outreach/gmail'
 import { lintOutreachDraft, type QualityLintResult } from '@/lib/outreach/qualityLint'
+import { getBannedPhrases, recordVoiceDelta } from '@/lib/outreach/voiceDna'
 import { supabaseAdmin } from '@/lib/supabase'
 
 /** Deterministik kalite lint'i (Faz D3) — şimdilik ADVISORY: sonuç response'ta
@@ -20,19 +21,21 @@ async function lintDraft(draftId: string, overrides: { subject?: string; finalBo
       .eq('id', draftId)
       .maybeSingle()
     if (!draft) return null
+
+    // Voice DNA v0 (Faz D1): operatör gövdeyi düzenlediyse SİLİNENLERİ öğren
+    // (aday sayacı; otomatik yasaklama yok — onay operatörde). Best-effort.
+    const originalBody = (draft.body as string) ?? ''
+    if (overrides.finalBody && overrides.finalBody !== originalBody) {
+      await recordVoiceDelta(originalBody, overrides.finalBody)
+    }
+
     const { data: evidence } = await supabaseAdmin
       .from('lead_evidence')
       .select('id')
       .eq('lead_id', draft.lead_id as string)
       .limit(1)
-    const { data: settings } = await supabaseAdmin
-      .from('settings')
-      .select('voice_banned_phrases')
-      .limit(1)
-      .maybeSingle()
-    const banned = Array.isArray(settings?.voice_banned_phrases)
-      ? (settings.voice_banned_phrases as string[])
-      : []
+    // Onaylı yasak ifadeler settings key/value deposundan (kolon değil).
+    const banned = await getBannedPhrases()
     return lintOutreachDraft({
       subject: overrides.subject ?? (draft.subject as string | null),
       body: overrides.finalBody ?? ((draft.body as string) ?? ''),
