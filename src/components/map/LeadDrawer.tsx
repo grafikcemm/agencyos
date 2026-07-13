@@ -394,15 +394,24 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
     ])
   }
 
+  // Faz 3.1: gerçek dönüşüm — proje oluşmadan "dönüştü" denmez; hata drawer'ı KAPATMAZ.
+  const [convertState, setConvertState] = useState<{ busy: boolean; done: boolean; error: string | null }>({
+    busy: false, done: false, error: null,
+  })
   const handleConvertToProject = async () => {
+    if (convertState.busy || convertState.done) return
+    setConvertState({ busy: true, done: false, error: null })
     try {
-      await fetch('/api/db/leads', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: lead.id, status: 'converted' })
-      })
-      onClose()
-    } catch { /* ignore */ }
+      const res = await fetch(`/api/leads/${lead.id}/convert`, { method: 'POST' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setConvertState({ busy: false, done: false, error: json.error ?? `HTTP ${res.status}` })
+        return
+      }
+      setConvertState({ busy: false, done: true, error: null })
+    } catch {
+      setConvertState({ busy: false, done: false, error: 'bağlantı hatası' })
+    }
   }
 
   const copyText = (text: string) => {
@@ -872,13 +881,25 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
             </button>
             <button
               onClick={handleConvertToProject}
-              disabled={lead.status === 'converted'}
+              disabled={lead.status === 'converted' || convertState.busy || convertState.done}
+              data-testid="convert-to-project"
               className="flex items-center justify-center gap-1.5 py-2 bg-[var(--bg-base)] border border-[var(--border-subtle)] hover:border-[var(--success)] hover:text-[var(--success)] text-[var(--text-primary)] text-xs font-bold rounded-lg transition-all disabled:opacity-40"
             >
               <Briefcase className="w-3.5 h-3.5" />
-              {lead.status === 'converted' ? 'Kazanıldı' : 'Projeye Dönüştür'}
+              {convertState.done
+                ? 'Proje oluşturuldu ✓'
+                : convertState.busy
+                  ? 'Dönüştürülüyor…'
+                  : lead.status === 'converted'
+                    ? 'Kazanıldı'
+                    : 'Projeye Dönüştür'}
             </button>
           </div>
+          {convertState.error && (
+            <p className="text-[10px] text-red-400" data-testid="convert-error">
+              Dönüşüm başarısız: {convertState.error} — drawer açık kaldı, tekrar deneyebilirsin.
+            </p>
+          )}
           <button
             onClick={handleAnalyze}
             disabled={analyzing}
