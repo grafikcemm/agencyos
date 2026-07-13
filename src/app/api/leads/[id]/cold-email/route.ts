@@ -20,6 +20,11 @@ import {
   type ContactRole,
 } from '@/lib/coldEmail'
 import { COLD_EMAIL_TEMPLATES, selectColdEmailTemplate } from '@/lib/coldEmailTemplates'
+import { evaluateOutboundText } from '@/lib/outreach/outboundGate'
+import { getApprovedStyleRules } from '@/lib/outreach/voiceDna'
+import type { ClaimEvidenceEntry } from '@/lib/outreach/qualityLint'
+
+const SCHEMA_MISSING = new Set(['42P01', 'PGRST205'])
 
 // LLM çağrısı birkaç saniye sürebilir — serverless timeout'u yükselt.
 export const maxDuration = 60
@@ -87,10 +92,34 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       /* contacts okunamadı — rol açısı olmadan devam (best-effort) */
     }
 
+    // Sprint-3 Faz 3.2: kanıt listesi prompt'a girer — iddialar YALNIZ bunlara
+    // dayanabilir; model her iddiayı claims[] içinde evidence id ile döner.
+    const { data: evidenceRows, error: evErr } = await supabaseAdmin
+      .from('lead_evidence')
+      .select('id, summary, kind, source')
+      .eq('lead_id', id)
+      .limit(20)
+    if (evErr) throw new Error(`kanıt listesi okunamadı: ${evErr.message}`)
+    const evidence = (evidenceRows ?? []).map((e) => ({
+      id: e.id as string,
+      summary: String(e.summary ?? ''),
+    }))
+
+    // Faz 3.7: ONAYLI Voice DNA kuralları üretime enjekte edilir. Okunamazsa
+    // hata YUTULMAZ: üretim kuralsız devam eder ama degraded bayrağı görünür.
+    let voiceRules: { positive: string[]; negative: string[] } | undefined
+    let voiceDegraded = false
+    try {
+      voiceRules = await getApprovedStyleRules()
+    } catch (err) {
+      voiceDegraded = true
+      console.error('[cold-email] Voice DNA kuralları okunamadı:', err instanceof Error ? err.message : 'unknown')
+    }
+
     const { content } = await callWithOperation(
       'draft_email',
-      buildColdEmailSystemPrompt(),
-      buildColdEmailUserPrompt(lead, template, contact),
+      buildColdEmailSystemPrompt(voiceRules),
+      buildColdEmailUserPrompt(lead, template, contact, evidence),
       700,
     )
 
@@ -112,6 +141,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .filter(Boolean)
       .join('\n\n')
 
+    // Faz 3.3/3.4: yapısal claims → gate'in claimEvidence girdisi. Eşlenmemiş
+    // quantified/observational iddialar gate'te FAIL-CLOSED bloklanır.
+    const claimEvidence: ClaimEvidenceEntry[] = parsed.claims.map((c) => ({
+      claim: c.text,
+      evidenceIds: [c.evidenceId],
+    }))
+    const quality = await evaluateOutboundText({
+      leadId: id,
+      businessName: lead.business_name,
+      subject: parsed.subject,
+      body: fullBody,
+      kind: 'cold_email',
+      contactName: contact?.fullName ?? null,
+      claimEvidence,
+    })
+
     const { data: draft, error: insertErr } = await supabaseAdmin
       .from('outreach_messages')
       .insert({
@@ -127,7 +172,42 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .single()
     if (insertErr) throw insertErr
 
-    return NextResponse.json({ success: true, draft })
+    // Faz 3.1: iddia→kanıt bağının KALICI izi (mig 062). Şema canlı değilse
+    // yazılamaz — bu durum GİZLENMEZ (claimPersisted:false döner); doğrulama
+    // zaten gate'te authoritative olduğundan güvenlik kaybı yoktur.
+    let claimPersisted = false
+    if (parsed.claims.length > 0) {
+      const evidenceMeta = new Map(
+        (evidenceRows ?? []).map((e) => [e.id as string, { kind: e.kind as string | null, source: e.source as string | null }]),
+      )
+      const validRows = parsed.claims
+        .filter((c) => evidenceMeta.has(c.evidenceId))
+        .map((c) => ({
+          outreach_message_id: draft.id,
+          claim_text: c.text,
+          evidence_id: c.evidenceId,
+          evidence_type: evidenceMeta.get(c.evidenceId)?.kind ?? null,
+          evidence_source: evidenceMeta.get(c.evidenceId)?.source ?? null,
+        }))
+      if (validRows.length > 0) {
+        const { error: ceErr } = await supabaseAdmin.from('outreach_claim_evidence').insert(validRows)
+        if (!ceErr) claimPersisted = true
+        else if (SCHEMA_MISSING.has(ceErr.code ?? '')) {
+          console.warn('[cold-email] outreach_claim_evidence şeması canlı değil (mig 062 onay bekliyor) — iz yazılamadı')
+        } else {
+          console.error('[cold-email] claim_evidence izi yazılamadı:', ceErr.message)
+        }
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      draft,
+      quality: { ok: quality.ok, violations: quality.violations },
+      claims: parsed.claims,
+      claimPersisted,
+      ...(voiceDegraded ? { voiceDegraded: true } : {}),
+    })
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Sunucu hatası'
     return NextResponse.json({ success: false, error: msg }, { status: 500 })

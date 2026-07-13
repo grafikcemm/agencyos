@@ -48,8 +48,13 @@ export const COMPLIANCE_SETTING_KEYS = [
   'compliance_enabled',
 ] as const
 
-export function buildColdEmailSystemPrompt(): string {
-  return [
+export interface VoiceRuleSet {
+  positive: string[]
+  negative: string[]
+}
+
+export function buildColdEmailSystemPrompt(voiceRules?: VoiceRuleSet): string {
+  const lines = [
     "Sen Ali Cem Bozma'sın (Grafikcem) — İstanbul'da çalışan freelance grafik ve web tasarımcısı.",
     'Küçük ve orta ölçekli işletmelere web sitesi, marka kimliği, sosyal medya tasarımı ve',
     'Google işletme profili iyileştirmesi yapıyorsun.',
@@ -70,10 +75,29 @@ export function buildColdEmailSystemPrompt(): string {
     '- ASLA link, URL, e-posta adresi, telefon numarası veya imza yazma — imza otomatik eklenecek.',
     '- Köşeli parantezli placeholder ([isim] gibi) kullanma; bilmediğin bilgiyi yazmadan geç.',
     '',
+    'KANIT DİSİPLİNİ (ZORUNLU):',
+    '- Somut/sayısal HER iddia (puan, yorum sayısı, "siteniz yok" gibi gözlemler) YALNIZ',
+    '  sana verilen KANIT LİSTESİNDEKİ maddelere dayanabilir. Listede karşılığı olmayan',
+    '  hiçbir iddiayı YAZMA — uydurma yasak.',
+    '- Kullandığın her iddiayı "claims" dizisinde, dayandığı kanıtın id\'siyle listele.',
+  ]
+
+  // Sprint-3 Faz 3.7: ONAYLI Voice DNA kuralları üretime enjekte edilir.
+  // (Yalnız operatör onaylı kurallar — otomatik öğrenilen adaylar ASLA.)
+  if (voiceRules && (voiceRules.positive.length > 0 || voiceRules.negative.length > 0)) {
+    lines.push('', 'KULLANICININ ONAYLI SES/STİL KURALLARI:')
+    for (const r of voiceRules.positive) lines.push(`- UYGULA: ${r}`)
+    for (const r of voiceRules.negative) lines.push(`- KAÇIN: ${r}`)
+  }
+
+  lines.push(
+    '',
     'ÇIKTI: SADECE geçerli JSON döndür, başka hiçbir şey yazma:',
-    '{"subject": "...", "body": "..."}',
+    '{"subject": "...", "body": "...", "claims": [{"text": "iddia cümlesi", "evidenceId": "kanıt-id"}]}',
     '"subject" 50 karakteri geçmesin, clickbait olmasın; işletme adını veya somut gözlemi içersin.',
-  ].join('\n')
+    'Somut iddia kullanmadıysan "claims": [] döndür.',
+  )
+  return lines.join('\n')
 }
 
 /** Karar-verici rolü → ikna açısı (Faz D2 — deterministik; doc 33 §1B). */
@@ -101,10 +125,16 @@ export const ROLE_ANGLES: Record<ContactRole, string> = {
   other: 'Rol bilinmiyor: işletme-sahibi diliyle, tek somut gözlem + tek net değer önerisi.',
 }
 
+export interface EvidenceItem {
+  id: string
+  summary: string
+}
+
 export function buildColdEmailUserPrompt(
   lead: ColdEmailLead,
   template?: ColdEmailTemplate,
   contact?: OutreachContact,
+  evidence?: EvidenceItem[],
 ): string {
   const lines: string[] = ['İŞLETME BİLGİLERİ:', `Ad: ${lead.business_name}`]
 
@@ -149,15 +179,54 @@ export function buildColdEmailUserPrompt(
     )
   }
 
+  // Sprint-3 Faz 3.2: iddiaların dayanabileceği TEK kaynak — kanıt listesi.
+  if (evidence && evidence.length > 0) {
+    lines.push('', 'KANIT LİSTESİ (iddialar YALNIZ bunlara dayanabilir; claims dizisinde id kullan):')
+    for (const e of evidence) lines.push(`- id: ${e.id} → ${e.summary}`)
+  } else {
+    lines.push('', 'KANIT LİSTESİ: BOŞ — hiçbir somut/sayısal iddia yazma; "claims": [] döndür.')
+  }
+
   return lines.join('\n')
 }
 
+export interface ColdEmailClaim {
+  text: string
+  evidenceId: string
+}
+
+export interface ParsedColdEmail {
+  subject: string
+  body: string
+  /** Structured output (Faz 3.2): gövdedeki somut iddialar → kanıt id bağı. */
+  claims: ColdEmailClaim[]
+}
+
+function parseClaims(value: unknown): ColdEmailClaim[] {
+  if (!Array.isArray(value)) return []
+  const out: ColdEmailClaim[] = []
+  for (const c of value) {
+    if (
+      c &&
+      typeof c === 'object' &&
+      typeof (c as Record<string, unknown>).text === 'string' &&
+      typeof (c as Record<string, unknown>).evidenceId === 'string'
+    ) {
+      const text = ((c as Record<string, string>).text || '').trim().slice(0, 500)
+      const evidenceId = ((c as Record<string, string>).evidenceId || '').trim()
+      if (text && evidenceId) out.push({ text, evidenceId })
+    }
+  }
+  return out
+}
+
 /**
- * LLM çıktısını {subject, body} olarak parse eder. Önce markdown fence'leri
- * temizleyip JSON.parse dener; bozuk JSON'da regex fallback. İkisi de
- * başarısızsa null — route 502 döndürür.
+ * LLM çıktısını {subject, body, claims} olarak parse eder. Önce markdown
+ * fence'leri temizleyip JSON.parse dener; bozuk JSON'da regex fallback
+ * (fallback'te claims [] kalır — eşlenmemiş iddialar gate'te bloklanır,
+ * fail-closed yön korunur). İkisi de başarısızsa null — route 502 döndürür.
  */
-export function parseColdEmailOutput(raw: string): { subject: string; body: string } | null {
+export function parseColdEmailOutput(raw: string): ParsedColdEmail | null {
   const cleaned = raw
     .replace(/```json/gi, '')
     .replace(/```/g, '')
@@ -173,7 +242,9 @@ export function parseColdEmailOutput(raw: string): { subject: string; body: stri
     ) {
       const subject = ((parsed as Record<string, string>).subject || '').trim()
       const body = ((parsed as Record<string, string>).body || '').trim()
-      if (subject && body) return { subject, body }
+      if (subject && body) {
+        return { subject, body, claims: parseClaims((parsed as Record<string, unknown>).claims) }
+      }
     }
   } catch {
     // JSON bozuk — regex fallback'e düş
@@ -185,7 +256,7 @@ export function parseColdEmailOutput(raw: string): { subject: string; body: stri
     const unescape = (s: string) => s.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
     const subject = unescape(subjectMatch[1]).trim()
     const body = unescape(bodyMatch[1]).trim()
-    if (subject && body) return { subject, body }
+    if (subject && body) return { subject, body, claims: [] }
   }
 
   return null

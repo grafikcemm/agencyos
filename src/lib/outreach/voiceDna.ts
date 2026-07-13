@@ -67,40 +67,49 @@ export function extractRemovedPhrases(originalBody: string, finalBody: string): 
   return out
 }
 
+// Sprint-3 Faz 3.5: Supabase read/write hataları YUTULMAZ — hata görünür throw
+// olur; "okunamadı" ile "kayıt yok" ayrıdır. Kapı çağıranları throw'u zaten
+// fail-closed işler (onay oluşmaz / gönderim yürümez).
 async function readSetting(key: string): Promise<string | null> {
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from('settings')
     .select('value')
     .eq('key', key)
     .maybeSingle()
+  if (error) throw new Error(`settings okunamadı (${key}): ${error.message}`)
   return (data?.value as string) ?? null
 }
 
 async function writeSetting(key: string, value: string): Promise<void> {
-  const { data: existing } = await supabaseAdmin
+  const { data: existing, error: readErr } = await supabaseAdmin
     .from('settings')
     .select('id')
     .eq('key', key)
     .maybeSingle()
+  if (readErr) throw new Error(`settings okunamadı (${key}): ${readErr.message}`)
   if (existing) {
-    await supabaseAdmin
+    const { error } = await supabaseAdmin
       .from('settings')
       .update({ value, updated_at: new Date().toISOString() })
       .eq('id', existing.id)
+    if (error) throw new Error(`settings yazılamadı (${key}): ${error.message}`)
   } else {
-    await supabaseAdmin.from('settings').insert({ key, value })
+    const { error } = await supabaseAdmin.from('settings').insert({ key, value })
+    if (error) throw new Error(`settings yazılamadı (${key}): ${error.message}`)
   }
 }
 
-/** Onaylı yasak ifadeler — lint yalnız bunu uygular. */
+/**
+ * Onaylı yasak ifadeler — lint yalnız bunu uygular.
+ * Faz 3.6: OKUNAMAZSA THROW — outbound kalite kapısı fail-closed davranır
+ * (okuma hatası ASLA "yasak liste boş" gibi fail-open sonuç üretmez).
+ * Kayıt yoksa veya değer bozuksa-ama-okunabildiyse: bozuk değer de güvensizdir → throw.
+ */
 export async function getBannedPhrases(): Promise<string[]> {
-  try {
-    const raw = await readSetting('voice_banned_phrases')
-    const parsed = raw ? JSON.parse(raw) : []
-    return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === 'string') : []
-  } catch {
-    return []
-  }
+  const raw = await readSetting('voice_banned_phrases') // hata → throw (fail-closed)
+  if (!raw) return [] // kayıt yok = henüz onaylı yasak ifade tanımlanmamış
+  const parsed: unknown = JSON.parse(raw) // bozuk JSON → throw (fail-closed)
+  return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === 'string') : []
 }
 
 export interface PhraseCandidate {
@@ -112,20 +121,17 @@ export interface PhraseCandidate {
 }
 
 export async function getPhraseCandidates(): Promise<PhraseCandidate[]> {
-  try {
-    const raw = await readSetting('voice_phrase_candidates')
-    const parsed = (raw ? JSON.parse(raw) : {}) as Record<string, { count: number; lastSeen: string }>
-    return Object.entries(parsed)
-      .map(([phrase, v]) => ({
-        phrase,
-        count: v.count ?? 0,
-        lastSeen: v.lastSeen ?? '',
-        readyForReview: (v.count ?? 0) >= PROMOTE_THRESHOLD,
-      }))
-      .sort((a, b) => b.count - a.count)
-  } catch {
-    return []
-  }
+  // Hata yutulmaz: UI sahte boş-liste yerine gerçek hatayı görür (Faz 3.5).
+  const raw = await readSetting('voice_phrase_candidates')
+  const parsed = (raw ? JSON.parse(raw) : {}) as Record<string, { count: number; lastSeen: string }>
+  return Object.entries(parsed)
+    .map(([phrase, v]) => ({
+      phrase,
+      count: v.count ?? 0,
+      lastSeen: v.lastSeen ?? '',
+      readyForReview: (v.count ?? 0) >= PROMOTE_THRESHOLD,
+    }))
+    .sort((a, b) => b.count - a.count)
 }
 
 /**
@@ -152,7 +158,9 @@ export async function recordVoiceDelta(originalBody: string, finalBody: string):
     )
     await writeSetting('voice_phrase_candidates', JSON.stringify(trimmed))
     return removed.length
-  } catch {
+  } catch (err) {
+    // Öğrenme kaydı outreach akışını DÜŞÜRMEZ ama hata da YUTULMAZ — görünür log.
+    console.error('[voiceDna] recordVoiceDelta yazılamadı:', err instanceof Error ? err.message : 'unknown')
     return 0
   }
 }
@@ -253,12 +261,8 @@ const EMPTY_OBS: StyleObservations = {
 }
 
 async function readObservations(): Promise<StyleObservations> {
-  try {
-    const raw = await readSetting('voice_style_observations')
-    return raw ? { ...EMPTY_OBS, ...(JSON.parse(raw) as StyleObservations) } : { ...EMPTY_OBS }
-  } catch {
-    return { ...EMPTY_OBS }
-  }
+  const raw = await readSetting('voice_style_observations') // hata → throw (yutulmaz)
+  return raw ? { ...EMPTY_OBS, ...(JSON.parse(raw) as StyleObservations) } : { ...EMPTY_OBS }
 }
 
 /** Onaylı düzenlemeden yapısal gözlem biriktir (best-effort; akış düşmez). */
@@ -284,8 +288,9 @@ export async function recordStyleDelta(
       obs.sectors[sector] = s
     }
     await writeSetting('voice_style_observations', JSON.stringify(obs))
-  } catch {
-    /* best-effort */
+  } catch (err) {
+    // Akışı düşürmez ama sessiz de kalmaz (Faz 3.5).
+    console.error('[voiceDna] recordStyleDelta yazılamadı:', err instanceof Error ? err.message : 'unknown')
   }
 }
 
@@ -326,13 +331,10 @@ export interface VoiceProfile {
 }
 
 export async function getApprovedStyleRules(): Promise<{ positive: string[]; negative: string[] }> {
-  try {
-    const raw = await readSetting('voice_style_rules')
-    const parsed = raw ? (JSON.parse(raw) as { positive?: string[]; negative?: string[] }) : {}
-    return { positive: parsed.positive ?? [], negative: parsed.negative ?? [] }
-  } catch {
-    return { positive: [], negative: [] }
-  }
+  // Hata yutulmaz (Faz 3.5): okunamadıysa çağıran bilir; kayıt yoksa boş küme.
+  const raw = await readSetting('voice_style_rules')
+  const parsed = raw ? (JSON.parse(raw) as { positive?: string[]; negative?: string[] }) : {}
+  return { positive: parsed.positive ?? [], negative: parsed.negative ?? [] }
 }
 
 /** Operatör onayı: stil kuralını aktif profile taşır (tek yönlü, açık eylem). */

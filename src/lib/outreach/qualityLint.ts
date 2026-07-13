@@ -60,11 +60,23 @@ const BODY_MAX_CHARS = 1800 // Cold email kısa olmalı (~250 kelime).
 const CLICHES = [
   'umarım bu e-posta sizi iyi bulur',
   'umarim bu e-posta sizi iyi bulur',
+  'umarım bu mail sizi iyi bulur',
+  'umarim bu mail sizi iyi bulur',
   'değerli müşterimiz',
   'degerli musterimiz',
+  'değerli yetkili',
+  'degerli yetkili',
   'sizinle çalışmak için sabırsızlanıyorum',
   'sektör lideri',
   'sektor lideri',
+  'sektörünüzde lider',
+  'sektorunuzde lider',
+  // Sprint-3 Faz 3: prompt'ta yasaklanan kurumsal kalıplar lint'te de yakalanır.
+  'çözüm ortağı',
+  'cozum ortagi',
+  'sinerji',
+  'değer katmak',
+  'deger katmak',
   'i hope this email finds you well',
   'to whom it may concern',
 ]
@@ -99,6 +111,17 @@ const CTA_PATTERNS = [
   /görüşelim mi/gi,
   /goruselim mi/gi,
   /arayabilir miyim/gi,
+  // Sprint-3 Faz 2.7/3: üretim şablonlarının kullandığı düşük-sürtünmeli CTA
+  // biçimleri de "tanınan CTA" sayılır (NO_CTA yanlış-pozitifleri kapanır).
+  /g[öo]stereyim mi/gi,
+  /payla[şs]abilir miyim/gi,
+  /payla[şs]ay[ıi]m m[ıi]/gi,
+  /yazay[ıi]m m[ıi]/gi,
+  /["']?sonra["']? yazman[ıi]z yeterli/gi,
+  /["']?1["']? yazman[ıi]z yeterli/gi,
+  /de[ğg]erlendirelim mi/gi,
+  /[üu]zerinden ge[çc]elim mi/gi,
+  /inceleyelim mi/gi,
 ]
 
 /** Kanıt gerektiren iddia kalıpları: sayı/süre/yüzde/performans/sonuç/gözlem. */

@@ -306,10 +306,13 @@ function buildPitch(
     return `${name}, merhaba — dijital varlığınız henüz çok sınırlı, sadece Instagram var. Biz ${sectorName} için web sitesi ve müşteri hattı kuruyoruz. 5 dakikanız var mı?`
   if (evidence.website_quality_band === 'poor')
     return `${name}, merhaba — web siteniz var ama tasarımı güncel değil; ilk izlenimde müşteri kaybettiriyor. ${sectorName} için modern, mobil uyumlu bir yenileme yapıyoruz. 5 dakikanız var mı?`
+  // Sprint-3 Faz 3: kanıtsız iddialar ("1 haftada çözüyoruz", "müşteriler mesaj
+  // atıp dönüş alamıyor", "rakibe geçiyor") şablonlardan çıkarıldı — yalnız
+  // DOĞRULANABİLİR gözlem + iddiasız değer önerisi kaldı (audit T1/T3 kökü).
   if (!evidence.has_whatsapp)
-    return `${name}, merhaba — WhatsApp hattınız aktif değil. Müşteriler mesaj atıp dönüş alamıyor. Biz bunu 1 haftada çözüyoruz. 5 dakika konuşabilir miyiz?`
+    return `${name}, merhaba — profilinizde WhatsApp iletişim kanalı göremedim. ${sectorName} için mesaj ve soruları tek hatta toplayan bir kurulum yapıyoruz. 5 dakika konuşabilir miyiz?`
   if (!evidence.has_online_booking)
-    return `${name}, merhaba — online randevu sisteminiz yok. Arayanlar kapanmış sanıp rakibe geçiyor. ${sectorName} için randevu otomasyonu kuruyoruz. Değerlendirme yapabilir miyim?`
+    return `${name}, merhaba — online randevu sisteminiz görünmüyor. ${sectorName} için telefon trafiğini azaltan randevu otomasyonu kuruyoruz. Değerlendirme yapabilir miyim?`
   if ((lead.rating ?? 5) < 4.0)
     return `${name}, merhaba — Google puanınız ${lead.rating}. Bu müşterileri doğrudan etkiliyor. Yorum yönetimi sistemleri kuruyoruz. 5 dakika var mı?`
   return `${name}, merhaba — ${mainPain} konusunda çözümümüz var. ${sectorName} sektörüne özel, hızlı uygulama. Görüşebilir miyiz?`

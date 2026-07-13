@@ -271,7 +271,9 @@ function selectOffer(sector: string, signals: EvidenceSignals, businessName: str
       recommended_offer_id: 'ai_sales_assistant',
       recommended_offer_name: 'AI Satış Asistanı (WhatsApp/Instagram)',
       sales_angle: 'Soruları, randevuyu ve fiyat bilgisini 7/24 otomatik yanıtlayan satış asistanı — günde 2 saat kazandırır',
-      first_message: `Merhaba ${businessName}, müşterileriniz mesaj atıp geç yanıt aldığında rakibe geçiyor. WhatsApp/Instagram'da soruları yanıtlayan, randevu alan ve müşteri bilgisi toplayan bir AI asistan kuruyoruz. 5 dakikalık bir demo paylaşabilir miyim?`,
+      // Sprint-3 Faz 3: kanıtsız iddia yok — "rakibe geçiyor" (T1) doğrulanamaz
+      // davranış iddiasıydı; gözlem-temelli, iddiasız versiyona çevrildi.
+      first_message: `Merhaba ${businessName}, profilinizde WhatsApp/online randevu kanalı göremedim. Soruları yanıtlayan, randevu alan ve müşteri bilgisi toplayan bir AI asistan kuruyoruz. 5 dakikalık bir demo paylaşabilir miyim?`,
       next_best_action: 'AI asistan demo videosu/linki gönder',
     }
   }
@@ -290,7 +292,8 @@ function selectOffer(sector: string, signals: EvidenceSignals, businessName: str
       recommended_offer_id: 'review_engine',
       recommended_offer_name: 'Review Engine',
       sales_angle: 'Google yorumları artırılarak güven ve dönüşüm iyileştirilir',
-      first_message: `Merhaba ${businessName}, Google yorumlarınız rakiplerinizin gerisinde. 90 günde yorum sayınızı 3 katına çıkarmak mümkün — nasıl çalıştığını göstereyim mi?`,
+      // Faz 3: "90 günde 3 katına" (T2) kanıtsız nicel vaatti — kaldırıldı.
+      first_message: `Merhaba ${businessName}, Google yorum profilinize baktım; hasta güveni için daha güçlü olabilir. Yorumları düzenli artıran sistemimizin nasıl çalıştığını kısaca göstereyim mi?`,
       next_best_action: 'Review engine demo mesajı gönder',
     }
   }
@@ -300,7 +303,8 @@ function selectOffer(sector: string, signals: EvidenceSignals, businessName: str
       recommended_offer_id: 'appointment_recovery',
       recommended_offer_name: 'Randevu Kurtarma Sistemi',
       sales_angle: 'No-show oranı düşürülerek gelir korunur',
-      first_message: `Merhaba ${businessName}, no-show oranınızı yarıya indiren otomatik hatırlatma sistemi hakkında kısa bir demo paylaşabilir miyim?`,
+      // Faz 3: "yarıya indiren" (T5) kanıtsız nicel vaatti — kaldırıldı.
+      first_message: `Merhaba ${businessName}, gelmeyen randevular için otomatik hatırlatma sistemi kuruyoruz. Mevcut randevu akışınıza nasıl oturacağını kısa bir demoyla göstereyim mi?`,
       next_best_action: 'No-show demo linki gönder',
     }
   }
@@ -319,7 +323,8 @@ function selectOffer(sector: string, signals: EvidenceSignals, businessName: str
     recommended_offer_id: 'review_engine',
     recommended_offer_name: 'Review Engine',
     sales_angle: 'Google yorumları güçlendirilerek organik kazanım artırılır',
-    first_message: `Merhaba ${businessName}, Google yorumlarınızı otomatik artıran sistemimiz 90 günde somut sonuç veriyor — göstereyim mi?`,
+    // Faz 3: "90 günde somut sonuç" kanıtsız vaatti — kaldırıldı.
+    first_message: `Merhaba ${businessName}, Google yorumlarını düzenli ve doğal biçimde artıran bir sistem kuruyoruz. Nasıl çalıştığını kısaca göstereyim mi?`,
     next_best_action: 'Review engine teklif gönder',
   }
 }
