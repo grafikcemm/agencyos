@@ -8,7 +8,10 @@ import {
 import { rateLimit, clientIp } from '@/lib/api/rateLimit'
 
 // Tek paylaşımlı parola modeli → brute-force koruması kritik. IP başına 15 dk'da 8 deneme.
-const LOGIN_LIMIT = 8
+// E2E suite'i tek IP'den ~10+ BAŞARILI login yapar (her spec ayrı oturum) —
+// LOGIN_RATE_LIMIT env'i YALNIZ izole test ortamında yükseltilir
+// (playwright.config webServer env). Varsayılan (prod) 8 KALIR.
+const LOGIN_LIMIT = Math.max(1, Number(process.env.LOGIN_RATE_LIMIT ?? '') || 8)
 const LOGIN_WINDOW_MS = 15 * 60 * 1000
 
 // POST /api/auth/login — single shared password → httpOnly session cookie.

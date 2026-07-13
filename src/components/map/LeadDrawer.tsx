@@ -1,7 +1,8 @@
 "use client"
 
 import { useMemo, useState, useEffect } from 'react'
-import { X, Phone, Globe, MapPin, Star, Zap, FileText, Briefcase, Copy, MessageCircle, Mail, RefreshCw } from 'lucide-react'
+import { X, Phone, Globe, MapPin, Star, Zap, FileText, Briefcase, Copy, MessageCircle, Mail, RefreshCw, PenLine } from 'lucide-react'
+import { DraftEditor } from '@/components/outreach/DraftEditor'
 import { enrichLead, EnrichedLead } from '@/lib/enrichLead'
 import { buildProposal } from '@/lib/proposalBuilder'
 import { CATEGORY_DISPLAY } from '@/lib/customerCategory'
@@ -120,6 +121,7 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
   const [enrichingApollo, setEnrichingApollo] = useState(false)
   const [apolloResult, setApolloResult] = useState<string | null>(null)
   const [emailDraft, setEmailDraft] = useState<{ id: string; subject: string | null; body: string } | null>(null)
+  const [emailEditing, setEmailEditing] = useState(false)
   const [draftingEmail, setDraftingEmail] = useState(false)
   const [emailError, setEmailError] = useState<string | null>(null)
   // Gmail HITL gönderim durumu (Sprint 0 Faz 4) — onay/gönderim/dry-run.
@@ -220,10 +222,15 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
     setGmailBusy(true)
     setGmailNote(null)
     try {
+      // Faz 4.4: onay isteği GERÇEK final içerikle gider — boş {} ASLA.
+      // Sunucu digest'i bu içeriğe bağlar; sonradan sapma digest-mismatch olur.
       const res = await fetch(`/api/outreach/${emailDraft.id}/request-send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          ...(emailDraft.subject?.trim() ? { subject: emailDraft.subject.trim() } : {}),
+          finalBody: emailDraft.body,
+        }),
       })
       const data = await res.json()
       if (data.success) {
@@ -392,6 +399,34 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
       { key: 'proposal_whatsapp', kind: 'proposal_whatsapp', text: p.whatsappText },
       { key: 'proposal_email', kind: 'proposal_email', text: p.emailText, subject: `Teklif — ${lead.business_name}` },
     ])
+  }
+
+  // Faz 5.1: KALICI teklif — client buildProposal yalnız önizleme; kalıcı yol
+  // proposalService API'si (mig 061 canlıysa tek-transaction RPC).
+  const [persistState, setPersistState] = useState<{ busy: boolean; note: string | null }>({ busy: false, note: null })
+  const handlePersistProposal = async () => {
+    const offerIds = (lead.recommended_offers || []).map((o) => o.offerId)
+    if (!offerIds.length || persistState.busy) return
+    setPersistState({ busy: true, note: null })
+    try {
+      const res = await fetch(`/api/leads/${lead.id}/proposal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offerIds }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (json.success) {
+        setPersistState({ busy: false, note: `Kalıcı teklif kaydedildi: v${json.version}${json.atomic ? '' : ' (legacy — 061 RPC bekliyor)'}` })
+      } else if (json.schemaMissing) {
+        setPersistState({ busy: false, note: 'Teklif şeması (mig 061) canlı değil — kalıcı kayıt onay sonrası mümkün.' })
+      } else if (json.quality) {
+        setPersistState({ busy: false, note: `Kalite kapısı blokladı: ${json.quality.violations.map((v: { code: string }) => v.code).join(', ')}` })
+      } else {
+        setPersistState({ busy: false, note: json.error ?? 'Teklif kaydedilemedi.' })
+      }
+    } catch {
+      setPersistState({ busy: false, note: 'Bağlantı hatası.' })
+    }
   }
 
   // Faz 3.1: gerçek dönüşüm — proje oluşmadan "dönüştü" denmez; hata drawer'ı KAPATMAZ.
@@ -746,6 +781,29 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
 
             {emailDraft && (
               <>
+                {/* Faz 4.1: drawer'dan inline düzenleme — kapı + ihlal bağlama +
+                    deterministik düzeltme + GERÇEK finalBody ile onaya alma. */}
+                <button
+                  onClick={() => setEmailEditing((v) => !v)}
+                  data-testid={`drawer-draft-edit-${emailDraft.id}`}
+                  className="text-[9px] text-[var(--accent)] hover:text-[var(--accent-hover)] flex items-center gap-1"
+                >
+                  <PenLine className="w-3 h-3" /> {emailEditing ? 'Düzenlemeyi kapat' : 'Düzenle + Onaya Al'}
+                </button>
+                {emailEditing && lead && (
+                  <DraftEditor
+                    draftId={emailDraft.id}
+                    leadId={lead.id}
+                    initialSubject={emailDraft.subject ?? ''}
+                    initialBody={emailDraft.body}
+                    onApprovalRequested={({ subject, body }) => {
+                      setEmailDraft((prev) => (prev ? { ...prev, subject: subject || prev.subject, body } : prev))
+                      setEmailEditing(false)
+                      setGmailNote('Onay isteği oluşturuldu — Konsol > Onay Kuyruğu üzerinden onaylayın.')
+                      void refreshSendStatus(emailDraft.id)
+                    }}
+                  />
+                )}
                 {emailDraft.subject && (
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-[11px] font-bold text-[var(--text-primary)] truncate">{emailDraft.subject}</div>
@@ -871,6 +929,20 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
         </div>
 
         <div className="p-4 border-t border-[var(--border-subtle)] shrink-0 space-y-2">
+          {/* Faz 5.1: kalıcı teklif — önizlemeden ayrı, durable + versiyonlu yol. */}
+          {proposal && (
+            <button
+              onClick={handlePersistProposal}
+              disabled={persistState.busy}
+              data-testid="persist-proposal"
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-[var(--bg-base)] border border-[var(--border-subtle)] hover:border-[var(--accent)] text-[10px] font-bold text-[var(--text-primary)] rounded-md disabled:opacity-50"
+            >
+              <FileText className="w-3 h-3" /> {persistState.busy ? 'Kaydediliyor…' : 'Kalıcı Teklif Kaydet (versiyonlu)'}
+            </button>
+          )}
+          {persistState.note && (
+            <p data-testid="persist-proposal-note" className="text-[10px] text-[var(--text-secondary)]">{persistState.note}</p>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleBuildProposal}

@@ -66,6 +66,9 @@ export default defineConfig({
       SUPABASE_SERVICE_ROLE_KEY: e2eDb?.serviceRoleKey ?? 'e2e-env-eksik',
       // Faz 5: bos token + fake transport = success-path E2E (dis cagri sifir).
       TELEGRAM_FAKE_TRANSPORT: 'success',
+      // Suite tek IP'den 10+ BASARILI login yapar (her spec ayri oturum) —
+      // brute-force limiti YALNIZ bu izole ortamda yukseltilir (prod default 8).
+      LOGIN_RATE_LIMIT: '100',
       // Faz 5: LIFE de IZOLE test DB'sine gider (telegram_* tablolari orada;
       // fingerprint fonksiyonu bu tablolari BILEREK dislar). Canli LIFE'a
       // E2E'den yazim yapisal imkansiz.

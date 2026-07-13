@@ -236,3 +236,49 @@ test('kokpitten tam HITL akışı: Onayla → Gönder (dry-run) → Gönderildi 
   const { data: om } = await db.from('outreach_messages').select('status').eq('id', seeded.draftId).single()
   expect(om?.status).toBe('sent')
 })
+
+test('Faz 4: taslağı DÜZENLE → ihlal bağlama → "İhlalleri düzelt" → GERÇEK finalBody ile onaya al', async ({ page }) => {
+  const db = supabaseAdmin()
+  const seeded = await seedDraft('faz4-editor')
+
+  await login(page)
+  await page.goto('/bugun')
+
+  const row = page.getByTestId(`send-draft-${seeded.draftId}`)
+  await expect(row).toBeVisible()
+
+  // Editörü aç, gövdeye KLİŞE + kanıtsız iddia enjekte et.
+  await row.getByTestId(`draft-edit-toggle-${seeded.draftId}`).click()
+  const bodyBox = row.getByTestId(`draft-body-${seeded.draftId}`)
+  const current = await bodyBox.inputValue()
+  await bodyBox.fill(`Umarım bu mail sizi iyi bulur. Randevularınızı 90 günde ikiye katlarız.\n${current}`)
+
+  // Kapı: ihlaller görünür + metin bölgesine bağlanır (mark).
+  await row.getByTestId(`draft-gate-${seeded.draftId}`).click()
+  await expect(row.getByTestId(`draft-violations-${seeded.draftId}`)).toBeVisible()
+  await expect(row.getByTestId('violation-mark-CLAIM_WITHOUT_EVIDENCE')).toBeVisible()
+
+  // Deterministik düzeltme → kapı yeniden koşar → temiz.
+  await row.getByTestId(`draft-fix-${seeded.draftId}`).click()
+  await expect(row.getByText('Kapı ✓')).toBeVisible({ timeout: 10_000 })
+
+  // Onaya al: GERÇEK final içerik gönderilir (boş {} değil). Panel onay
+  // sonrası editörü kapatıp yeniler → kanıt, satır rozetinin 'Onay bekliyor'a
+  // dönmesi (server yeniden sınıflar) + DB'deki approval kaydıdır.
+  await row.getByTestId(`draft-request-approval-${seeded.draftId}`).click()
+  await expect
+    .poll(async () => (await row.getByTestId(`draft-state-${seeded.draftId}`).textContent().catch(() => '')) ?? '', {
+      timeout: 20_000,
+    })
+    .toContain('Onay bekliyor')
+
+  // DB kanıtı: final_body düzeltilmiş içerik (klişe/iddia YOK) + onay kaydı var.
+  const { data: om } = await db
+    .from('outreach_messages')
+    .select('final_body')
+    .eq('id', seeded.draftId)
+    .single()
+  expect(String(om?.final_body)).not.toContain('Umarım bu mail')
+  expect(String(om?.final_body)).not.toContain('90 günde')
+  expect(String(om?.final_body)).toContain('istemiyorsanız')
+})

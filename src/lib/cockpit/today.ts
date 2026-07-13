@@ -56,6 +56,17 @@ export interface RevenueStrip {
   byStage: Array<{ stage: string; count: number; weightedTl: number }>
 }
 
+/** Faz 4.9: bugün TAMAMLANAN gelir aksiyonları (audit tabanlı — iddia değil kayıt). */
+export interface OpsMetrics {
+  /** lead_action_audit bugünkü satır sayısı (aksiyon türüne göre). */
+  actionsByType: Record<string, number>
+  totalActions: number
+  /** Bugün gönderilen e-postalar (outreach sent_at bugünde). */
+  emailsSent: number
+  /** Bugün oluşturulan onay istekleri. */
+  approvalsRequested: number
+}
+
 export interface TodayCockpit {
   leadsToCall: PanelResult<CallLead>
   /** C2: aynı telefonun dublörleri — review edilsin diye görünür, otomatik merge YOK. */
@@ -66,6 +77,7 @@ export interface TodayCockpit {
   sendIssues: PanelResult<SendIssue>
   hotLeads: PanelResult<HotLead>
   revenue: { data: RevenueStrip | null; error: string | null }
+  opsMetrics: { data: OpsMetrics | null; error: string | null }
 }
 
 /** Aşama → kapanma olasılığı katsayısı. [ASSUMPTION] Başlangıç kalibrasyonu —
@@ -261,6 +273,9 @@ async function loadPendingSends(): Promise<PendingSendDraft[]> {
       .in('outreach_message_id', draftIds),
     resolveCanonicalRecipients(leadIds),
   ])
+  // Faz 4.7: attempt sorgusu hatası yutulmaz — yanlış 'approval_missing'
+  // sınıflaması yerine panel error'a düşer.
+  if (attemptsQ.error) throw new Error(`send attempts okunamadı: ${attemptsQ.error.message}`)
   const attemptByDraft = new Map<string, { state: string; finalized: boolean }>()
   for (const a of attemptsQ.data ?? []) {
     attemptByDraft.set(a.outreach_message_id as string, {
@@ -312,6 +327,7 @@ async function loadPendingSends(): Promise<PendingSendDraft[]> {
       businessName: row.leads?.business_name ?? '—',
       domain: extractDomain(email) ?? 'bilinmiyor',
       subject: row.subject ?? '(konu yok)',
+      body: (row.final_body ?? row.body ?? '').trim(),
       state,
       recipientSource: rec?.source ?? 'none',
       nextAction: DRAFT_NEXT_ACTION[state],
@@ -409,9 +425,42 @@ async function loadRevenue(): Promise<RevenueStrip> {
   }
 }
 
+/** Faz 4.9: bugünkü tamamlanan gelir aksiyonları — audit kayıtlarından sayılır. */
+async function loadOpsMetrics(nowIso: string): Promise<OpsMetrics> {
+  const dayStart = `${nowIso.slice(0, 10)}T00:00:00.000Z`
+  const [auditQ, sentQ, approvalsQ] = await Promise.all([
+    supabaseAdmin.from('lead_action_audit').select('action').gte('created_at', dayStart),
+    supabaseAdmin
+      .from('outreach_messages')
+      .select('id')
+      .eq('status', 'sent')
+      .gte('sent_at', dayStart),
+    supabaseAdmin
+      .from('approval_requests')
+      .select('id')
+      .eq('action', 'outreach.send_gmail')
+      .gte('created_at', dayStart),
+  ])
+  // Hata yutulmaz — sahte "0 aksiyon" yerine panel error (Faz 4.7 ilkesi).
+  if (auditQ.error) throw new Error(`aksiyon metriği okunamadı: ${auditQ.error.message}`)
+  if (sentQ.error) throw new Error(`gönderim metriği okunamadı: ${sentQ.error.message}`)
+  if (approvalsQ.error) throw new Error(`onay metriği okunamadı: ${approvalsQ.error.message}`)
+  const actionsByType: Record<string, number> = {}
+  for (const a of auditQ.data ?? []) {
+    const key = String(a.action ?? 'other')
+    actionsByType[key] = (actionsByType[key] ?? 0) + 1
+  }
+  return {
+    actionsByType,
+    totalActions: (auditQ.data ?? []).length,
+    emailsSent: (sentQ.data ?? []).length,
+    approvalsRequested: (approvalsQ.data ?? []).length,
+  }
+}
+
 export async function getTodayCockpit(nowMs: number = Date.now()): Promise<TodayCockpit> {
   const nowIso = new Date(nowMs).toISOString()
-  const [callResult, pendingSends, replies, overdueFollowups, sendIssues, hotLeads, revenue] =
+  const [callResult, pendingSends, replies, overdueFollowups, sendIssues, hotLeads, revenue, opsMetrics] =
     await Promise.all([
       loadLeadsToCall(nowIso).then(
         (r) => ({ items: r.list, duplicates: r.duplicates, error: null as string | null }),
@@ -430,6 +479,10 @@ export async function getTodayCockpit(nowMs: number = Date.now()): Promise<Today
         (data) => ({ data, error: null as string | null }),
         (err: unknown) => ({ data: null, error: err instanceof Error ? err.message : 'hata' })
       ),
+      loadOpsMetrics(nowIso).then(
+        (data) => ({ data, error: null as string | null }),
+        (err: unknown) => ({ data: null, error: err instanceof Error ? err.message : 'hata' })
+      ),
     ])
   return {
     leadsToCall: { items: callResult.items, error: callResult.error },
@@ -440,5 +493,6 @@ export async function getTodayCockpit(nowMs: number = Date.now()): Promise<Today
     sendIssues,
     hotLeads,
     revenue,
+    opsMetrics,
   }
 }

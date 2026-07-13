@@ -161,7 +161,7 @@ export async function resolveCanonicalRecipients(leadIds: string[]): Promise<Map
   const ids = [...new Set(leadIds)].filter(Boolean)
   if (ids.length === 0) return out
 
-  const [{ data: primaries }, { data: leads }] = await Promise.all([
+  const [primariesQ, leadsQ] = await Promise.all([
     supabaseAdmin
       .from('contacts')
       .select('id, lead_id, full_name, email, created_at')
@@ -171,6 +171,12 @@ export async function resolveCanonicalRecipients(leadIds: string[]): Promise<Map
       .order('created_at', { ascending: false }),
     supabaseAdmin.from('leads').select('id, email').in('id', ids),
   ])
+  // Faz 4.7: sorgu hatası SAHTE 'recipient_missing' üretmesin — hata üste taşınır
+  // (panel error olarak görünür; boş-durum yalnız GERÇEK boşlukta).
+  if (primariesQ.error) throw new Error(`contacts okunamadı: ${primariesQ.error.message}`)
+  if (leadsQ.error) throw new Error(`leads okunamadı: ${leadsQ.error.message}`)
+  const primaries = primariesQ.data
+  const leads = leadsQ.data
 
   const primaryByLead = new Map<string, { id: string; full_name: string | null; email: string }>()
   for (const p of primaries ?? []) {

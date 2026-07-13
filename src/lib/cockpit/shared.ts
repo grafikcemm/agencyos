@@ -65,6 +65,8 @@ export interface PendingSendDraft {
   businessName: string
   domain: string
   subject: string
+  /** Faz 4.1: inline editörün etkin gövdesi (final_body ?? body). */
+  body: string
   state: DraftState
   /** Alıcının nereden çözüldüğü (primary contact / lead.email / yok). */
   recipientSource: 'primary_contact' | 'lead_email' | 'none'

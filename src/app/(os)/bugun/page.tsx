@@ -10,6 +10,7 @@ import { getTodayCockpit } from '@/lib/cockpit/today'
 import { PendingSendsPanel } from '@/components/cockpit/PendingSendsPanel'
 import { CallListPanel } from '@/components/cockpit/CallListPanel'
 import { SendIssuesPanel } from '@/components/cockpit/SendIssuesPanel'
+import { OpsMetricsBar } from '@/components/cockpit/OpsMetricsBar'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,9 +66,13 @@ export default async function BugunPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-5 py-8">
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex flex-wrap items-center gap-3 mb-6">
         <Sunrise className="w-6 h-6 text-[var(--accent)]" />
         <h1 className="text-xl font-bold text-[var(--text-primary)]">Bugün</h1>
+        {/* Faz 4.9: gerçek harcanan süre + tamamlanan gelir aksiyonları */}
+        <div className="ml-auto">
+          <OpsMetricsBar metrics={c.opsMetrics.data} error={c.opsMetrics.error} />
+        </div>
       </div>
 
       {/* Beklenen gelir şeridi */}

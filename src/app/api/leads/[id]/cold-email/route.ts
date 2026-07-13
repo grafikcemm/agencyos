@@ -22,6 +22,7 @@ import {
 import { COLD_EMAIL_TEMPLATES, selectColdEmailTemplate } from '@/lib/coldEmailTemplates'
 import { evaluateOutboundText } from '@/lib/outreach/outboundGate'
 import { getApprovedStyleRules } from '@/lib/outreach/voiceDna'
+import { resolveCanonicalRecipient } from '@/lib/contacts/contactService'
 import type { ClaimEvidenceEntry } from '@/lib/outreach/qualityLint'
 
 const SCHEMA_MISSING = new Set(['42P01', 'PGRST205'])
@@ -73,23 +74,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     })
     const template = COLD_EMAIL_TEMPLATES[templateId]
 
-    // Rol-aware kişiselleştirme (Faz D2, mig 045): birincil contact varsa mesaj
-    // onun rol açısıyla çerçevelenir. Yoksa mevcut işletme-genel davranış korunur.
+    // Faz 4.5/4.6: kişiselleştirme CANONICAL resolver'dan — YALNIZ primary
+    // contact (deterministik, en yeni primary); primary yoksa keyfi "en eski
+    // contact" SEÇİLMEZ (işletme-genel çerçeve kullanılır). Alıcı adresi de
+    // aynı resolver'dan gelir → request-send/approval digest'iyle tutarlı.
     let contact: { fullName: string; role: ContactRole } | undefined
-    try {
-      const { data: primary } = await supabaseAdmin
+    const recipient = await resolveCanonicalRecipient(id)
+    if (recipient.source === 'primary_contact' && recipient.contactId && recipient.contactName) {
+      const { data: primaryRow, error: roleErr } = await supabaseAdmin
         .from('contacts')
-        .select('full_name, role')
-        .eq('lead_id', id)
-        .order('is_primary', { ascending: false })
-        .order('created_at', { ascending: true })
-        .limit(1)
+        .select('role')
+        .eq('id', recipient.contactId)
         .maybeSingle()
-      if (primary?.full_name) {
-        contact = { fullName: primary.full_name as string, role: (primary.role as ContactRole) ?? 'other' }
-      }
-    } catch {
-      /* contacts okunamadı — rol açısı olmadan devam (best-effort) */
+      if (roleErr) throw new Error(`contact rolü okunamadı: ${roleErr.message}`)
+      contact = { fullName: recipient.contactName, role: ((primaryRow?.role as ContactRole) ?? 'other') }
     }
 
     // Sprint-3 Faz 3.2: kanıt listesi prompt'a girer — iddialar YALNIZ bunlara

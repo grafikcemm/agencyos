@@ -7,7 +7,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { MailCheck, Check, Send, UserPlus } from 'lucide-react'
+import { MailCheck, Check, Send, UserPlus, PenLine } from 'lucide-react'
+import { DraftEditor } from '@/components/outreach/DraftEditor'
 import type { PanelResult, PendingSendDraft, DraftState } from '@/lib/cockpit/shared'
 
 type RowState = { status: string | null; busy: boolean; error: string | null; sent: boolean; dryRun?: boolean }
@@ -124,6 +125,7 @@ export function PendingSendsPanel({ initial }: { initial: PanelResult<PendingSen
     )
   )
   const [savedContacts, setSavedContacts] = useState<Record<string, boolean>>({})
+  const [editing, setEditing] = useState<Record<string, boolean>>({})
 
   function patch(id: string, p: Partial<RowState>) {
     setRows((prev) => ({ ...prev, [id]: { ...prev[id], ...p } }))
@@ -236,8 +238,33 @@ export function PendingSendsPanel({ initial }: { initial: PanelResult<PendingSen
                     // Diğer durumlarda gönderime götüren buton YOK — tek güvenli adım metni.
                     <span className="text-[11px] text-[var(--text-secondary)]">→ {d.nextAction}</span>
                   )}
+                  {/* Faz 4.1: gönderilmemiş taslak satırdan düzenlenir; onay isteği
+                      GERÇEK final içerikle oluşur (approval_missing ana yol). */}
+                  {(effectiveState === 'approval_missing' || effectiveState === 'approval_pending') && d.leadId && (
+                    <button
+                      type="button"
+                      onClick={() => setEditing((prev) => ({ ...prev, [d.draftId]: !prev[d.draftId] }))}
+                      data-testid={`draft-edit-toggle-${d.draftId}`}
+                      className="flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                    >
+                      <PenLine className="w-3 h-3" /> {editing[d.draftId] ? 'Kapat' : 'Düzenle'}
+                    </button>
+                  )}
                   {st.error && <span className="text-[11px] text-red-400 truncate">{st.error}</span>}
                 </div>
+                {editing[d.draftId] && d.leadId && (
+                  <DraftEditor
+                    draftId={d.draftId}
+                    leadId={d.leadId}
+                    initialSubject={d.subject === '(konu yok)' ? '' : d.subject}
+                    initialBody={d.body}
+                    onApprovalRequested={({ status }) => {
+                      patch(d.draftId, { status })
+                      setEditing((prev) => ({ ...prev, [d.draftId]: false }))
+                      router.refresh()
+                    }}
+                  />
+                )}
                 {/* Faz 2.2: alıcı eksikse kişi satırdan eklenir; kayıt sonrası
                     server canonical recipient'ı yeniden çözer (refresh). */}
                 {effectiveState === 'recipient_missing' && d.leadId && !savedContacts[d.draftId] && (
