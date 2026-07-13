@@ -1,8 +1,7 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 057_lead_action_audit — App DB (Faz B6/C1)
 --
--- ⚠ CANLI App DB'ye UYGULANMADI — kullanıcı onayı bekliyor (pazarlıksız sınır:
---   App DB migration'ları additive + SQL/risk/rollback sunulup onaylanır).
+-- ✔ CANLIDA (2026-07-13, kullanıcı onayıyla MCP apply_migration; App dfedeh…).
 --
 -- Amaç: lead satır aksiyonları (arandı / ulaşılamadı / görüşme / daha sonra /
 -- not) için actor + kanal + before/after state + idempotency izli audit.

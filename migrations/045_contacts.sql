@@ -1,7 +1,7 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 045_contacts — App DB (Faz D / doc 33 §1B — kanonik rezervasyon)
 --
--- ⚠ CANLI App DB'ye UYGULANMADI — kullanıcı onayı bekliyor.
+-- ✔ CANLIDA (2026-07-13, kullanıcı onayıyla MCP apply_migration; App dfedeh…).
 --
 -- Amaç: lead (işletme) → contact (kişi/rol) zinciri. Rol-aware kişiselleştirme
 -- (owner/cto/cfo/marketing) ve reply eşleştirme bu tabloya dayanır.

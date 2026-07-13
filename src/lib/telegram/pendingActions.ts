@@ -98,9 +98,10 @@ export async function consumePendingAction(
       }
     }
     if (!error && !data) {
-      // Durable depo çalışıyor ve kayıt yok → memory'ye de güvenme (tek doğruluk kaynağı).
-      // Ancak tablo yoksa error 42P01 gelir ve buraya düşmeyiz.
-      if (memoryEntry?.chatKey !== chatKey) return null
+      // Faz 0.4: durable depo ÇALIŞIYOR ve kayıt YOK → tek doğruluk kaynağı budur.
+      // Bayat memory girdisi (başka instance tüketmiş olabilir) ASLA tüketilmez.
+      if (memoryEntry?.chatKey === chatKey) memoryEntry = null
+      return null
     }
   } catch {
     /* fallback altta */

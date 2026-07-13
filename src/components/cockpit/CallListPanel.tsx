@@ -9,6 +9,7 @@
 // - Duplicate telefonlar bilgi olarak görünür (otomatik merge YOK).
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { PhoneCall } from 'lucide-react'
 import type { PanelResult, CallLead, CallDuplicate } from '@/lib/cockpit/shared'
 import { MUST_TODAY_COUNT, MINUTES_PER_CALL } from '@/lib/cockpit/shared'
@@ -26,6 +27,11 @@ function todayKey(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+/** Modül seviyesinde — React Compiler purity kuralı bileşen gövdesinde Date.now istemez. */
+function isFutureTs(t: number): boolean {
+  return Number.isFinite(t) && t > Date.now()
+}
+
 const ACTION_DONE_LABEL: Record<RowAction, string> = {
   called: 'Arandı ✓',
   no_answer: 'Ulaşılamadı',
@@ -41,6 +47,7 @@ export function CallListPanel({
   initial: PanelResult<CallLead>
   duplicates: CallDuplicate[]
 }) {
+  const router = useRouter()
   const [rows, setRows] = useState<Record<string, RowState>>({})
   const [expanded, setExpanded] = useState(false)
 
@@ -50,7 +57,9 @@ export function CallListPanel({
   const visible = expanded ? items : mustToday
 
   const doneCount = items.filter((l) => rows[l.id]?.done).length
-  const remainingMinutes = (items.length - doneCount) * MINUTES_PER_CALL
+  // 1.1: süre tahmini YALNIZ 'mutlaka bugün' (ilk 5) işleri sayar — backlog hariç.
+  const mustRemaining = mustToday.filter((l) => !rows[l.id]?.done).length
+  const remainingMinutes = mustRemaining * MINUTES_PER_CALL
   const nextBest = items.find((l) => !rows[l.id]?.done)
 
   function patch(id: string, p: Partial<RowState>) {
@@ -64,7 +73,22 @@ export function CallListPanel({
       if (!input?.trim()) return
       note = input.trim()
     }
-    const laterAtIso = action === 'later' ? tomorrowIso() : undefined
+    // 1.2: 'daha sonra' sabit yarın DEĞİL — tarih/saat girilebilir (boş bırak = yarın).
+    let laterAtIso: string | undefined
+    if (action === 'later') {
+      const def = tomorrowIso().slice(0, 16)
+      const input = window.prompt(
+        `${lead.businessName} ne zaman aransın? (YYYY-MM-DDTHH:mm — boş bırak = yarın)`,
+        def,
+      )
+      if (input === null) return // vazgeçti — mutasyon yok
+      const t = Date.parse(input.trim() || def)
+      if (!isFutureTs(t)) {
+        patch(lead.id, { error: 'Geçersiz/geçmiş tarih — aksiyon uygulanmadı' })
+        return
+      }
+      laterAtIso = new Date(t).toISOString()
+    }
 
     patch(lead.id, { busy: true, error: null })
     try {
@@ -80,8 +104,10 @@ export function CallListPanel({
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
-      // Server authoritative: başarı onaylandı → satırı işaretle.
-      patch(lead.id, { busy: false, done: ACTION_DONE_LABEL[action] })
+      // Server authoritative: başarı onaylandı.
+      // 1.2: NOTE satırı TAMAMLAMAZ — lead hâlâ aranacak; diğer aksiyonlar işaretler.
+      patch(lead.id, { busy: false, done: action === 'note' ? null : ACTION_DONE_LABEL[action] })
+      router.refresh() // ilgili paneller (takipler/pipeline) sunucudan tazelensin
     } catch (err) {
       // Optimistic işaret geri alınır — hata görünür.
       patch(lead.id, { busy: false, done: null, error: err instanceof Error ? err.message : 'hata' })

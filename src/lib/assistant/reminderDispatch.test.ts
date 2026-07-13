@@ -5,116 +5,201 @@ const sendMock = vi.fn()
 vi.mock('@/lib/telegram/client', () => ({
   sendTelegramMessage: (...args: unknown[]) => sendMock(...args),
 }))
-
 const logTurnMock = vi.fn()
 vi.mock('@/lib/assistant/memory', () => ({
   logConversationTurn: (...args: unknown[]) => logTurnMock(...args),
 }))
 
-interface UpsertCall {
-  table: string
-  payload: Record<string, unknown>
+// assistant_reminders tek-satır durum makinesi mock'u (date,type sabit).
+interface Row { status: string | null; metadata: Record<string, unknown> | null; telegram_message_id?: number | null }
+let row: Row | null = null
+let insertError: { code: string } | null = null
+let updateError: { code: string } | null = null
+let finalizeErrorOnce = false
+const providerCalls: string[] = []
+
+function chainResult(data: unknown, error: unknown) {
+  const obj = {
+    eq: () => obj,
+    select: () => obj,
+    maybeSingle: async () => ({ data, error }),
+    then: (res: (v: { data: unknown; error: unknown }) => void) => res({ data, error }),
+  }
+  return obj
 }
-const upserts: UpsertCall[] = []
-let existingRow: { status: string; metadata: Record<string, unknown> } | null = null
 
 vi.mock('@/lib/lifeSupabaseAdmin', () => ({
   lifeSupabaseAdmin: {
-    from: (table: string) => ({
-      select: () => ({
-        eq: () => ({
-          eq: () => ({
-            maybeSingle: async () => ({ data: existingRow, error: null }),
-          }),
-        }),
-      }),
-      upsert: async (payload: Record<string, unknown>) => {
-        upserts.push({ table, payload })
+    from: () => ({
+      select: () => chainResult(row, null),
+      insert: async (payload: Row) => {
+        if (insertError) return { error: insertError }
+        if (row) return { error: { code: '23505' } } // unique(date,type)
+        row = { ...payload }
         return { error: null }
+      },
+      update: (payload: Partial<Row>) => {
+        // CAS zinciri: .eq×2/3 sonra .select() veya await.
+        const apply = () => {
+          if (updateError) return { data: null, error: updateError }
+          if (finalizeErrorOnce && payload.status !== 'sending' && payload.status !== 'send_failed') {
+            finalizeErrorOnce = false
+            return { data: null, error: { code: '57P01' } }
+          }
+          // CAS: claim devralma yalnız send_failed/stale-sending üzerinde çağrılır;
+          // mock basitleştirmesi: mevcut satır varsa uygula.
+          if (!row) return { data: [], error: null }
+          row = { ...row, ...payload }
+          return { data: [{ reminder_type: 'x' }], error: null }
+        }
+        const obj = {
+          eq: () => obj,
+          select: async () => apply(),
+          then: (res: (v: { data: unknown; error: unknown }) => void) => res(apply()),
+        }
+        return obj
       },
     }),
   },
 }))
 
-import { dispatchReminder, filterSentToday, nextRetryDelayMs } from './reminderDispatch'
+import {
+  dispatchReminder,
+  filterSentToday,
+  nextRetryDelayMs,
+  STALE_SENDING_MS,
+} from './reminderDispatch'
 
-describe('dispatchReminder (Faz B2 — sahte başarı düzeltmesi)', () => {
+const NOW = Date.parse('2026-07-13T09:00:00Z')
+
+describe('dispatchReminder — at-most-once makine (Faz B2 + 0.5)', () => {
   beforeEach(() => {
     sendMock.mockReset()
     logTurnMock.mockReset()
-    upserts.length = 0
-    existingRow = null
+    row = null
+    insertError = null
+    updateError = null
+    finalizeErrorOnce = false
+    providerCalls.length = 0
+    sendMock.mockImplementation(async (msg: string) => {
+      providerCalls.push(msg)
+      return { ok: true, messageId: 55, status: 200 }
+    })
   })
 
-  it('gönderim BAŞARISIZ → success kaydı YOK, conversation log YOK, send_failed + next_retry_at var', async () => {
-    sendMock.mockResolvedValueOnce({ ok: false, status: 502, error: 'bad gateway', retryable: true })
-    const r = await dispatchReminder({
-      date: '2026-07-13',
-      reminderType: 'morning_checkin',
-      message: 'günaydın',
-      nowMs: 1_000_000,
-    })
-    expect(r.sent).toBe(false)
-    expect(logTurnMock).not.toHaveBeenCalled()
-    expect(upserts).toHaveLength(1)
-    const p = upserts[0].payload
-    expect(p.status).toBe('send_failed')
-    expect(p.telegram_message_id).toBeNull()
-    const meta = p.metadata as { attempts: number; last_error: string; next_retry_at: string }
-    expect(meta.attempts).toBe(1)
-    expect(meta.last_error).toBe('bad gateway')
-    expect(Date.parse(meta.next_retry_at)).toBeGreaterThan(1_000_000)
-  })
-
-  it('başarılı retry → TAM BİR kayıt (aynı satır upsert), attempts görünür, log yazılır', async () => {
-    existingRow = { status: 'send_failed', metadata: { attempts: 2 } }
-    sendMock.mockResolvedValueOnce({ ok: true, messageId: 55, status: 200 })
-    const r = await dispatchReminder({
-      date: '2026-07-13',
-      reminderType: 'morning_checkin',
-      message: 'günaydın',
-    })
-    expect(r.sent).toBe(true)
-    expect(r.messageId).toBe(55)
-    expect(r.attempts).toBe(3)
+  it('başarı: claim(sending) → provider 1 kez → finalize(pending) + log', async () => {
+    const r = await dispatchReminder({ date: 'd', reminderType: 't', message: 'm', nowMs: NOW })
+    expect(r).toMatchObject({ sent: true, messageId: 55, attempts: 1 })
+    expect(providerCalls).toHaveLength(1)
     expect(logTurnMock).toHaveBeenCalledTimes(1)
-    // TEK upsert — onConflict(date,reminder_type) aynı satırı pending'e çevirir.
-    expect(upserts).toHaveLength(1)
-    expect(upserts[0].payload.status).toBe('pending')
-    expect(upserts[0].payload.telegram_message_id).toBe(55)
+    expect(row?.status).toBe('pending')
   })
 
-  it('message_id yoksa client zaten failure döner → success izi imkânsız', async () => {
-    sendMock.mockResolvedValueOnce({ ok: false, status: 200, error: 'message_id yok', retryable: false })
-    const r = await dispatchReminder({ date: '2026-07-13', reminderType: 'x', message: 'm' })
-    expect(r.sent).toBe(false)
+  it('eşzamanlı iki dispatch → INSERT yarışı → provider TAM 1 kez', async () => {
+    const [a, b] = await Promise.all([
+      dispatchReminder({ date: 'd', reminderType: 't', message: 'm', nowMs: NOW }),
+      dispatchReminder({ date: 'd', reminderType: 't', message: 'm', nowMs: NOW }),
+    ])
+    expect(providerCalls).toHaveLength(1)
+    expect([a.skipped, b.skipped].filter(Boolean)).toHaveLength(1)
+  })
+
+  it('claim YAZILAMAZSA provider ÇAĞRILMAZ (fail-closed)', async () => {
+    insertError = { code: '57P01' }
+    const r = await dispatchReminder({ date: 'd', reminderType: 't', message: 'm', nowMs: NOW })
+    expect(r.skipped).toBe(true)
+    expect(providerCalls).toHaveLength(0)
+  })
+
+  it('provider FAIL → send_failed + next_retry_at; log YOK; retry CAS ile devralır ve TEK finalize', async () => {
+    sendMock.mockImplementationOnce(async (msg: string) => {
+      providerCalls.push(msg)
+      return { ok: false, status: 502, error: 'bad gateway', retryable: true }
+    })
+    const r1 = await dispatchReminder({ date: 'd', reminderType: 't', message: 'm', nowMs: NOW })
+    expect(r1.sent).toBe(false)
     expect(logTurnMock).not.toHaveBeenCalled()
+    expect(row?.status).toBe('send_failed')
+    const meta = row?.metadata as { attempts: number; next_retry_at: string }
+    expect(meta.attempts).toBe(1)
+    expect(Date.parse(meta.next_retry_at)).toBeGreaterThan(NOW)
+
+    // retry (vade geldi): send_failed devralınır → başarı → attempts 2, tek log.
+    const r2 = await dispatchReminder({ date: 'd', reminderType: 't', message: 'm', nowMs: NOW + 10 * 60_000 })
+    expect(r2).toMatchObject({ sent: true, attempts: 2 })
+    expect(providerCalls).toHaveLength(2)
+    expect(logTurnMock).toHaveBeenCalledTimes(1)
+    expect(row?.status).toBe('pending')
+  })
+
+  it('pending/done satır varken yeni dispatch → skipped, provider çağrılmaz', async () => {
+    row = { status: 'pending', metadata: { attempts: 1 } }
+    const r = await dispatchReminder({ date: 'd', reminderType: 't', message: 'm', nowMs: NOW })
+    expect(r.skipped).toBe(true)
+    expect(providerCalls).toHaveLength(0)
+  })
+
+  it('TAZE sending satır → devralınmaz (başka instance gönderiyor)', async () => {
+    row = { status: 'sending', metadata: { attempts: 1, claimed_at: new Date(NOW - 1000).toISOString() } }
+    const r = await dispatchReminder({ date: 'd', reminderType: 't', message: 'm', nowMs: NOW })
+    expect(r.skipped).toBe(true)
+    expect(providerCalls).toHaveLength(0)
+  })
+
+  it('STALE sending (crash-before-send) → devralınır ve gönderilir', async () => {
+    row = {
+      status: 'sending',
+      metadata: { attempts: 1, claimed_at: new Date(NOW - STALE_SENDING_MS - 1).toISOString() },
+    }
+    const r = await dispatchReminder({ date: 'd', reminderType: 't', message: 'm', nowMs: NOW })
+    expect(r).toMatchObject({ sent: true, attempts: 2 })
+    expect(providerCalls).toHaveLength(1)
+  })
+
+  it('provider SUCCESS + finalize DB hatası → recordError, satır sending kalır → aynı gün İKİNCİ provider çağrısı YOK', async () => {
+    finalizeErrorOnce = true
+    const r1 = await dispatchReminder({ date: 'd', reminderType: 't', message: 'm', nowMs: NOW })
+    expect(r1).toMatchObject({ sent: true, recordError: true })
+    expect(row?.status).toBe('sending')
+    // aynı gün tekrar dene (taze sending) → skipped.
+    const r2 = await dispatchReminder({ date: 'd', reminderType: 't', message: 'm', nowMs: NOW + 60_000 })
+    expect(r2.skipped).toBe(true)
+    expect(providerCalls).toHaveLength(1) // duplicate YOK
   })
 })
 
-describe('filterSentToday (retry kilidi)', () => {
+describe('filterSentToday (Faz 0.5)', () => {
   const now = Date.parse('2026-07-13T10:00:00Z')
-
-  it('send_failed + retry vadesi GEÇMİŞ → listede YOK (yeniden denenebilir)', () => {
-    const rows = [
-      { reminder_type: 'morning_checkin', status: 'send_failed', metadata: { next_retry_at: '2026-07-13T09:00:00Z' } },
-    ]
-    expect(filterSentToday(rows, now)).toEqual([])
+  it('send_failed vadesi geçmiş → seçilebilir; vadesi gelmemiş → bloklar', () => {
+    expect(
+      filterSentToday(
+        [{ reminder_type: 'a', status: 'send_failed', metadata: { next_retry_at: new Date(now - 1).toISOString() } }],
+        now,
+      ),
+    ).toEqual([])
+    expect(
+      filterSentToday(
+        [{ reminder_type: 'a', status: 'send_failed', metadata: { next_retry_at: new Date(now + 1).toISOString() } }],
+        now,
+      ),
+    ).toEqual(['a'])
   })
-
-  it('send_failed + vadesi GELMEMİŞ → bloklar (hammer yok)', () => {
-    const rows = [
-      { reminder_type: 'morning_checkin', status: 'send_failed', metadata: { next_retry_at: '2026-07-13T11:00:00Z' } },
-    ]
-    expect(filterSentToday(rows, now)).toEqual(['morning_checkin'])
+  it('sending taze → bloklar; stale → seçilebilir (kurtarma)', () => {
+    expect(
+      filterSentToday(
+        [{ reminder_type: 'a', status: 'sending', metadata: { claimed_at: new Date(now - 1000).toISOString() } }],
+        now,
+      ),
+    ).toEqual(['a'])
+    expect(
+      filterSentToday(
+        [{ reminder_type: 'a', status: 'sending', metadata: { claimed_at: new Date(now - STALE_SENDING_MS - 1).toISOString() } }],
+        now,
+      ),
+    ).toEqual([])
   })
-
-  it('normal pending/done satırlar her zaman sayılır', () => {
-    const rows = [
-      { reminder_type: 'a', status: 'pending', metadata: null },
-      { reminder_type: 'b', status: 'done', metadata: null },
-    ]
-    expect(filterSentToday(rows, now)).toEqual(['a', 'b'])
+  it('pending/done sayılır', () => {
+    expect(filterSentToday([{ reminder_type: 'a', status: 'pending', metadata: null }], now)).toEqual(['a'])
   })
 })
 

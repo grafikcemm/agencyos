@@ -149,10 +149,11 @@ async function loadLeadsToCall(nowIso: string): Promise<{ list: CallLead[]; dupl
     .select(CALL_COLS)
     .in('status', ['new', 'contacted', 'responded'])
     .eq('do_not_contact', false)
+    .not('phone', 'is', null) // 1.1: aranacaklar listesinde telefonsuz satır olamaz
     .not('next_follow_up_at', 'is', null)
     .lte('next_follow_up_at', nowIso)
     .order('next_follow_up_at', { ascending: true })
-    .limit(CALL_LIST_CAP)
+    .limit(CALL_LIST_CAP * 2) // dedupe SONRASI cap dolabilsin (SQL-limit öncesi kayıp telafisi)
   if (dueErr) throw new Error(dueErr.message)
 
   // C2 dedupe: aynı normalize telefon aynı gün listesinde İKİ KEZ çıkmaz.
@@ -204,7 +205,7 @@ async function loadLeadsToCall(nowIso: string): Promise<{ list: CallLead[]; dupl
       .order('urgency_score', { ascending: false, nullsFirst: false })
       .order('last_contact_at', { ascending: true, nullsFirst: true })
       .order('id', { ascending: true })
-      .limit(remaining)
+      .limit(remaining * 2) // dedupe telafisi
     if (freshErr) throw new Error(freshErr.message)
     const freshRows = (fresh ?? []) as unknown as LeadRow[]
     for (const r of freshRows) pushDeduped(toCallLead(r, 'daily', 'Günün önceliği (henüz aranmadı)'))

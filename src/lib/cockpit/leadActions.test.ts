@@ -15,8 +15,11 @@ let lastUpdatePatch: Record<string, unknown> | null = null
 const auditInserts: Array<Record<string, unknown>> = []
 const auditDeletes: string[] = []
 
+let rpcResult: { data: unknown; error: { code: string } | null } = { data: null, error: { code: 'PGRST202' } }
+
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
+    rpc: async () => rpcResult,
     from: (table: string) => {
       if (table === 'leads') {
         return {
@@ -68,6 +71,7 @@ function freshLead(status = 'new'): LeadRow {
 describe('applyLeadAction (Faz B6/C1 — geçiş + audit + idempotency)', () => {
   beforeEach(() => {
     leadRow = freshLead()
+    rpcResult = { data: null, error: { code: 'PGRST202' } } // varsayılan: RPC yok → legacy
     auditInsertError = null
     updateRows = [{ id: 'l1' }]
     lastUpdatePatch = null
@@ -174,5 +178,48 @@ describe('applyLeadAction (Faz B6/C1 — geçiş + audit + idempotency)', () => 
     const r = await applyLeadAction({ leadId: 'yok', action: 'called', actor: 'op', channel: 'ui', nowMs: NOW })
     expect(r.ok).toBe(false)
     expect(r.error).toBe('lead bulunamadı')
+  })
+})
+
+
+// ── Faz 0.2: atomik RPC yolu (mig 058) ────────────────────────────────────────
+describe('applyLeadAction — atomik RPC (Faz 0.2)', () => {
+  beforeEach(() => {
+    leadRow = freshLead()
+    updateRows = [{ id: 'l1' }]
+    lastUpdatePatch = null
+    auditInsertError = null
+    auditInserts.length = 0
+  })
+
+  it('RPC canlıysa tek-transaction sonucu döner (atomic:true), legacy yol HİÇ çalışmaz', async () => {
+    rpcResult = {
+      data: { outcome: 'applied', before: { status: 'new', next_follow_up_at: null }, after: { status: 'contacted', next_follow_up_at: 'x' } },
+      error: null,
+    }
+    const r = await applyLeadAction({ leadId: 'l1', action: 'called', actor: 'op', channel: 'ui', nowMs: NOW })
+    expect(r).toMatchObject({ ok: true, atomic: true, audit: 'recorded' })
+    expect(lastUpdatePatch).toBeNull() // legacy update çağrılmadı
+    expect(auditInserts).toHaveLength(0)
+  })
+
+  it('RPC replay → idempotentReplay:true, mutasyon yok', async () => {
+    rpcResult = { data: { outcome: 'replayed', before: { status: 'new', next_follow_up_at: null }, after: { status: 'contacted', next_follow_up_at: 'x' } }, error: null }
+    const r = await applyLeadAction({ leadId: 'l1', action: 'called', actor: 'op', channel: 'telegram', idempotencyKey: 'k', nowMs: NOW })
+    expect(r).toMatchObject({ ok: true, idempotentReplay: true, atomic: true })
+  })
+
+  it('RPC rejected → ok:false + hata metni', async () => {
+    rpcResult = { data: { outcome: 'rejected', error: 'geçersiz geçiş: won → called' }, error: null }
+    const r = await applyLeadAction({ leadId: 'l1', action: 'called', actor: 'op', channel: 'ui', nowMs: NOW })
+    expect(r.ok).toBe(false)
+    expect(r.error).toContain('geçersiz geçiş')
+  })
+
+  it('RPC beklenmedik DB hatası → legacy yola düşer (görünür log) ve iş yine tamamlanır', async () => {
+    rpcResult = { data: null, error: { code: '57P01' } }
+    const r = await applyLeadAction({ leadId: 'l1', action: 'called', actor: 'op', channel: 'ui', nowMs: NOW })
+    expect(r.ok).toBe(true)
+    expect(r.atomic).toBeUndefined() // legacy
   })
 })

@@ -56,3 +56,53 @@ describe('pendingActions (Faz B5 — TTL + tek kullanım)', () => {
     expect(a).not.toBe(c)
   })
 })
+
+// ── Faz 0.4: durable depo source-of-truth; iki-instance yarışı ────────────────
+import { vi as vi04 } from 'vitest'
+import * as life from '@/lib/lifeSupabaseAdmin'
+
+describe('pendingActions durable doğruluk (Faz 0.4)', () => {
+  it('durable ÇALIŞIYOR + kayıt yok → bayat memory girdisi TÜKETİLMEZ (null)', async () => {
+    _resetPendingActions()
+    // set: durable yazım hatalı (memory'ye düşer) → memory'de girdi var.
+    await setPendingAction('chatX', 'add_task_choice', { title: 'bayat' }, 1000)
+    // consume: durable delete BAŞARILI ama satır yok (başka instance tüketti senaryosu).
+    const spy = vi04.spyOn(life.lifeSupabaseAdmin, 'from').mockReturnValue({
+      delete: () => ({
+        eq: () => ({
+          select: () => ({ maybeSingle: async () => ({ data: null, error: null }) }),
+        }),
+      }),
+    } as never)
+    const r = await consumePendingAction('chatX', 2000)
+    expect(r).toBeNull()
+    // memory de temizlendi → ikinci çağrı da null.
+    spy.mockRestore()
+    expect(await consumePendingAction('chatX', 2000)).toBeNull()
+  })
+
+  it('iki instance aynı anda consume → durable DELETE tek satır döner, tek taraf kazanır', async () => {
+    _resetPendingActions()
+    let row: { action_type: string; payload: object; digest: string; created_at: string } | null = {
+      action_type: 'add_task_choice', payload: { title: 'x' }, digest: 'd', created_at: new Date(1000).toISOString(),
+    }
+    const spy = vi04.spyOn(life.lifeSupabaseAdmin, 'from').mockReturnValue({
+      delete: () => ({
+        eq: () => ({
+          select: () => ({
+            maybeSingle: async () => {
+              const r = row; row = null // atomik DELETE ... RETURNING simülasyonu
+              return { data: r, error: null }
+            },
+          }),
+        }),
+      }),
+    } as never)
+    const [a, b] = await Promise.all([
+      consumePendingAction('chatY', 2000),
+      consumePendingAction('chatY', 2000),
+    ])
+    expect([a, b].filter(Boolean)).toHaveLength(1) // TAM BİR kazanan
+    spy.mockRestore()
+  })
+})

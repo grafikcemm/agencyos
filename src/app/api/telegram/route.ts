@@ -34,7 +34,7 @@ export const maxDuration = 60;
 
 import { z } from 'zod';
 import { sendTelegramMessage } from '@/lib/telegram/client';
-import { claimTelegramUpdate } from '@/lib/telegram/updateClaims';
+import { acquireUpdateClaim, completeUpdateClaim, failUpdateClaim } from '@/lib/telegram/updateClaims';
 import { parseSalesCommand } from '@/lib/telegram/salesCommands';
 import { handleSalesCommand } from '@/lib/telegram/salesHandlers';
 import { setPendingAction, consumePendingAction } from '@/lib/telegram/pendingActions';
@@ -457,10 +457,47 @@ export async function POST(req: Request): Promise<NextResponse> {
       return NextResponse.json({ ok: true, ignored: 'user' });
     }
 
-    // ── Idempotency (Faz B4): durable claim; duplicate → yan etkisiz çık.
-    const claim = await claimTelegramUpdate(body.update_id);
-    if (!claim.fresh) return NextResponse.json({ ok: true, deduped: true, mode: claim.mode });
+    // ── Idempotency (Faz B4 + 0.3): durum makineli claim.
+    // duplicate/in_progress → yan etkisiz 200; durable erişilemez (PROD) →
+    // 503 FAIL-CLOSED: Telegram update'i SONRA yeniden gönderir (kayıp yok,
+    // memory asla "başarılı durable claim" gibi davranmaz).
+    const claim = await acquireUpdateClaim(body.update_id);
+    if (!claim.acquired) {
+      if (claim.reason === 'unavailable') {
+        return NextResponse.json({ ok: false, error: 'claim store unavailable' }, { status: 503 });
+      }
+      return NextResponse.json({ ok: true, deduped: true, reason: claim.reason });
+    }
 
+    // Handler gövdesi: başarı → complete (kalıcı no-op); throw → failed
+    // (yeniden denenebilir) + 500 → Telegram retry eder, mesaj KAYBOLMAZ.
+    try {
+      const response = await handleAuthorizedMessage(body.update_id, String(incomingChat), text);
+      await completeUpdateClaim(body.update_id);
+      return response;
+    } catch (handlerErr) {
+      await failUpdateClaim(
+        body.update_id,
+        handlerErr instanceof Error ? handlerErr.message : 'unknown',
+      );
+      throw handlerErr;
+    }
+  } catch (error) {
+    console.error('Telegram Webhook Error:', error);
+    return NextResponse.json({ ok: false }, { status: 500 });
+  }
+}
+
+/**
+ * Yetkilendirilmiş + claim'lenmiş mesajın asıl işleyicisi (Faz 0.3 ayrıştırması —
+ * claim complete/fail sarmalının tek dönüş noktasından yönetilebilmesi için).
+ */
+async function handleAuthorizedMessage(
+  updateId: number,
+  incomingChat: string,
+  text: string,
+): Promise<NextResponse> {
+  {
     const { todayStr: today } = getIstanbulDateAndDay();
 
     if (!isOrchestratorActive(today)) {
@@ -478,8 +515,8 @@ export async function POST(req: Request): Promise<NextResponse> {
       await logConversationTurn({ date: today, role: 'user', message: text, intent: `sales:${salesCmd.type}` });
       try {
         const salesReply = await handleSalesCommand(salesCmd, {
-          updateId: body.update_id,
-          chatKey: String(incomingChat),
+          updateId,
+          chatKey: incomingChat,
         });
         await replyGuaranteed(salesReply, today, `sales_${salesCmd.type}`);
       } catch (err) {
@@ -491,7 +528,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     // ── "görev ekle" → 1/2 seçimi (TTL'li tek-kullanımlık pending state, Faz B5).
     if (/^[12]$/.test(text.trim())) {
-      const pending = await consumePendingAction(String(incomingChat));
+      const pending = await consumePendingAction(incomingChat);
       if (pending?.type === 'add_task_choice') {
         const title = String(pending.payload.title ?? '').trim();
         const category = text.trim() === '1' ? 'active' : 'waiting';
@@ -768,7 +805,7 @@ export async function POST(req: Request): Promise<NextResponse> {
 
       case 'add_task_draft': {
         // TTL'li pending state — "1"/"2" cevabı yukarıdaki seçim bloğunda tamamlanır (Faz B5).
-        await setPendingAction(String(incomingChat), 'add_task_choice', { title: intent.title });
+        await setPendingAction(incomingChat, 'add_task_choice', { title: intent.title });
         await sendTelegram(
           `Görevi nereye ekleyeyim?\n"${intent.title}"\n\n1) Aktif görevler\n2) Bekleyenler\n\nCevapla: 1 veya 2 (10 dk geçerli)`
         );
@@ -860,8 +897,5 @@ export async function POST(req: Request): Promise<NextResponse> {
     }
 
     return NextResponse.json({ ok: true });
-  } catch (error) {
-    console.error('Telegram Webhook Error:', error);
-    return NextResponse.json({ ok: false }, { status: 500 });
   }
 }

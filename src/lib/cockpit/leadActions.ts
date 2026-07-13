@@ -47,8 +47,49 @@ export interface ApplyLeadActionResult {
   idempotentReplay?: boolean
   error?: string
   audit: 'recorded' | 'degraded'
+  /** true → mig 058 RPC ile TEK transaction (crash penceresi yok). */
+  atomic?: boolean
   before?: { status: string; next_follow_up_at: string | null }
   after?: { status: string; next_follow_up_at: string | null }
+}
+
+/** Mig 058 RPC yolu — tek transaction. RPC yoksa null döner (legacy yola düşülür). */
+async function tryAtomicRpc(input: ApplyLeadActionInput): Promise<ApplyLeadActionResult | null> {
+  const { data, error } = await supabaseAdmin.rpc('apply_lead_action', {
+    p_lead_id: input.leadId,
+    p_action: input.action,
+    p_actor: input.actor,
+    p_channel: input.channel,
+    p_idempotency_key: input.idempotencyKey ?? null,
+    p_note: input.note ?? null,
+    p_later_at: input.laterAtIso ?? null,
+    p_now: new Date(input.nowMs ?? Date.now()).toISOString(),
+  })
+  if (error) {
+    // RPC henüz canlı değil (onay bekliyor) → legacy yol. Diğer hatalar da
+    // legacy'ye düşer ama loglanır (görünürlük).
+    if (error.code !== 'PGRST202' && error.code !== '42883') {
+      console.error('[leadActions] atomik RPC hatası — legacy yola düşülüyor', error.code ?? error.message)
+    }
+    return null
+  }
+  const r = data as {
+    outcome: 'applied' | 'replayed' | 'rejected'
+    error?: string
+    before?: { status: string; next_follow_up_at: string | null }
+    after?: { status: string; next_follow_up_at: string | null }
+  }
+  if (r.outcome === 'rejected') {
+    return { ok: false, error: r.error ?? 'reddedildi', audit: 'recorded', atomic: true }
+  }
+  return {
+    ok: true,
+    idempotentReplay: r.outcome === 'replayed',
+    audit: 'recorded',
+    atomic: true,
+    before: r.before,
+    after: r.after,
+  }
 }
 
 interface LeadStateRow {
@@ -115,6 +156,11 @@ function computePatch(
  * 4) audit satırını before/after ile tamamla
  */
 export async function applyLeadAction(input: ApplyLeadActionInput): Promise<ApplyLeadActionResult> {
+  // Faz 0.2: önce atomik RPC (mig 058). Canlı değilse aşağıdaki legacy yol
+  // (bilinen crash penceresiyle, atomic:false işaretli) devreye girer.
+  const atomicResult = await tryAtomicRpc(input)
+  if (atomicResult) return atomicResult
+
   const nowIso = new Date(input.nowMs ?? Date.now()).toISOString()
 
   const { data: lead, error: readErr } = await supabaseAdmin

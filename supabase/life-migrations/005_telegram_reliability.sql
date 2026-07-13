@@ -1,8 +1,8 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 005_telegram_reliability — LIFE DB (Faz B4/B5)
 --
--- ⚠ UYGULANMADI — kullanıcı onayı bekliyor (pazarlıksız sınır: LIFE DB'ye
---   onaysız migration yok). Onay verilince Supabase SQL Editor'da çalıştırılır.
+-- ✔ CANLIDA (2026-07-13, kullanıcı onayıyla MCP apply_migration; LIFE xcqrk…).
+--   Aşağıdaki metin tarihsel kayıttır.
 --
 -- Amaç:
 --   1) telegram_update_claims  — Telegram update_id cross-instance idempotency

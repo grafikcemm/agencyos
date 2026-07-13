@@ -1,6 +1,7 @@
 "use client"
 
 import dynamic from 'next/dynamic'
+import { gateWaPrefill, buildWaHref } from '@/lib/outreach/waPrefill'
 import { useState, useEffect, useCallback } from 'react'
 import { JarvisPanel } from '@/components/map/JarvisPanel'
 import { LeadDrawer } from '@/components/map/LeadDrawer'
@@ -527,7 +528,8 @@ export default function HaritaPage() {
               )}
               {lead.phone && (
                 <a
-                  href={`https://wa.me/${normalizeTrPhone(lead.phone)}${lead.first_message ? `?text=${encodeURIComponent(lead.first_message)}` : ''}`}
+                  href={buildWaHref(normalizeTrPhone(lead.phone), gateWaPrefill({ firstMessage: lead.first_message, businessName: lead.business_name ?? '' }))}
+                  title={gateWaPrefill({ firstMessage: lead.first_message, businessName: lead.business_name ?? '' }).blockedReason ?? undefined}
                   target="_blank"
                   rel="noopener noreferrer"
                   data-testid={`lead-whatsapp-${lead.id}`}
@@ -1036,7 +1038,8 @@ export default function HaritaPage() {
                           )}
                           {lead.phone && (
                             <a
-                              href={`https://wa.me/${normalizeTrPhone(lead.phone)}${lead.first_message ? `?text=${encodeURIComponent(lead.first_message)}` : ''}`}
+                              href={buildWaHref(normalizeTrPhone(lead.phone), gateWaPrefill({ firstMessage: lead.first_message, businessName: lead.business_name ?? '' }))}
+                  title={gateWaPrefill({ firstMessage: lead.first_message, businessName: lead.business_name ?? '' }).blockedReason ?? undefined}
                               target="_blank"
                               rel="noopener noreferrer"
                               aria-label={`${lead.business_name} işletmesine WhatsApp mesajı gönder`}
