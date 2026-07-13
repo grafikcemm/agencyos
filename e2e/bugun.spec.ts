@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { E2E_PASSWORD } from '../playwright.config'
-import { E2E_EMAIL_DOMAIN, seedDraft, cleanupE2E, requestSend, supabaseAdmin } from './helpers'
+import { E2E_EMAIL_DOMAIN, AUTH_HEADERS, seedDraft, cleanupE2E, requestSend, supabaseAdmin } from './helpers'
 
 // Sprint 1A — /bugun gelir kokpiti: 7 panel + gelir şeridi + durumlar +
 // mevcut approval→dry-run send akışının KOKPİTTEN uçtan uca sürülmesi.
@@ -142,6 +142,36 @@ test('satır aksiyonu: Arandı → contacted + follow-up planlanır (server auth
   expect((audit![0].before_state as { status: string }).status).toBe('new')
   expect((audit![0].after_state as { status: string }).status).toBe('contacted')
   expect(audit![0].idempotency_key).toContain(lead.leadId)
+})
+
+test('Faz 0.4: aynı güne İKİ FARKLI not kaydolur; aynı operation id retry duplicate yazmaz; not tamamlama sayılmaz', async ({ request }) => {
+  const db = supabaseAdmin()
+  const lead = await seedDraft('kokpit-not')
+  await db.from('leads').update({ status: 'contacted' }).eq('id', lead.leadId)
+
+  const post = (body: object) =>
+    request.post(`/api/leads/${lead.leadId}/action`, { headers: AUTH_HEADERS, data: body })
+
+  // 1. not — kendi operation id'siyle.
+  const k1 = `e2e-note-${lead.leadId}-op1`
+  const r1 = await post({ action: 'note', note: 'ilk e2e notu', idempotencyKey: k1 })
+  expect(r1.status()).toBe(200)
+
+  // Ağ retry simülasyonu: AYNI operation id → replay; duplicate satır YAZILMAZ.
+  const r1b = await post({ action: 'note', note: 'ilk e2e notu', idempotencyKey: k1 })
+  expect(r1b.status()).toBe(200)
+  expect((await r1b.json()).idempotentReplay).toBe(true)
+
+  // 2. not — YENİ operation id → aynı gün ikinci not kaybolmaz.
+  const r2 = await post({ action: 'note', note: 'ikinci e2e notu', idempotencyKey: `e2e-note-${lead.leadId}-op2` })
+  expect(r2.status()).toBe(200)
+
+  const { data } = await db.from('leads').select('notes, status').eq('id', lead.leadId).single()
+  const notes = String(data?.notes ?? '')
+  expect(notes).toContain('ilk e2e notu')
+  expect(notes).toContain('ikinci e2e notu')
+  expect(notes.match(/ilk e2e notu/g)).toHaveLength(1) // replay duplicate yazmadı
+  expect(data?.status).toBe('contacted') // not, arama tamamlama/statü geçişi DEĞİL
 })
 
 test('kokpitten tam HITL akışı: Onayla → Gönder (dry-run) → Gönderildi + DB kanıtı', async ({ page, request }) => {

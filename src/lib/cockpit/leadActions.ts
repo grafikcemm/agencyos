@@ -47,13 +47,24 @@ export interface ApplyLeadActionResult {
   idempotentReplay?: boolean
   error?: string
   audit: 'recorded' | 'degraded'
-  /** true → mig 058 RPC ile TEK transaction (crash penceresi yok). */
-  atomic?: boolean
+  /** true → mig 058 RPC ile TEK transaction; false → legacy yol (bilinen crash penceresi). */
+  atomic: boolean
   before?: { status: string; next_follow_up_at: string | null }
   after?: { status: string; next_follow_up_at: string | null }
 }
 
-/** Mig 058 RPC yolu — tek transaction. RPC yoksa null döner (legacy yola düşülür). */
+/** RPC hiç yok (058 onay bekliyor) hata kodları — YALNIZ bunlar legacy'ye düşebilir. */
+const RPC_MISSING_CODES = new Set(['PGRST202', '42883'])
+
+/**
+ * Mig 058 RPC yolu — tek transaction.
+ * - RPC yok (058 canlı değil): LEAD_ACTION_RPC_REQUIRED=true ise FAIL-CLOSED
+ *   (058 canlıya alındıktan sonra bu bayrak açılır; legacy yol devre dışı),
+ *   değilse null → legacy yola düşülür (atomic:false görünür).
+ * - Beklenmeyen RPC hatası: PRODUCTION'da FAIL-CLOSED (legacy'ye DÜŞMEZ —
+ *   yarı-uygulanmış/replay-siz mutasyon riski alınmaz); dev/test'te legacy
+ *   fallback loglanarak devam eder.
+ */
 async function tryAtomicRpc(input: ApplyLeadActionInput): Promise<ApplyLeadActionResult | null> {
   const { data, error } = await supabaseAdmin.rpc('apply_lead_action', {
     p_lead_id: input.leadId,
@@ -66,10 +77,19 @@ async function tryAtomicRpc(input: ApplyLeadActionInput): Promise<ApplyLeadActio
     p_now: new Date(input.nowMs ?? Date.now()).toISOString(),
   })
   if (error) {
-    // RPC henüz canlı değil (onay bekliyor) → legacy yol. Diğer hatalar da
-    // legacy'ye düşer ama loglanır (görünürlük).
-    if (error.code !== 'PGRST202' && error.code !== '42883') {
-      console.error('[leadActions] atomik RPC hatası — legacy yola düşülüyor', error.code ?? error.message)
+    if (RPC_MISSING_CODES.has(error.code ?? '')) {
+      if (process.env.LEAD_ACTION_RPC_REQUIRED === 'true') {
+        // 058 canlı olması GEREKEN ortamda RPC yok → fail-closed (yanlış deploy/rollback görünür olsun).
+        console.error('[leadActions] apply_lead_action RPC zorunlu ama bulunamadı (LEAD_ACTION_RPC_REQUIRED)')
+        return { ok: false, error: 'aksiyon servisi hazır değil — tekrar deneyin', audit: 'degraded', atomic: false }
+      }
+      return null // 058 onay bekliyor → legacy yol.
+    }
+    console.error('[leadActions] atomik RPC hatası', error.code ?? error.message)
+    if (process.env.NODE_ENV === 'production') {
+      // Beklenmeyen DB hatasında legacy'ye düşmek yarış/yarım-yazım riskini
+      // İKİYE katlar → fail-closed; kullanıcı tekrar dener.
+      return { ok: false, error: 'aksiyon uygulanamadı (geçici) — tekrar deneyin', audit: 'degraded', atomic: false }
     }
     return null
   }
@@ -168,8 +188,8 @@ export async function applyLeadAction(input: ApplyLeadActionInput): Promise<Appl
     .select('id, status, next_follow_up_at, last_contact_at, notes')
     .eq('id', input.leadId)
     .maybeSingle()
-  if (readErr) return { ok: false, error: readErr.message, audit: 'degraded' }
-  if (!lead) return { ok: false, error: 'lead bulunamadı', audit: 'degraded' }
+  if (readErr) return { ok: false, error: readErr.message, audit: 'degraded', atomic: false }
+  if (!lead) return { ok: false, error: 'lead bulunamadı', audit: 'degraded', atomic: false }
 
   const state = lead as unknown as LeadStateRow
   if (!ALLOWED_FROM[input.action].includes(state.status)) {
@@ -177,11 +197,12 @@ export async function applyLeadAction(input: ApplyLeadActionInput): Promise<Appl
       ok: false,
       error: `geçersiz geçiş: ${state.status} → ${input.action}`,
       audit: 'degraded',
+      atomic: false,
     }
   }
 
   const { patch, error: patchErr } = computePatch(input.action, state, input, nowIso)
-  if (patchErr) return { ok: false, error: patchErr, audit: 'degraded' }
+  if (patchErr) return { ok: false, error: patchErr, audit: 'degraded', atomic: false }
 
   const before = { status: state.status, next_follow_up_at: state.next_follow_up_at }
   const after = {
@@ -216,7 +237,7 @@ export async function applyLeadAction(input: ApplyLeadActionInput): Promise<Appl
       auditRowId = auditRow.id as string
     } else if (auditErr?.code === '23505') {
       // Aynı idempotency key daha önce claim edildi → replay; mutasyon TEKRARLANMAZ.
-      return { ok: true, idempotentReplay: true, audit: 'recorded', before, after }
+      return { ok: true, idempotentReplay: true, audit: 'recorded', atomic: false, before, after }
     } else if (auditErr && auditErr.code !== '42P01' && auditErr.code !== 'PGRST205') {
       console.error('[leadActions] audit insert hatası', auditErr.code ?? auditErr.message)
     }
@@ -240,8 +261,9 @@ export async function applyLeadAction(input: ApplyLeadActionInput): Promise<Appl
       ok: false,
       error: updErr?.message ?? 'eşzamanlı değişiklik — tekrar deneyin',
       audit: auditMode,
+      atomic: false,
     }
   }
 
-  return { ok: true, audit: auditMode, before, after }
+  return { ok: true, audit: auditMode, atomic: false, before, after }
 }

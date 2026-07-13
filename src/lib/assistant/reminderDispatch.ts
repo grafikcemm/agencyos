@@ -8,14 +8,16 @@
 //   CAS UPDATE yalnız send_failed satırı devralır). Her Supabase yazımının
 //   `{ error }` sonucu KONTROL edilir; claim yazılamazsa provider ÇAĞRILMAZ
 //   (fail-closed).
-// KURAL 3 (0.5): provider-success + DB-record-failure → satır 'sending' kalır
-//   (CRITICAL log + result.recordError). 'sending' satır o gün yeniden
-//   gönderime KAPALIDIR (duplicate yapısal imkânsız). Telegram'da Gmail'deki
-//   gibi Message-ID araması yoktur → reconcile YERİNE stale-sending kurtarması:
-//   STALE_SENDING_MS'ten eski 'sending' (crash-before-send ~kesin; send <15 sn
-//   sürer) send_failed'a çevrilir ve normal retry akışına döner. Çok nadir
-//   record-fail-after-success vakası CRITICAL loglanır — bilinçli takas:
-//   duplicate riski yalnız bu loglu vakada, kayıp yalnız aynı gün içinde.
+// KURAL 3 (0.2 revize): provider-success + DB-record-failure → satır 'sending'
+//   kalır (CRITICAL log + result.recordError). 'sending' satır yeniden gönderime
+//   KAPALIDIR — süresiz. "crash before provider" ile "provider success / DB
+//   fail" ayırt EDİLEMEZ (Telegram'da Message-ID araması yok) → stale 'sending'
+//   OTOMATİK yeniden gönderilMEZ; sweepUnknownDeliveries onu 'unknown_delivery'
+//   durumuna taşır (diagnostics'te görünür) ve provider ancak MANUEL, açık
+//   reconcile kararıyla (reconcileReminder) ikinci kez çağrılabilir.
+//   NOT: bu makine at-most-once'tır, exactly-once DEĞİLDİR — provider
+//   idempotency anahtarı desteklemediği için bilinçli sınır: şüpheli durumda
+//   kayıp değil SESSİZLİK tercih edilir; karar operatöre görünür şekilde kalır.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { lifeSupabaseAdmin as supabaseAdmin } from '@/lib/lifeSupabaseAdmin'
@@ -28,7 +30,7 @@ export function nextRetryDelayMs(attempts: number): number {
   return Math.min(base, 4 * 60 * 60_000)
 }
 
-/** 'sending' claim bu süreden eskiyse crash-before-send say (send <15 sn). */
+/** 'sending' claim bu süreden eskiyse sonuç BİLİNMİYOR demektir (unknown adayı). */
 export const STALE_SENDING_MS = 10 * 60_000
 
 interface ReminderRowLite {
@@ -40,8 +42,10 @@ interface ReminderRowLite {
 /**
  * sentToday filtresi:
  * - 'send_failed' + retry vadesi geçti → LİSTEDE YOK (yeniden seçilebilir).
- * - 'sending' + TAZE → bloklar (başka instance gönderiyor olabilir).
- * - 'sending' + STALE → LİSTEDE YOK (crash kurtarması; dispatch CAS ile devralır).
+ * - 'sending' → HER ZAMAN bloklar (taze: başka instance gönderiyor olabilir;
+ *   stale: sonuç bilinmiyor — otomatik resend YOK, sweep 'unknown_delivery'
+ *   yapar ve karar operatörün).
+ * - 'unknown_delivery' → bloklar (yalnız manuel reconcile açar).
  * - diğer her şey → gönderilmiş sayılır.
  */
 export function filterSentToday(rows: ReminderRowLite[], nowMs: number): string[] {
@@ -50,10 +54,6 @@ export function filterSentToday(rows: ReminderRowLite[], nowMs: number): string[
       if (r.status === 'send_failed') {
         const retryAt = r.metadata?.next_retry_at ? Date.parse(r.metadata.next_retry_at) : 0
         return Number.isFinite(retryAt) && retryAt > nowMs
-      }
-      if (r.status === 'sending') {
-        const claimedAt = r.metadata?.claimed_at ? Date.parse(r.metadata.claimed_at) : 0
-        return Number.isFinite(claimedAt) && nowMs - claimedAt < STALE_SENDING_MS
       }
       return true
     })
@@ -78,7 +78,9 @@ interface ExistingRow {
 
 /**
  * Atomik claim: önce INSERT (unique date,reminder_type) → yarışta 23505.
- * Satır varsa CAS UPDATE: yalnız send_failed VEYA stale-sending devralınır.
+ * Satır varsa CAS UPDATE: YALNIZ send_failed devralınır. 'sending' (taze veya
+ * stale) ASLA devralınmaz — stale'in sonucu bilinmez; otomatik ikinci provider
+ * çağrısı duplicate üretebilirdi (0.2). Karar sweep + manuel reconcile'da.
  * @returns attempts (bu deneme dahil) veya null = claim alınamadı.
  */
 async function claimSending(date: string, reminderType: string, nowMs: number): Promise<number | null> {
@@ -109,10 +111,8 @@ async function claimSending(date: string, reminderType: string, nowMs: number): 
   const row = existing as ExistingRow
   const prevAttempts = row.metadata?.attempts ?? 0
 
-  // Devralınabilir durumlar: send_failed (retry) veya STALE sending (crash kurtarması).
-  const claimedAt = row.metadata?.claimed_at ? Date.parse(row.metadata.claimed_at) : 0
-  const staleSending = row.status === 'sending' && nowMs - claimedAt >= STALE_SENDING_MS
-  if (row.status !== 'send_failed' && !staleSending) return null
+  // Devralınabilir TEK durum: send_failed (provider'ın başarısız olduğu KESİN).
+  if (row.status !== 'send_failed') return null
 
   const attempts = prevAttempts + 1
   const { data: updated, error: updErr } = await supabaseAdmin
@@ -198,8 +198,91 @@ export async function dispatchReminder(opts: {
     .eq('date', opts.date)
     .eq('reminder_type', opts.reminderType)
   if (failErr) {
-    // Satır 'sending' kaldı → STALE_SENDING_MS sonra kurtarma devralır.
+    // Satır 'sending' kaldı → sonuç bilinmiyor sayılır; sweep 'unknown_delivery'
+    // yapar, otomatik resend YOK (0.2).
     console.error('[reminderDispatch] failure-record yazılamadı', failErr.code ?? failErr.message)
   }
   return { sent: false, messageId: null, error: result.error, attempts }
+}
+
+// ── Faz 0.2: unknown-delivery görünürlüğü + manuel reconcile ─────────────────
+
+export interface UnknownDeliveryRow {
+  date: string
+  reminder_type: string
+  claimed_at: string | null
+  attempts: number
+}
+
+/**
+ * STALE 'sending' satırlarını 'unknown_delivery' durumuna taşır (CAS'lı) ve
+ * mevcut unknown listesini döner. OTOMATİK resend YOK — bu fonksiyon yalnız
+ * görünürlük sağlar; karar operatörün (reconcileReminder).
+ */
+export async function sweepUnknownDeliveries(nowMs?: number): Promise<{
+  swept: number
+  unknown: UnknownDeliveryRow[]
+  error: string | null
+}> {
+  const now = nowMs ?? Date.now()
+  const { data, error } = await supabaseAdmin
+    .from('assistant_reminders')
+    .select('date, reminder_type, status, metadata')
+    .in('status', ['sending', 'unknown_delivery'])
+  if (error) return { swept: 0, unknown: [], error: error.message }
+
+  let swept = 0
+  const unknown: UnknownDeliveryRow[] = []
+  for (const r of data ?? []) {
+    const meta = (r.metadata ?? {}) as { claimed_at?: string; attempts?: number }
+    const claimedAt = meta.claimed_at ? Date.parse(meta.claimed_at) : 0
+    if (r.status === 'sending') {
+      if (!(now - claimedAt >= STALE_SENDING_MS)) continue // taze — dokunma.
+      const { data: upd, error: updErr } = await supabaseAdmin
+        .from('assistant_reminders')
+        .update({ status: 'unknown_delivery', metadata: { ...meta, unknown_since: new Date(now).toISOString() } })
+        .eq('date', r.date)
+        .eq('reminder_type', r.reminder_type)
+        .eq('status', 'sending') // CAS: bu arada finalize olduysa dokunma.
+        .select('reminder_type')
+      if (updErr || !upd?.length) continue
+      swept += 1
+    }
+    unknown.push({
+      date: r.date,
+      reminder_type: r.reminder_type,
+      claimed_at: meta.claimed_at ?? null,
+      attempts: meta.attempts ?? 0,
+    })
+  }
+  return { swept, unknown, error: null }
+}
+
+/**
+ * MANUEL reconcile (yalnız 'unknown_delivery' satırlar):
+ * - 'assume_delivered' → done (mesajın ulaştığına operatör karar verdi).
+ * - 'retry_send'       → send_failed + next_retry_at=şimdi (provider'ın İKİNCİ
+ *   kez çağrılmasına AÇIK insan kararı; normal dispatch akışı devralır).
+ */
+export async function reconcileReminder(opts: {
+  date: string
+  reminderType: string
+  decision: 'assume_delivered' | 'retry_send'
+  nowMs?: number
+}): Promise<{ ok: boolean; error: string | null }> {
+  const nowIso = new Date(opts.nowMs ?? Date.now()).toISOString()
+  const patch =
+    opts.decision === 'assume_delivered'
+      ? { status: 'done', metadata: { reconciled: 'assume_delivered', reconciled_at: nowIso } }
+      : { status: 'send_failed', metadata: { reconciled: 'retry_send', reconciled_at: nowIso, next_retry_at: nowIso, attempts: 0 } }
+  const { data, error } = await supabaseAdmin
+    .from('assistant_reminders')
+    .update(patch)
+    .eq('date', opts.date)
+    .eq('reminder_type', opts.reminderType)
+    .eq('status', 'unknown_delivery') // yalnız unknown reconcile edilebilir.
+    .select('reminder_type')
+  if (error) return { ok: false, error: error.message }
+  if (!data?.length) return { ok: false, error: 'unknown_delivery satırı bulunamadı' }
+  return { ok: true, error: null }
 }

@@ -43,6 +43,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       ok: true,
       idempotentReplay: result.idempotentReplay ?? false,
       audit: result.audit,
+      // Faz 0.3: 058 canlı değilken UI degraded durumu görünür göstersin.
+      atomic: result.atomic,
       before: result.before,
       after: result.after,
     })

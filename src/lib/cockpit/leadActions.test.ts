@@ -216,10 +216,42 @@ describe('applyLeadAction — atomik RPC (Faz 0.2)', () => {
     expect(r.error).toContain('geçersiz geçiş')
   })
 
-  it('RPC beklenmedik DB hatası → legacy yola düşer (görünür log) ve iş yine tamamlanır', async () => {
+  it('dev/test: RPC beklenmedik DB hatası → legacy yola düşer (görünür log) ve iş yine tamamlanır', async () => {
     rpcResult = { data: null, error: { code: '57P01' } }
     const r = await applyLeadAction({ leadId: 'l1', action: 'called', actor: 'op', channel: 'ui', nowMs: NOW })
     expect(r.ok).toBe(true)
-    expect(r.atomic).toBeUndefined() // legacy
+    expect(r.atomic).toBe(false) // legacy — degraded görünür
+  })
+
+  it('PRODUCTION: RPC beklenmedik DB hatası → FAIL-CLOSED (legacy yarım-yazım riski ALINMAZ)', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    try {
+      rpcResult = { data: null, error: { code: '57P01' } }
+      const r = await applyLeadAction({ leadId: 'l1', action: 'called', actor: 'op', channel: 'ui', nowMs: NOW })
+      expect(r.ok).toBe(false)
+      expect(r.atomic).toBe(false)
+      expect(lastUpdatePatch).toBeNull() // legacy mutasyon HİÇ çalışmadı
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('LEAD_ACTION_RPC_REQUIRED=true: RPC yok (PGRST202) → fail-closed (058 sonrası legacy kapalı)', async () => {
+    vi.stubEnv('LEAD_ACTION_RPC_REQUIRED', 'true')
+    try {
+      rpcResult = { data: null, error: { code: 'PGRST202' } }
+      const r = await applyLeadAction({ leadId: 'l1', action: 'called', actor: 'op', channel: 'ui', nowMs: NOW })
+      expect(r.ok).toBe(false)
+      expect(lastUpdatePatch).toBeNull()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('legacy başarı sonuçları atomic:false taşır (UI degraded gösterebilsin)', async () => {
+    rpcResult = { data: null, error: { code: 'PGRST202' } }
+    const r = await applyLeadAction({ leadId: 'l1', action: 'called', actor: 'op', channel: 'ui', nowMs: NOW })
+    expect(r.ok).toBe(true)
+    expect(r.atomic).toBe(false)
   })
 })

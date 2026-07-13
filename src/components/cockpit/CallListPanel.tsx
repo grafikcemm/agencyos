@@ -27,6 +27,18 @@ function todayKey(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+/**
+ * Faz 0.4: aksiyon başına operation id.
+ * - note: HER kullanıcı submit'i YENİ bir iştir → UUID (aynı güne ikinci not
+ *   kaybolmaz); ağ retry'ı AYNI id'yi taşır (fetch öncesi üretilir) → replay.
+ * - diğerleri: gün kapsamlı sabit anahtar (aynı gün "arandı" iki kez basılırsa
+ *   tek uygulanır — istenen davranış).
+ */
+function operationKey(leadId: string, action: RowAction): string {
+  if (action === 'note') return `ui-${leadId}-note-${crypto.randomUUID()}`
+  return `ui-${leadId}-${action}-${todayKey()}`
+}
+
 /** Modül seviyesinde — React Compiler purity kuralı bileşen gövdesinde Date.now istemez. */
 function isFutureTs(t: number): boolean {
   return Number.isFinite(t) && t > Date.now()
@@ -50,6 +62,8 @@ export function CallListPanel({
   const router = useRouter()
   const [rows, setRows] = useState<Record<string, RowState>>({})
   const [expanded, setExpanded] = useState(false)
+  // Faz 0.3: server 'atomic:false' döndüyse operatör degraded modu görsün.
+  const [degraded, setDegraded] = useState(false)
 
   const items = initial.items
   const mustToday = items.slice(0, MUST_TODAY_COUNT)
@@ -99,11 +113,12 @@ export function CallListPanel({
           action,
           note,
           laterAtIso,
-          idempotencyKey: `ui-${lead.id}-${action}-${todayKey()}`,
+          idempotencyKey: operationKey(lead.id, action),
         }),
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
+      if (json.atomic === false) setDegraded(true)
       // Server authoritative: başarı onaylandı.
       // 1.2: NOTE satırı TAMAMLAMAZ — lead hâlâ aranacak; diğer aksiyonlar işaretler.
       patch(lead.id, { busy: false, done: action === 'note' ? null : ACTION_DONE_LABEL[action] })
@@ -130,6 +145,12 @@ export function CallListPanel({
           </span>
         )}
       </div>
+
+      {degraded && (
+        <p className="text-[10px] text-amber-400 mb-2" data-testid="call-degraded">
+          ⚠ Aksiyonlar atomik olmayan yolda uygulanıyor (mig 058 onay bekliyor) — işlem yine kayıtlı, crash penceresi dokümante.
+        </p>
+      )}
 
       {items.length > 0 && (
         <div className="text-[11px] text-[var(--text-muted)] mb-3" data-testid="call-progress">

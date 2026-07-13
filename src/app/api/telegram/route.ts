@@ -33,7 +33,7 @@ import { runJarvis } from '@/lib/jarvis/engine';
 export const maxDuration = 60;
 
 import { z } from 'zod';
-import { sendTelegramMessage } from '@/lib/telegram/client';
+import { sendReplyOnce } from '@/lib/telegram/replyDelivery';
 import { acquireUpdateClaim, completeUpdateClaim, failUpdateClaim } from '@/lib/telegram/updateClaims';
 import { parseSalesCommand } from '@/lib/telegram/salesCommands';
 import { handleSalesCommand } from '@/lib/telegram/salesHandlers';
@@ -87,25 +87,6 @@ interface DailyV2State {
 
 type DailyV2Patch = Partial<Omit<DailyV2State, 'date'>>;
 
-// Faz B1: tüm gönderimler ortak transport'tan (timeout + typed sonuç + redaction).
-async function sendTelegram(text: string): Promise<{ ok: boolean; status: number }> {
-  const result = await sendTelegramMessage(text);
-  if (!result.ok) console.error('[telegram] sendMessage failed', result.status, result.error);
-  return { ok: result.ok, status: result.status };
-}
-
-/** sendTelegram + assistant turunu telegram_conversations'a logla (best-effort).
- *  Gönderim başarısızsa tur LOGLANMAZ — kullanıcının görmediği mesaj LLM geçmişini kirletmesin. */
-async function reply(text: string, date: string, intent?: string, agent?: string): Promise<{ ok: boolean }> {
-  const sent = await sendTelegram(text);
-  if (!sent.ok) {
-    console.error('[telegram] reply delivery failed', { intent: intent ?? null, status: sent.status });
-    return { ok: false };
-  }
-  await logConversationTurn({ date, role: 'assistant', message: text, intent: intent ?? null, agent: agent ?? null });
-  return { ok: true };
-}
-
 /** HTML etiketlerini sök (HTML parse hatası gönderimi düşürdüyse düz-metin retry için). */
 function stripHtml(text: string): string {
   return text.replace(/<[^>]+>/g, '').trim();
@@ -114,20 +95,60 @@ function stripHtml(text: string): string {
 const GRACEFUL_TR_FALLBACK =
   'Şu an cevabı toparlayamadım Cem — bir hata oldu. Birazdan tekrar yazar mısın?';
 
-/**
- * Serbest-metin yanıtının kullanıcıya MUTLAKA ulaşmasını garanti eder.
- * İlk gönderim başarısızsa (ör. HTML parse hatası) düz-metin tek retry yapar.
- * Boş/HTML-only metin kalırsa graceful Türkçe fallback gönderir.
- */
-async function replyGuaranteed(text: string, date: string, intent?: string, agent?: string): Promise<void> {
-  const primary = (text ?? '').trim();
-  const first = await reply(primary || GRACEFUL_TR_FALLBACK, date, intent, agent);
-  // Başarılı VEYA primary boştu (zaten fallback gönderildi; tekrar göndermeye gerek yok).
-  if (first.ok || !primary) return;
+interface ReplyKit {
+  sendTelegram: (text: string) => Promise<{ ok: boolean; status: number }>;
+  reply: (text: string, date: string, intent?: string, agent?: string) => Promise<{ ok: boolean }>;
+  replyGuaranteed: (text: string, date: string, intent?: string, agent?: string) => Promise<void>;
+}
 
-  // Retry: HTML parse hatası olabilir → etiketleri sök, düz metin gönder.
-  const plain = stripHtml(primary) || GRACEFUL_TR_FALLBACK;
-  await reply(plain, date, intent ? `${intent}_retry` : 'retry', agent);
+/**
+ * Faz 0.1: bu update'in TÜM cevapları durable delivery ledger'dan geçer.
+ * seq deterministiktir (aynı update retry'ında aynı sıra) → aynı cevap
+ * provider'a İKİNCİ kez GİTMEZ (ledger 23505 dedupe). deduped cevapta
+ * conversation log da tekrarlanmaz.
+ */
+function createReplyKit(updateId: number): ReplyKit {
+  let seq = 0;
+
+  async function sendOnce(text: string): Promise<{ ok: boolean; status: number; deduped: boolean }> {
+    seq += 1;
+    const r = await sendReplyOnce({ updateId, seq, text });
+    if (r.deduped) return { ok: true, status: 0, deduped: true };
+    if (!r.sent) console.error('[telegram] sendMessage failed', r.status, r.error);
+    return { ok: r.sent, status: r.status, deduped: false };
+  }
+
+  async function reply(text: string, date: string, intent?: string, agent?: string): Promise<{ ok: boolean }> {
+    const sent = await sendOnce(text);
+    if (!sent.ok) {
+      console.error('[telegram] reply delivery failed', { intent: intent ?? null, status: sent.status });
+      return { ok: false };
+    }
+    // Gönderim başarısızsa veya retry'da dedupe olduysa tur LOGLANMAZ —
+    // kullanıcının görmediği/zaten loglanmış mesaj LLM geçmişini kirletmesin.
+    if (!sent.deduped) {
+      await logConversationTurn({ date, role: 'assistant', message: text, intent: intent ?? null, agent: agent ?? null });
+    }
+    return { ok: true };
+  }
+
+  async function replyGuaranteed(text: string, date: string, intent?: string, agent?: string): Promise<void> {
+    const primary = (text ?? '').trim();
+    const first = await reply(primary || GRACEFUL_TR_FALLBACK, date, intent, agent);
+    if (first.ok || !primary) return;
+    // Retry: HTML parse hatası olabilir → etiketleri sök, düz metin gönder.
+    const plain = stripHtml(primary) || GRACEFUL_TR_FALLBACK;
+    await reply(plain, date, intent ? `${intent}_retry` : 'retry', agent);
+  }
+
+  return {
+    sendTelegram: async (text: string) => {
+      const r = await sendOnce(text);
+      return { ok: r.ok, status: r.status };
+    },
+    reply,
+    replyGuaranteed,
+  };
 }
 
 /** Bugün belirli bir item için kaç kez snooze edildiğini sayar (akıllı snooze). */
@@ -202,7 +223,7 @@ function parseEnergyWord(text: string): 'low' | 'medium' | 'high' | null {
  *
  * @returns true → taahhüt sorusu gönderildi (handler kendi mesajını ATLAMALI)
  */
-async function maybeAdvanceMorningCommitment(date: string): Promise<boolean> {
+async function maybeAdvanceMorningCommitment(date: string, reply: ReplyKit['reply']): Promise<boolean> {
   const existing = await getCommitment(date);
   if (existing) return false; // zaten akıştayız veya taahhüt verilmiş.
 
@@ -471,15 +492,23 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     // Handler gövdesi: başarı → complete (kalıcı no-op); throw → failed
     // (yeniden denenebilir) + 500 → Telegram retry eder, mesaj KAYBOLMAZ.
+    // Faz 0.1: complete/fail sonucu AUTHORITATIVE — finalize yazılamadıysa
+    // (DB hatası veya fence tutmadı: lease devralındı) 200 DÖNÜLMEZ; Telegram
+    // retry eder ve delivery ledger aynı cevabın ikinci kez gitmesini engeller.
     try {
       const response = await handleAuthorizedMessage(body.update_id, String(incomingChat), text);
-      await completeUpdateClaim(body.update_id);
+      const fin = await completeUpdateClaim(claim.fence);
+      if (!fin.ok) {
+        console.error('[telegram] claim finalize başarısız', body.update_id, fin.reason);
+        return NextResponse.json({ ok: false, error: 'claim finalize failed' }, { status: 500 });
+      }
       return response;
     } catch (handlerErr) {
-      await failUpdateClaim(
-        body.update_id,
+      const fail = await failUpdateClaim(
+        claim.fence,
         handlerErr instanceof Error ? handlerErr.message : 'unknown',
       );
+      if (!fail.ok) console.error('[telegram] fail-finalize yazılamadı', body.update_id, fail.reason);
       throw handlerErr;
     }
   } catch (error) {
@@ -498,6 +527,8 @@ async function handleAuthorizedMessage(
   text: string,
 ): Promise<NextResponse> {
   {
+    // Faz 0.1: bu update'in tüm cevapları ledger'lı at-most-once transporttan.
+    const { sendTelegram, reply, replyGuaranteed } = createReplyKit(updateId);
     const { todayStr: today } = getIstanbulDateAndDay();
 
     if (!isOrchestratorActive(today)) {
@@ -725,7 +756,7 @@ async function handleAuthorizedMessage(
       case 'set_agency': {
         await updateDailyState(today, { agency_load: intent.agencyLoad });
         // Sabah taahhüt akışı: enerji/ajans cevabı → "tek kesin iş" sorusu.
-        if (await maybeAdvanceMorningCommitment(today)) break;
+        if (await maybeAdvanceMorningCommitment(today, reply)) break;
         const agencyLabel: Record<string, string> = { low: 'Rahat', normal: 'Normal', high: 'Yoğun' };
         await reply(`Ajans yoğunluğu güncellendi: ${agencyLabel[intent.agencyLoad]}`, today, 'set_agency');
         break;
@@ -734,7 +765,7 @@ async function handleAuthorizedMessage(
       case 'set_energy': {
         await updateDailyState(today, { energy: intent.energy });
         // Sabah taahhüt akışı: enerji cevabı → "tek kesin iş" sorusu.
-        if (await maybeAdvanceMorningCommitment(today)) break;
+        if (await maybeAdvanceMorningCommitment(today, reply)) break;
         const energyLabel: Record<string, string> = { low: 'Düşük', medium: 'Orta', high: 'Yüksek' };
         await reply(`Enerji seviyesi güncellendi: ${energyLabel[intent.energy]}`, today, 'set_energy');
         break;
@@ -864,7 +895,7 @@ async function handleAuthorizedMessage(
         if (!commitment && energyWord) {
           await updateDailyState(today, { energy: energyWord });
           // morning check-in canlıysa taahhüt sorusuna ilerle (gated).
-          if (await maybeAdvanceMorningCommitment(today)) break;
+          if (await maybeAdvanceMorningCommitment(today, reply)) break;
         }
 
         // ── Akıllı yönlendirme: hayat (hızlı mentor) vs iş (çok-ajanlı kurul) ──

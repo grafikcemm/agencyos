@@ -2,15 +2,23 @@
 // Token/webhook secret ASLA dönmez. setWebhook çağrısı YOKTUR (webhook kaydı
 // yalnız kullanıcının deploy sonrası açık onayıyla, ayrı bir adımda yapılır).
 import { NextResponse } from 'next/server'
-import { requireApiAccess } from '@/lib/auth'
+import { z } from 'zod'
+import { requireApiAccess, requireApiUser } from '@/lib/auth'
+import { enforceSameOrigin } from '@/lib/api/guards'
 import { getMe, getWebhookInfo } from '@/lib/telegram/client'
 import { lifeSupabaseAdmin } from '@/lib/lifeSupabaseAdmin'
+import { sweepUnknownDeliveries, reconcileReminder } from '@/lib/assistant/reminderDispatch'
 
 export async function GET(req: Request) {
   const access = await requireApiAccess(req)
   if ('response' in access) return access.response
 
-  const [me, webhook] = await Promise.all([getMe(), getWebhookInfo()])
+  const [me, webhook, unknownSweep] = await Promise.all([
+    getMe(),
+    getWebhookInfo(),
+    // Faz 0.2: stale 'sending' → 'unknown_delivery' (görünürlük; otomatik resend YOK).
+    sweepUnknownDeliveries(),
+  ])
 
   // Son başarılı inbound/outbound (LIFE telegram_conversations — salt okuma).
   let lastInbound: string | null = null
@@ -52,6 +60,13 @@ export async function GET(req: Request) {
       : { error: webhook.error },
     lastSuccessfulInboundAt: lastInbound,
     lastSuccessfulOutboundAt: lastOutbound,
+    // Faz 0.2: sonucu bilinmeyen reminder gönderimleri — karar operatörün.
+    unknownDeliveries: {
+      count: unknownSweep.unknown.length,
+      sweptNow: unknownSweep.swept,
+      rows: unknownSweep.unknown,
+      error: unknownSweep.error,
+    },
     env: {
       // Yalnız VAR/YOK — değer asla dönmez.
       botTokenConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
@@ -60,4 +75,33 @@ export async function GET(req: Request) {
       webhookSecretConfigured: Boolean(process.env.TELEGRAM_WEBHOOK_SECRET),
     },
   })
+}
+
+// ── Faz 0.2: unknown_delivery MANUEL reconcile (tek mutasyon; operatör kararı).
+// 'retry_send' provider'ın ikinci kez çağrılmasına AÇIK insan onayıdır —
+// otomatik hiçbir yol bunu yapamaz.
+const ReconcileSchema = z.object({
+  action: z.literal('reconcile_reminder'),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  reminderType: z.string().min(1).max(64),
+  decision: z.enum(['assume_delivered', 'retry_send']),
+})
+
+export async function POST(req: Request) {
+  const auth = await requireApiUser(req)
+  if ('response' in auth) return auth.response
+  const originErr = enforceSameOrigin(req)
+  if (originErr) return originErr
+
+  const parsed = ReconcileSchema.safeParse(await req.json().catch(() => null))
+  if (!parsed.success) {
+    return NextResponse.json({ ok: false, error: 'geçersiz istek' }, { status: 400 })
+  }
+  const r = await reconcileReminder({
+    date: parsed.data.date,
+    reminderType: parsed.data.reminderType,
+    decision: parsed.data.decision,
+  })
+  if (!r.ok) return NextResponse.json({ ok: false, error: r.error }, { status: 409 })
+  return NextResponse.json({ ok: true, decision: parsed.data.decision })
 }

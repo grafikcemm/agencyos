@@ -21,6 +21,12 @@ const providerCalls: string[] = []
 function chainResult(data: unknown, error: unknown) {
   const obj = {
     eq: () => obj,
+    // sweep: .select().in('status', [...]) → thenable liste (satır varsa 1 elemanlı).
+    in: () =>
+      chainResult(
+        row ? [{ date: 'd', reminder_type: 't', status: row.status, metadata: row.metadata }] : [],
+        error,
+      ),
     select: () => obj,
     maybeSingle: async () => ({ data, error }),
     then: (res: (v: { data: unknown; error: unknown }) => void) => res({ data, error }),
@@ -67,6 +73,8 @@ import {
   dispatchReminder,
   filterSentToday,
   nextRetryDelayMs,
+  sweepUnknownDeliveries,
+  reconcileReminder,
   STALE_SENDING_MS,
 } from './reminderDispatch'
 
@@ -146,14 +154,21 @@ describe('dispatchReminder — at-most-once makine (Faz B2 + 0.5)', () => {
     expect(providerCalls).toHaveLength(0)
   })
 
-  it('STALE sending (crash-before-send) → devralınır ve gönderilir', async () => {
+  it('STALE sending → OTOMATİK devralınMAZ (0.2: crash-before-send ile provider-success/DB-fail ayırt edilemez → duplicate riski alınmaz)', async () => {
     row = {
       status: 'sending',
       metadata: { attempts: 1, claimed_at: new Date(NOW - STALE_SENDING_MS - 1).toISOString() },
     }
     const r = await dispatchReminder({ date: 'd', reminderType: 't', message: 'm', nowMs: NOW })
-    expect(r).toMatchObject({ sent: true, attempts: 2 })
-    expect(providerCalls).toHaveLength(1)
+    expect(r.skipped).toBe(true)
+    expect(providerCalls).toHaveLength(0)
+  })
+
+  it('unknown_delivery satır → devralınmaz (yalnız manuel reconcile açar)', async () => {
+    row = { status: 'unknown_delivery', metadata: { attempts: 1 } }
+    const r = await dispatchReminder({ date: 'd', reminderType: 't', message: 'm', nowMs: NOW })
+    expect(r.skipped).toBe(true)
+    expect(providerCalls).toHaveLength(0)
   })
 
   it('provider SUCCESS + finalize DB hatası → recordError, satır sending kalır → aynı gün İKİNCİ provider çağrısı YOK', async () => {
@@ -184,7 +199,7 @@ describe('filterSentToday (Faz 0.5)', () => {
       ),
     ).toEqual(['a'])
   })
-  it('sending taze → bloklar; stale → seçilebilir (kurtarma)', () => {
+  it('sending → taze de STALE de bloklar (0.2: otomatik resend YOK)', () => {
     expect(
       filterSentToday(
         [{ reminder_type: 'a', status: 'sending', metadata: { claimed_at: new Date(now - 1000).toISOString() } }],
@@ -196,10 +211,53 @@ describe('filterSentToday (Faz 0.5)', () => {
         [{ reminder_type: 'a', status: 'sending', metadata: { claimed_at: new Date(now - STALE_SENDING_MS - 1).toISOString() } }],
         now,
       ),
-    ).toEqual([])
+    ).toEqual(['a'])
   })
-  it('pending/done sayılır', () => {
+  it('unknown_delivery bloklar; pending/done sayılır', () => {
+    expect(filterSentToday([{ reminder_type: 'a', status: 'unknown_delivery', metadata: null }], now)).toEqual(['a'])
     expect(filterSentToday([{ reminder_type: 'a', status: 'pending', metadata: null }], now)).toEqual(['a'])
+  })
+})
+
+describe('sweepUnknownDeliveries + reconcileReminder (Faz 0.2)', () => {
+  beforeEach(() => {
+    row = null
+    updateError = null
+    insertError = null
+  })
+
+  it('stale sending → unknown_delivery (CAS); taze sending → dokunmaz', async () => {
+    row = {
+      status: 'sending',
+      metadata: { attempts: 1, claimed_at: new Date(NOW - STALE_SENDING_MS - 1).toISOString() },
+    }
+    const r = await sweepUnknownDeliveries(NOW)
+    expect(r.swept).toBe(1)
+    expect(r.unknown).toHaveLength(1)
+    expect(row?.status).toBe('unknown_delivery')
+
+    row = { status: 'sending', metadata: { attempts: 1, claimed_at: new Date(NOW - 1000).toISOString() } }
+    const r2 = await sweepUnknownDeliveries(NOW)
+    expect(r2.swept).toBe(0)
+    expect(row?.status).toBe('sending')
+  })
+
+  it('reconcile assume_delivered → done; retry_send → send_failed + hemen vadeli retry', async () => {
+    row = { status: 'unknown_delivery', metadata: { attempts: 2 } }
+    const r = await reconcileReminder({ date: 'd', reminderType: 't', decision: 'assume_delivered', nowMs: NOW })
+    expect(r.ok).toBe(true)
+    expect(row?.status).toBe('done')
+
+    row = { status: 'unknown_delivery', metadata: { attempts: 2 } }
+    const r2 = await reconcileReminder({ date: 'd', reminderType: 't', decision: 'retry_send', nowMs: NOW })
+    expect(r2.ok).toBe(true)
+    expect(row?.status).toBe('send_failed')
+  })
+
+  it('unknown_delivery satırı yoksa reconcile başarısız (mutasyon yok)', async () => {
+    row = null
+    const r = await reconcileReminder({ date: 'd', reminderType: 't', decision: 'retry_send', nowMs: NOW })
+    expect(r.ok).toBe(false)
   })
 })
 
