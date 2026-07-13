@@ -1,4 +1,4 @@
--- Rollback for 006_telegram_claim_state (v2 — fencing + delivery ledger).
+-- Rollback for 006_telegram_claim_state (v3 — fencing + delivery ledger durum makinesi).
 drop function if exists public.telegram_acquire_update(bigint, integer);
 drop table if exists public.telegram_outbound_deliveries;
 alter table public.telegram_update_claims

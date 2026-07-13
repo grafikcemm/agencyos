@@ -99,46 +99,81 @@ interface ReplyKit {
   sendTelegram: (text: string) => Promise<{ ok: boolean; status: number }>;
   reply: (text: string, date: string, intent?: string, agent?: string) => Promise<{ ok: boolean }>;
   replyGuaranteed: (text: string, date: string, intent?: string, agent?: string) => Promise<void>;
+  /**
+   * Faz 1.6/1.7: teslim edilemeyen zorunlu cevaplar. Boş değilse claim
+   * COMPLETE OLAMAZ — route failUpdateClaim + 5xx döner (kullanıcının
+   * görmediği cevap başarı sayılmaz).
+   */
+  undelivered: () => Array<{ seq: number; kind: string }>;
 }
 
 /**
- * Faz 0.1: bu update'in TÜM cevapları durable delivery ledger'dan geçer.
- * seq deterministiktir (aynı update retry'ında aynı sıra) → aynı cevap
- * provider'a İKİNCİ kez GİTMEZ (ledger 23505 dedupe). deduped cevapta
- * conversation log da tekrarlanmaz.
+ * Faz 0.1 + Sprint-3 Faz 1: bu update'in TÜM cevapları durable delivery
+ * ledger'dan geçer. seq deterministiktir (aynı update retry'ında aynı sıra) →
+ * aynı cevap provider'a İKİNCİ kez GİTMEZ. v2 kuralları:
+ * - deduped yalnız mevcut satır 'sent' ise başarı sayılır (failed/unknown ASLA).
+ * - Belirsiz provider sonucu (timeout/5xx) 'unknown' → OTOMATİK ikinci
+ *   gönderim YOK (yeni delivery key ile de yok — duplicate riski).
+ * - KESİN başarısızlıkta (4xx) stripHtml retry'ına izin var (Telegram işlemedi).
  */
 function createReplyKit(updateId: number): ReplyKit {
   let seq = 0;
+  const failures: Array<{ seq: number; kind: string }> = [];
 
-  async function sendOnce(text: string): Promise<{ ok: boolean; status: number; deduped: boolean }> {
+  async function sendOnce(text: string): Promise<{
+    ok: boolean;
+    status: number;
+    kind: string;
+    seq: number;
+    freshlyDelivered: boolean;
+  }> {
     seq += 1;
-    const r = await sendReplyOnce({ updateId, seq, text });
-    if (r.deduped) return { ok: true, status: 0, deduped: true };
-    if (!r.sent) console.error('[telegram] sendMessage failed', r.status, r.error);
-    return { ok: r.sent, status: r.status, deduped: false };
+    const mySeq = seq;
+    const r = await sendReplyOnce({ updateId, seq: mySeq, text });
+    if (!r.countsAsDelivered) {
+      failures.push({ seq: mySeq, kind: r.kind });
+      console.error('[telegram] reply teslim edilemedi', { seq: mySeq, kind: r.kind, status: r.httpStatus, error: r.error });
+    }
+    return {
+      ok: r.countsAsDelivered,
+      status: r.httpStatus,
+      kind: r.kind,
+      seq: mySeq,
+      freshlyDelivered: r.delivered && r.kind !== 'deduped_sent',
+    };
   }
 
   async function reply(text: string, date: string, intent?: string, agent?: string): Promise<{ ok: boolean }> {
     const sent = await sendOnce(text);
-    if (!sent.ok) {
-      console.error('[telegram] reply delivery failed', { intent: intent ?? null, status: sent.status });
-      return { ok: false };
-    }
-    // Gönderim başarısızsa veya retry'da dedupe olduysa tur LOGLANMAZ —
-    // kullanıcının görmediği/zaten loglanmış mesaj LLM geçmişini kirletmesin.
-    if (!sent.deduped) {
+    // Yalnız BU çağrıda gerçekten giden mesaj loglanır (dedupe zaten loglanmıştı;
+    // teslim edilmeyen mesaj LLM geçmişini kirletmesin).
+    if (sent.freshlyDelivered) {
       await logConversationTurn({ date, role: 'assistant', message: text, intent: intent ?? null, agent: agent ?? null });
     }
-    return { ok: true };
+    return { ok: sent.ok };
   }
 
   async function replyGuaranteed(text: string, date: string, intent?: string, agent?: string): Promise<void> {
     const primary = (text ?? '').trim();
-    const first = await reply(primary || GRACEFUL_TR_FALLBACK, date, intent, agent);
+    const first = await sendOnce(primary || GRACEFUL_TR_FALLBACK);
+    if (first.freshlyDelivered) {
+      await logConversationTurn({ date, role: 'assistant', message: primary || GRACEFUL_TR_FALLBACK, intent: intent ?? null, agent: agent ?? null });
+    }
     if (first.ok || !primary) return;
-    // Retry: HTML parse hatası olabilir → etiketleri sök, düz metin gönder.
+    // Retry YALNIZ KESİN başarısızlıkta (Telegram işlemediğini söyledi — ör.
+    // HTML parse 400). Belirsiz (unknown/in_progress/ledger) sonuçta İKİNCİ
+    // provider çağrısı YAPILMAZ: mesaj gitmiş olabilir, duplicate üretmeyiz.
+    if (first.kind !== 'failed' && first.kind !== 'unledgered_failed') return;
     const plain = stripHtml(primary) || GRACEFUL_TR_FALLBACK;
-    await reply(plain, date, intent ? `${intent}_retry` : 'retry', agent);
+    const second = await sendOnce(plain);
+    if (second.freshlyDelivered) {
+      await logConversationTurn({ date, role: 'assistant', message: plain, intent: intent ? `${intent}_retry` : 'retry', agent: agent ?? null });
+    }
+    if (second.ok) {
+      // Kesin-başarısız ilk deneme retry ile telafi edildi → ilk kaydı düşür.
+      const idx = failures.findIndex((f) => f.seq === first.seq);
+      if (idx >= 0) failures.splice(idx, 1);
+    }
   }
 
   return {
@@ -148,6 +183,7 @@ function createReplyKit(updateId: number): ReplyKit {
     },
     reply,
     replyGuaranteed,
+    undelivered: () => [...failures],
   };
 }
 
@@ -495,8 +531,21 @@ export async function POST(req: Request): Promise<NextResponse> {
     // Faz 0.1: complete/fail sonucu AUTHORITATIVE — finalize yazılamadıysa
     // (DB hatası veya fence tutmadı: lease devralındı) 200 DÖNÜLMEZ; Telegram
     // retry eder ve delivery ledger aynı cevabın ikinci kez gitmesini engeller.
+    // Sprint-3 Faz 1.6/1.7: cevap TESLİMİ de authoritative — zorunlu cevaplardan
+    // biri sent/deduped-sent değilse claim COMPLETE OLMAZ; failed(kesin) →
+    // failUpdateClaim + 500 (Telegram retry, delivery ledger duplicate'i engeller);
+    // unknown(belirsiz) → yine 500 ama OTOMATİK resend YOK (reconcile insanda).
+    const kit = createReplyKit(body.update_id);
     try {
-      const response = await handleAuthorizedMessage(body.update_id, String(incomingChat), text);
+      const response = await handleAuthorizedMessage(kit, body.update_id, String(incomingChat), text);
+      const undelivered = kit.undelivered();
+      if (undelivered.length > 0) {
+        const summary = undelivered.map((u) => `${u.seq}:${u.kind}`).join(',');
+        console.error('[telegram] zorunlu cevap teslim edilemedi — claim complete edilmiyor', body.update_id, summary);
+        const fail = await failUpdateClaim(claim.fence, `reply undelivered: ${summary}`);
+        if (!fail.ok) console.error('[telegram] fail-finalize yazılamadı', body.update_id, fail.reason);
+        return NextResponse.json({ ok: false, error: 'reply delivery failed' }, { status: 500 });
+      }
       const fin = await completeUpdateClaim(claim.fence);
       if (!fin.ok) {
         console.error('[telegram] claim finalize başarısız', body.update_id, fin.reason);
@@ -522,13 +571,14 @@ export async function POST(req: Request): Promise<NextResponse> {
  * claim complete/fail sarmalının tek dönüş noktasından yönetilebilmesi için).
  */
 async function handleAuthorizedMessage(
+  kit: ReplyKit,
   updateId: number,
   incomingChat: string,
   text: string,
 ): Promise<NextResponse> {
   {
     // Faz 0.1: bu update'in tüm cevapları ledger'lı at-most-once transporttan.
-    const { sendTelegram, reply, replyGuaranteed } = createReplyKit(updateId);
+    const { sendTelegram, reply, replyGuaranteed } = kit;
     const { todayStr: today } = getIstanbulDateAndDay();
 
     if (!isOrchestratorActive(today)) {

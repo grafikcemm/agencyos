@@ -8,6 +8,8 @@ type RpcResult = {
 let rpcResult: RpcResult
 let selectStatus: string | null = null
 let insertError: { code: string } | null = null
+let insertThrows = false
+let finalizeThrows = false
 // finalize CAS mock: kaç satır etkilendi + hata
 let finalizeRows: Array<{ update_id: number }> = [{ update_id: 1 }]
 let finalizeError: { code: string } | null = null
@@ -17,7 +19,10 @@ vi.mock('@/lib/lifeSupabaseAdmin', () => ({
   lifeSupabaseAdmin: {
     rpc: async () => rpcResult,
     from: () => ({
-      insert: async () => ({ error: insertError }),
+      insert: async () => {
+        if (insertThrows) throw new Error('bağlantı koptu')
+        return { error: insertError }
+      },
       select: () => ({
         eq: () => ({ maybeSingle: async () => ({ data: selectStatus ? { status: selectStatus } : null, error: null }) }),
       }),
@@ -29,6 +34,7 @@ vi.mock('@/lib/lifeSupabaseAdmin', () => ({
             return chain
           },
           select: async () => {
+            if (finalizeThrows) throw new Error('finalize bağlantısı koptu')
             finalizeCalls.push({ patch, filters })
             return { data: finalizeError ? null : finalizeRows, error: finalizeError }
           },
@@ -55,6 +61,8 @@ describe('telegram claim durum makinesi (Faz 0.1 — fencing)', () => {
     rpcResult = { data: [{ acquired: true, attempt: 1, claim_token: TOKEN }], error: null }
     selectStatus = null
     insertError = null
+    insertThrows = false
+    finalizeThrows = false
     finalizeRows = [{ update_id: 1 }]
     finalizeError = null
     finalizeCalls.length = 0
@@ -123,6 +131,25 @@ describe('telegram claim durum makinesi (Faz 0.1 — fencing)', () => {
     expect(r2).toEqual({ acquired: false, reason: 'duplicate' })
   })
 
+  it('legacy insert BEKLENMEDİK hata → dev\'de memory moduna düşer; PROD\'da unavailable', async () => {
+    rpcResult = { data: null, error: { code: 'PGRST202' } }
+    insertError = { code: '57P01' }
+    const r = await acquireUpdateClaim(21)
+    expect(r).toEqual({ acquired: true, mode: 'memory', attempt: 1, fence: null })
+
+    vi.stubEnv('NODE_ENV', 'production')
+    _resetMemoryClaims()
+    const r2 = await acquireUpdateClaim(22)
+    expect(r2).toEqual({ acquired: false, reason: 'unavailable' })
+  })
+
+  it('legacy insert exception → memory fallback (dev)', async () => {
+    rpcResult = { data: null, error: { code: 'PGRST202' } }
+    insertThrows = true
+    const r = await acquireUpdateClaim(23)
+    expect(r).toEqual({ acquired: true, mode: 'memory', attempt: 1, fence: null })
+  })
+
   it('PRODUCTION + durable erişilemez → FAIL-CLOSED unavailable', async () => {
     vi.stubEnv('NODE_ENV', 'production')
     rpcResult = { data: null, error: { code: '57P01' } }
@@ -185,6 +212,12 @@ describe('finalize fencing (Faz 0.1 — complete/fail authoritative)', () => {
     finalizeRows = [] // yeni worker token+attempt değiştirdi → eski fence 0 satır bulur.
     const r = await completeUpdateClaim(fence)
     expect(r).toEqual({ ok: false, reason: 'fenced' })
+  })
+
+  it('finalize EXCEPTION (bağlantı koptu) → ok:false db_error (route 200 dönemez)', async () => {
+    finalizeThrows = true
+    const r = await completeUpdateClaim(fence)
+    expect(r).toEqual({ ok: false, reason: 'db_error' })
   })
 
   it('fence=null (legacy/memory) → yazılacak durum yok, ok:true (005 sınırı dokümante)', async () => {

@@ -23,6 +23,54 @@ async function probeLife006(): Promise<{ claimStateReady: boolean; deliveryLedge
   return { claimStateReady: !claims.error, deliveryLedgerReady: !ledger.error }
 }
 
+// ── Sprint-3 Faz 1.10: LIFE credential PARİTE raporu — SECRET SIZDIRMADAN. ───
+// "Invalid API key" sınıfı arızaların kök nedeni: URL'nin project ref'i ile
+// anahtarın (JWT payload) ref'i farklı ortamda uyuşmayabilir (env drift).
+// Yalnız ref + role raporlanır; anahtarın kendisi ASLA dönmez.
+function jwtClaims(key: string): { role: string | null; ref: string | null } {
+  const parts = key.trim().split('.')
+  if (parts.length < 2) return { role: null, ref: null }
+  try {
+    let s = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    while (s.length % 4) s += '='
+    const p = JSON.parse(Buffer.from(s, 'base64').toString('utf8')) as { role?: string; ref?: string }
+    return { role: p.role ?? null, ref: p.ref ?? null }
+  } catch {
+    return { role: null, ref: null }
+  }
+}
+
+async function lifeDbParity(): Promise<Record<string, unknown>> {
+  const url = process.env.NEXT_PUBLIC_LIFE_SUPABASE_URL ?? ''
+  const key = process.env.LIFE_SUPABASE_SERVICE_ROLE_KEY ?? ''
+  let urlRef: string | null = null
+  try {
+    urlRef = url ? new URL(url).hostname.split('.')[0] : null
+  } catch {
+    urlRef = null
+  }
+  const claims = key ? jwtClaims(key) : { role: null, ref: null }
+  let probeOk = false
+  let probeError: string | null = null
+  try {
+    const { error } = await lifeSupabaseAdmin.from('telegram_conversations').select('id').limit(1)
+    probeOk = !error
+    probeError = error ? `${error.code ?? ''} ${error.message}`.trim().slice(0, 120) : null
+  } catch (err) {
+    probeError = (err instanceof Error ? err.message : 'unknown').slice(0, 120)
+  }
+  return {
+    urlConfigured: Boolean(url),
+    keyConfigured: Boolean(key),
+    projectRefFromUrl: urlRef,
+    keyRole: claims.role, // service_role beklenir
+    keyProjectRef: claims.ref,
+    refsMatch: urlRef !== null && claims.ref !== null ? urlRef === claims.ref : null,
+    probeOk,
+    probeError, // "Invalid API key" burada görünür → refsMatch=false ise kök neden env drift
+  }
+}
+
 /** App 058: apply_lead_action RPC varlığı — geçersiz aksiyonla probe:
  *  fonksiyon ilk kontrolde 'rejected' döner, HİÇBİR yazım yapmaz. */
 async function probeApp058(): Promise<boolean> {
@@ -44,14 +92,30 @@ export async function GET(req: Request) {
   const access = await requireApiAccess(req)
   if ('response' in access) return access.response
 
-  const [me, webhook, unknownSweep, life006, app058] = await Promise.all([
+  const [me, webhook, unknownSweep, life006, app058, lifeDb] = await Promise.all([
     getMe(),
     getWebhookInfo(),
     // Faz 0.2: stale 'sending' → 'unknown_delivery' (görünürlük; otomatik resend YOK).
     sweepUnknownDeliveries(),
     probeLife006().catch(() => ({ claimStateReady: false, deliveryLedgerReady: false })),
     probeApp058().catch(() => false),
+    lifeDbParity().catch(() => ({ probeOk: false, probeError: 'parity check failed' })),
   ])
+
+  // Sprint-3 Faz 1: webhook cevap ledger'ındaki belirsiz teslimler (unknown) —
+  // otomatik resend YOK; karar operatörde (POST reconcile_reply).
+  let unknownReplies: Array<{ delivery_key: string; update_id: number | null; last_error: string | null; updated_at: string }> = []
+  try {
+    const { data } = await lifeSupabaseAdmin
+      .from('telegram_outbound_deliveries')
+      .select('delivery_key, update_id, last_error, updated_at')
+      .eq('status', 'unknown')
+      .order('updated_at', { ascending: false })
+      .limit(20)
+    unknownReplies = (data ?? []) as typeof unknownReplies
+  } catch {
+    /* tablo yok (006 bekliyor) → boş */
+  }
 
   // Son başarılı inbound/outbound (LIFE telegram_conversations — salt okuma).
   let lastInbound: string | null = null
@@ -100,6 +164,10 @@ export async function GET(req: Request) {
       rows: unknownSweep.unknown,
       error: unknownSweep.error,
     },
+    // Sprint-3 Faz 1: webhook cevap ledger'ında belirsiz teslimler (resend YOK).
+    unknownReplies: { count: unknownReplies.length, rows: unknownReplies },
+    // Sprint-3 Faz 1.10: LIFE credential parite — secret dönmez, yalnız ref/rol.
+    lifeDb,
     env: {
       // Yalnız VAR/YOK — değer asla dönmez.
       botTokenConfigured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
@@ -141,12 +209,22 @@ export async function GET(req: Request) {
 // ── Faz 0.2: unknown_delivery MANUEL reconcile (tek mutasyon; operatör kararı).
 // 'retry_send' provider'ın ikinci kez çağrılmasına AÇIK insan onayıdır —
 // otomatik hiçbir yol bunu yapamaz.
-const ReconcileSchema = z.object({
-  action: z.literal('reconcile_reminder'),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  reminderType: z.string().min(1).max(64),
-  decision: z.enum(['assume_delivered', 'retry_send']),
-})
+const ReconcileSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('reconcile_reminder'),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    reminderType: z.string().min(1).max(64),
+    decision: z.enum(['assume_delivered', 'retry_send']),
+  }),
+  // Sprint-3 Faz 1: webhook cevap ledger'ındaki 'unknown' satırın manuel kararı.
+  // retry_send YOK (cevap metni ledger'da tutulmaz): assume_delivered → sent,
+  // mark_failed → failed (update yeniden gelirse kontrollü takeover resend eder).
+  z.object({
+    action: z.literal('reconcile_reply'),
+    deliveryKey: z.string().min(1).max(120),
+    decision: z.enum(['assume_delivered', 'mark_failed']),
+  }),
+])
 
 export async function POST(req: Request) {
   const auth = await requireApiUser(req)
@@ -157,6 +235,20 @@ export async function POST(req: Request) {
   const parsed = ReconcileSchema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) {
     return NextResponse.json({ ok: false, error: 'geçersiz istek' }, { status: 400 })
+  }
+  if (parsed.data.action === 'reconcile_reply') {
+    const target = parsed.data.decision === 'assume_delivered' ? 'sent' : 'failed'
+    const { data, error } = await lifeSupabaseAdmin
+      .from('telegram_outbound_deliveries')
+      .update({ status: target, last_error: `manual reconcile: ${parsed.data.decision}`, updated_at: new Date().toISOString() })
+      .eq('delivery_key', parsed.data.deliveryKey)
+      .eq('status', 'unknown') // yalnız belirsiz satır reconcile edilebilir (CAS)
+      .select('id')
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 409 })
+    if (!data?.length) {
+      return NextResponse.json({ ok: false, error: 'satır unknown durumda değil (zaten karara bağlanmış olabilir)' }, { status: 409 })
+    }
+    return NextResponse.json({ ok: true, decision: parsed.data.decision })
   }
   const r = await reconcileReminder({
     date: parsed.data.date,

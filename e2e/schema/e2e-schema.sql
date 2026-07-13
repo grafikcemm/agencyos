@@ -1618,5 +1618,7 @@ GRANT EXECUTE ON FUNCTION public.e2e_schema_fingerprint() TO anon, authenticated
 -- Telegram success-path E2E, canlı LIFE DB'ye dokunmadan bu tablolara yazar.
 -- Test DB'ye 2026-07-13'te e2e_life_telegram_schema +
 -- e2e_life_active_tasks_and_fingerprint_exclusions migration'larıyla uygulandı.
--- Şekiller supabase/life-migrations/005 + 006 (v2, claim_token) ile hizalı.
+-- Şekiller supabase/life-migrations/005 + 006 (v3) ile hizalı:
+-- telegram_outbound_deliveries += attempt_count, claimed_at; status CHECK
+-- 'pending' içerir (2026-07-13 Sprint-3 Faz 1 ALTER'ı test DB'ye uygulandı).
 -- ─────────────────────────────────────────────────────────────────────────────

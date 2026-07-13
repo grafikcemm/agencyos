@@ -1,5 +1,7 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 006_telegram_claim_state — LIFE DB (Faz 0.1, revize v2: fencing token)
+-- 006_telegram_claim_state — LIFE DB (Faz 0.1, revize v3: fencing token +
+-- delivery ledger durum makinesi [pending/sending/sent/failed/unknown] +
+-- attempt_count/claimed_at lease alanları)
 --
 -- ⚠ UYGULANMADI — kullanıcı onayı bekliyor (LIFE DB pazarlıksız sınır).
 --   Kod bu şema olmadan da çalışır: legacy 005 davranışı (insert-only claim,
@@ -80,15 +82,21 @@ create table if not exists public.telegram_outbound_deliveries (
   update_id bigint,
   purpose text not null default 'webhook_reply',
   status text not null default 'sending'
-    check (status in ('sending','sent','failed','unknown')),
+    check (status in ('pending','sending','sent','failed','unknown')),
   message_id bigint,
+  attempt_count integer not null default 1,
+  claimed_at timestamptz not null default now(),
   last_error text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
 comment on table public.telegram_outbound_deliveries is
-  'Telegram cevap delivery ledger: delivery_key unique → aynı update retry''ında ikinci provider çağrısı yapısal olarak engellenir. sending+eski = unknown adayı (otomatik resend YOK).';
+  'Telegram cevap delivery ledger (v3 durum makinesi): delivery_key unique → aynı update retry''ında ikinci provider çağrısı yapısal olarak engellenir. sent=gerçek dedupe; failed=kontrollü retry (attempt_count+1, claimed_at lease); unknown=belirsiz provider sonucu — OTOMATİK resend ASLA (manuel reconcile); sending+taze lease=in-progress.';
+comment on column public.telegram_outbound_deliveries.attempt_count is
+  'Kaçıncı provider denemesi (yalnız failed→sending devralmasında artar).';
+comment on column public.telegram_outbound_deliveries.claimed_at is
+  'Aktif sending denemesinin lease zaman damgası — bayat sending unknown''a düşürülür.';
 
 alter table public.telegram_outbound_deliveries enable row level security;
 revoke all on table public.telegram_outbound_deliveries from anon, authenticated;

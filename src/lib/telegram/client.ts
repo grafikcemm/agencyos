@@ -26,6 +26,15 @@ export interface TelegramSendErr {
   error: string
   /** true → çağıran kalıcı retry planlayabilir (429/5xx/network). */
   retryable: boolean
+  /**
+   * true → provider sonucu BELİRSİZ: istek Telegram'a ULAŞMIŞ olabilir
+   * (network timeout/bağlantı kopması yanıt kaybıyla, 5xx, ok-ama-gövde-bozuk).
+   * Belirsiz sonuçta OTOMATİK ikinci gönderim YAPILMAZ (duplicate riski) —
+   * ledger 'unknown' yazar, karar manuel reconcile'dadır.
+   * false → KESİN başarısızlık (Telegram işlemedi: 4xx cevap, 429-sonrası-429,
+   * eksik env) — kontrollü retry güvenlidir.
+   */
+  ambiguous: boolean
 }
 
 export type TelegramSendResult = TelegramSendOk | TelegramSendErr
@@ -108,7 +117,7 @@ export async function sendTelegramMessage(
 ): Promise<TelegramSendResult> {
   const chatId = opts.chatId ?? process.env.TELEGRAM_CHAT_ID ?? ''
   if (!chatId) {
-    return { ok: false, status: 0, error: 'TELEGRAM_CHAT_ID eksik', retryable: false }
+    return { ok: false, status: 0, error: 'TELEGRAM_CHAT_ID eksik', retryable: false, ambiguous: false }
   }
 
   // Faz 5 — E2E fake transport: dış Telegram'a ÇIKMADAN deterministik başarı.
@@ -142,18 +151,29 @@ export async function sendTelegramMessage(
   }
 
   if (networkError) {
-    return { ok: false, status: 0, error: redactToken(networkError), retryable: true }
+    // Timeout/bağlantı kopması: istek Telegram'a ULAŞMIŞ ve mesaj GİTMİŞ
+    // olabilir (yanıt kayboldu) → BELİRSİZ. Kör retry duplicate üretir.
+    if (networkError === 'TELEGRAM_BOT_TOKEN eksik') {
+      return { ok: false, status: 0, error: networkError, retryable: false, ambiguous: false }
+    }
+    return { ok: false, status: 0, error: redactToken(networkError), retryable: true, ambiguous: true }
   }
   const messageId = body?.result?.message_id
   if (status === 200 && body?.ok && typeof messageId === 'number') {
     return { ok: true, messageId, status }
   }
   const desc = body?.description ?? `http ${status}`
+  // Belirsizlik sınıflandırması:
+  // - 5xx: Telegram cevabı geldi ama işlem sonucu bilinmez (işlemiş olabilir) → ambiguous.
+  // - 200 + bozuk/eksik gövde: "ok" demiş olabilir → ambiguous.
+  // - 4xx (429 dahil — Telegram "işlemedim" der): KESİN başarısızlık → retry güvenli.
+  const ambiguous = status >= 500 || (status === 200 && !(body?.ok === false))
   return {
     ok: false,
     status,
     error: redactToken(desc).slice(0, 200),
     retryable: status === 429 || status >= 500,
+    ambiguous,
   }
 }
 

@@ -15,16 +15,23 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json-summary', 'html'],
       reportsDirectory: './test-results/coverage',
-      include: ['src/lib/**/*.ts'],
+      include: ['src/lib/**/*.ts', 'src/app/api/telegram/route.ts'],
       exclude: ['src/lib/**/*.test.ts', 'src/lib/migrations/**', 'src/lib/types.ts'],
-      // Kritik modül eşikleri (Faz 6): gönderim güvenliği + model routing
-      // gerileyemez — tam suite `--coverage` ile altına düşerse FAIL.
+      // Kritik modül eşikleri (Faz 6 + Sprint-3 Faz 1): gönderim güvenliği +
+      // model routing + Telegram teslimat doğruluğu gerileyemez — tam suite
+      // `--coverage` ile altına düşerse FAIL.
       thresholds: {
         'src/lib/outreach/gmail.ts': { statements: 90, lines: 90, branches: 85 },
         'src/lib/outreach/sendMachine.ts': { statements: 90, lines: 90, branches: 80 },
         'src/lib/outreach/auditCompliance.ts': { statements: 90, lines: 90, branches: 85 },
         'src/lib/models/**/*.ts': { statements: 90, branches: 80 },
         'src/lib/ai/toolCostLog.ts': { statements: 90, branches: 85 },
+        // Sprint-3 Faz 1 — Telegram teslimat zinciri (≥90 line / ≥85 branch):
+        'src/app/api/telegram/route.ts': { lines: 90, branches: 85 },
+        'src/lib/telegram/replyDelivery.ts': { lines: 90, branches: 85 },
+        'src/lib/telegram/salesHandlers.ts': { lines: 90, branches: 85 },
+        'src/lib/telegram/updateClaims.ts': { lines: 90, branches: 85 },
+        'src/lib/telegram/client.ts': { lines: 90, branches: 85 },
       },
     },
   },
