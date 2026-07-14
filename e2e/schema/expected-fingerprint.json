@@ -12,9 +12,9 @@
     "leads": "8c5c5bea4eb5a154932540d5708f892c",
     "agents": "b7c33b569c09f052c492181fbcc5c6ba",
     "skills": "da6af548ce195293a156a86ecf15cf16",
-    "contacts": "18769a308249b48696a2837e694b1bb1",
+    "contacts": "93294c6cb992ea5170a9614c4b0de42b",
     "memories": "5a431655bd7f272f8355665765f99f03",
-    "projects": "77a8e5322c1f09590f2303ccdaecc181",
+    "projects": "45f052d9a1703614aef6f0d400136c27",
     "sessions": "f87f9479de2ced9559ea23a635fca060",
     "settings": "08c087ee3cc72ca1ccf94ed73b0fb3ce",
     "strategy": "edcd03403c7c540ab8dc441ceb67ee0e",
@@ -54,7 +54,7 @@
     "suppression_list": "0f6f81b11d512d4b90f519bd01214caa",
     "approval_requests": "ec32f99f1d3ffe3c8259939d04d082d2",
     "autoresearch_runs": "6b1bc662d4f9c584fe66bf93fa51db69",
-    "lead_action_audit": "81ae72ddfb3ae7a7f580cf4cb16aa5f1",
+    "lead_action_audit": "f97cb0c4e296a45b377539da1ac6405a",
     "memory_embeddings": "48c880501b45d1a804dbf7b242259b66",
     "outreach_messages": "cb996b0dc0a470e7d8ff566770a95e12",
     "agent_skill_grants": "2383b260b2870d7401c924d0436c704a",
@@ -79,5 +79,5 @@
     "proposal_events": "f264b080bde7842dd86de57958cc5a47"
   },
   "triggers_md5": "2fec56f101e2fe21be93caf015be7a74",
-  "functions_md5": "57d6a3b7c1572fd3cb4b6a903e5b0017"
+  "functions_md5": "2917c1758ba5adc3cab4b76b3e893b05"
 }

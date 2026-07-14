@@ -1647,3 +1647,10 @@ CREATE UNIQUE INDEX follow_up_sequences_open_step_uniq
 --  decide_proposal_approval_tx) + 062'nin koşullu proposal FK'si bağlandı.
 -- Test DB'de ek olarak legacy e2e_open policy + geniş grant (yalnız izole test
 -- DB düzeni). Canlı App DB onaya kadar geride. Kaynak DDL: migrations/061_proposals.sql (v3).
+
+-- FINALIZATION Faz 6 — 058+059+060 test DB'ye KALICI uygulandı (2026-07-14):
+-- apply_lead_action / create_contact_tx / set_primary_contact /
+-- convert_lead_to_project RPC'leri + contacts tek-primary ve projects lead
+-- kısmi UNIQUE'leri + audit 'convert' CHECK. E2E LEAD_ACTION_RPC_REQUIRED=true
+-- ile koşar (legacy fallback E2E'de KAPALI). expected-fingerprint.json =
+-- kanonik hedef (canlı App DB + onay paketi). Paket: docs/migration-approval-package-2026-07-14.md

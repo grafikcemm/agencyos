@@ -60,6 +60,10 @@ export default defineConfig({
       GMAIL_SEND_ENABLED: 'false',
       TELEGRAM_WEBHOOK_SECRET: E2E_TELEGRAM_SECRET,
       CRON_SECRET: E2E_CRON_SECRET,
+      // FINALIZATION Faz 6: test DB'de 058 KALICI → legacy fallback E2E'de
+      // KAPALI; suite gerçek RPC yolunu kullandığını yapısal kanıtlar
+      // (RPC yoksa fail-closed olur ve testler düşer).
+      LEAD_ACTION_RPC_REQUIRED: 'true',
       TELEGRAM_CHAT_ID: E2E_TELEGRAM_CHAT_ID,
       TELEGRAM_USER_ID: E2E_TELEGRAM_USER_ID,
       // Bot token BILEREK bos - E2E'de dis Telegram cagrisi yapisal imkansiz.
