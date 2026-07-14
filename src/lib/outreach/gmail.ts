@@ -51,6 +51,7 @@ import {
   type GmailTransport,
   type SendAttempt,
 } from '@/lib/outreach/sendMachine'
+import { createGmailRestTransport } from '@/lib/outreach/gmailRestTransport'
 
 export const SEND_GMAIL_ACTION = 'send-gmail'
 
@@ -506,27 +507,6 @@ async function loadActiveGmailAccount(): Promise<GmailAccountRow | null> {
     .limit(1)
     .maybeSingle()
   return (data as GmailAccountRow) ?? null
-}
-
-// Gerçek Gmail REST transport'u — YALNIZ flag açık + aktif hesap + OAuth env
-// hazırken yürür. Token akışı (refresh→access, Vault okuma) kullanıcı OAuth'u
-// + bağımsız güvenlik incelemesi sonrası doldurulacak (19 §5). O zamana kadar
-// KESİN (ambiguous=false) hatayla reddeder: provider'a hiç çıkılmadı →
-// attempt 'failed' olur ve güvenle yeniden denenebilir. Sessiz düşüş YOK.
-export function createGmailRestTransport(account: GmailAccountRow): GmailTransport {
-  void account // OAuth + güvenlik incelemesi sonrası gerçek REST çağrısında kullanılacak
-  return {
-    async send() {
-      throw new GmailTransportError(
-        'Gerçek Gmail gönderimi henüz yapılandırılmadı: OAuth istemcisi (GMAIL_OAUTH_CLIENT_ID/GMAIL_OAUTH_CLIENT_SECRET) ' +
-          've Vault token akışı güvenlik incelemesinden geçmeli. GMAIL_SEND_ENABLED=false yapın (dry-run) veya OAuth kurulumunu tamamlayın.',
-        false
-      )
-    },
-    async findByRfcMessageId() {
-      throw new GmailTransportError('Gmail araması için OAuth (gmail.readonly) yapılandırılmadı.', false)
-    },
-  }
 }
 
 // RFC 2822 düz-metin mesaj → base64url (Gmail API raw formatı). Message-ID
