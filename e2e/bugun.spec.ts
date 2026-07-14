@@ -65,6 +65,16 @@ test('kokpit panelleri: aranacaklar + geciken follow-up + unknown attempt + sıc
   await login(page)
   await page.goto('/bugun')
 
+  // Günlük dua kokpitin en üstünde kompakt başlar; tek tıkla eksiksiz açılır.
+  const prayer = page.getByTestId('daily-prayer')
+  await expect(prayer).toBeVisible()
+  await expect(prayer).toContainText('Günlük Dua')
+  await expect(page.getByTestId('daily-prayer-text')).not.toBeVisible()
+  await prayer.locator('summary').click()
+  await expect(page.getByTestId('daily-prayer-text')).toBeVisible()
+  await expect(page.getByTestId('daily-prayer-text')).toContainText('Bana helal rızık ver')
+  await expect(page.getByTestId('daily-prayer-text')).toContainText('ailemi ve sevdiklerimi koru')
+
   // Gelir şeridi: ağırlıklı toplam görünür (contacted 12000×0.1 + responded 25000×0.35 ≥ 9950)
   const revenue = page.getByTestId('panel-revenue')
   await expect(revenue).toContainText('Beklenen aylık gelir')

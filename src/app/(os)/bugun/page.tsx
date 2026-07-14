@@ -12,6 +12,7 @@ import { CallListPanel } from '@/components/cockpit/CallListPanel'
 import { SendIssuesPanel } from '@/components/cockpit/SendIssuesPanel'
 import { OpsMetricsBar } from '@/components/cockpit/OpsMetricsBar'
 import { TimeBudgetPlanner } from '@/components/cockpit/TimeBudgetPlanner'
+import { DailyPrayerCard } from '@/components/cockpit/DailyPrayerCard'
 
 export const dynamic = 'force-dynamic'
 
@@ -68,6 +69,8 @@ export default async function BugunPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-5 py-8">
+      <DailyPrayerCard />
+
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <Sunrise className="w-6 h-6 text-[var(--accent)]" />
         <h1 className="text-xl font-bold text-[var(--text-primary)]">Bugün</h1>
