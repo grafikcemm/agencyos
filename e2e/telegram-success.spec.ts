@@ -170,14 +170,14 @@ test('pending add-task: "görev ekle" → durable pending → "1" → active_tas
 
 test('imzalı send: approved onay → "gönder" kartı (kod) → yanlış kod red → doğru kod DRY-RUN gönderim', async ({ request }) => {
   const db = supabaseAdmin()
-  const seeded = await seedDraft('tg-signed-send')
-  // Ayırt edici ada işaretle (resolveLeadByName ilike ile bulsun).
+  // Ayırt edici suffix → resolveLeadByName ilike bununla bulur (business_name
+  // güncellemesi YOK; seedDraft adı zaten "...<token>...(e2e-sprint-p0)").
   const token = `tgsigned${Date.now() % 100000}`
-  await db.from('leads').update({ business_name: `${token} (e2e-sprint-p0)` }).eq('id', seeded.leadId)
+  const seeded = await seedDraft(token)
 
   // GERÇEK HITL onayı: request + approve (web application service).
   const rq = await requestSend(request, seeded.draftId)
-  expect(rq.status).toBe(200)
+  expect(rq.status, JSON.stringify(rq.body)).toBe(200)
   const ap = await approve(request, rq.body.data.approvalId as string)
   expect(ap.status).toBe(200)
 

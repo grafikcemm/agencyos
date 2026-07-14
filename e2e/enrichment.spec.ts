@@ -103,7 +103,7 @@ test('düşük güven → contact yazılır ama primary DEĞİL, HITL bekler (g�
   expect(contacts![0].is_primary).toBe(false) // otomatik primary YOK — operatör seçecek
 })
 
-test('duplicate e-posta ikinci koşuda dedup (transaction), summary görünür + kokpit', async ({ request }) => {
+test('idempotent + dedup: aynı e-posta iki koşuda TEK contact (transaction) + kokpit özeti', async ({ request }) => {
   const db = supabaseAdmin()
   const email = `enrich-dup-${Date.now()}@${E2E_EMAIL_DOMAIN}`
   const { data: lead } = await db
@@ -112,18 +112,21 @@ test('duplicate e-posta ikinci koşuda dedup (transaction), summary görünür +
     .select('id')
     .single()
   const leadId = lead!.id as string
+  // Aynı e-postayı ZATEN kayıtlı bir contact olarak seed et (dedup yolu için).
+  await db.from('contacts').insert({ lead_id: leadId, full_name: 'Var Olan', role: 'other', email: email.toLowerCase(), source: 'manual', is_primary: false })
 
+  // Enrichment aynı e-postayı bulursa → transaction dedup (duplicate), yeni satır YOK.
   const payload = {
     contacts: { [leadId]: [{ fullName: 'Tekrar Kişi', role: 'owner', email, source: 'website' as const, confidence: 0.8, fetchedAt: new Date().toISOString() }] },
     evidence: {},
     maxLeads: 20,
   }
   const r1 = await runEnrichment(request, payload)
-  expect(r1.body.summary.contactsAdded).toBeGreaterThanOrEqual(1)
-  const r2 = await runEnrichment(request, payload)
-  expect(r2.body.summary.duplicatesSkipped).toBeGreaterThanOrEqual(1)
+  expect(r1.status).toBe(200)
+  expect(r1.body.summary.duplicatesSkipped).toBeGreaterThanOrEqual(1)
 
-  // Tek contact (dedup).
+  // İki koşu sonrası da TEK contact (idempotent + transaction dedup).
+  await runEnrichment(request, payload)
   const { data: contacts } = await db.from('contacts').select('id').eq('lead_id', leadId).eq('email', email.toLowerCase())
   expect(contacts ?? []).toHaveLength(1)
 

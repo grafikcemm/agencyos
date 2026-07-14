@@ -1654,3 +1654,36 @@ CREATE UNIQUE INDEX follow_up_sequences_open_step_uniq
 -- kısmi UNIQUE'leri + audit 'convert' CHECK. E2E LEAD_ACTION_RPC_REQUIRED=true
 -- ile koşar (legacy fallback E2E'de KAPALI). expected-fingerprint.json =
 -- kanonik hedef (canlı App DB + onay paketi). Paket: docs/migration-approval-package-2026-07-14.md
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- FINAL PILOT BLOCKERS (2026-07-14) — revize 064 v3 + LIFE 006 code, test DB'ye
+-- KALICI. gmail_oauth_states (replay reddi) + gmail_inbound_quarantine + hesaba
+-- özgü Vault tek-tx connect/disconnect + consume/prune/quarantine RPC'leri +
+-- telegram_pending_actions.code (imzalı satış aksiyonu). Yeni tablolar RLS-enabled;
+-- SECURITY DEFINER fonksiyonlarda sabit search_path + PUBLIC/authenticated revoke;
+-- test-DB-only anon EXECUTE + e2e_open (E2E service=anon). Canlı App/LIFE onaya
+-- kadar geride. Kaynak DDL: migrations/064_gmail_vault.sql (v3) +
+-- supabase/life-migrations/006 (code kolonu).
+CREATE TABLE IF NOT EXISTS public.gmail_oauth_states (
+  nonce text PRIMARY KEY,
+  expires_at timestamptz NOT NULL,
+  consumed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.gmail_oauth_states ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS e2e_open ON public.gmail_oauth_states;
+CREATE POLICY e2e_open ON public.gmail_oauth_states FOR ALL USING (true) WITH CHECK (true);
+
+CREATE TABLE IF NOT EXISTS public.gmail_inbound_quarantine (
+  gmail_message_id text PRIMARY KEY,
+  reason text NOT NULL CHECK (reason IN ('unmatched','sender_mismatch')),
+  from_address text, subject text, rfc_refs text,
+  seen_count integer NOT NULL DEFAULT 1,
+  first_seen_at timestamptz NOT NULL DEFAULT now(),
+  last_seen_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.gmail_inbound_quarantine ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS e2e_open ON public.gmail_inbound_quarantine;
+CREATE POLICY e2e_open ON public.gmail_inbound_quarantine FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE public.telegram_pending_actions ADD COLUMN IF NOT EXISTS code text;

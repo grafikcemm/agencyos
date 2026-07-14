@@ -21,6 +21,7 @@
     "decisions": "c55f6e38df0ce8e350058cae5e2564b7",
     "eval_runs": "249ea309bfa1a513ce248a28b3cc63e9",
     "playbooks": "0f034c3684643d57368eda9c6f8b5e63",
+    "proposals": "ef48b3bf954e19029ace32fa30720ff9",
     "run_spans": "e41ec07443ac73ef1712d3f62d233229",
     "scan_runs": "ef5527820b16f79fd52a52257115a9e8",
     "directives": "8beddf5adcc3d476e663a7ee2943490f",
@@ -46,6 +47,7 @@
     "consent_records": "cb91c2b03bfd9dd801727181f3f88873",
     "council_debates": "e83b764308d6de960867374c723f7549",
     "lead_intel_runs": "9c84af7648f5fdf3831276b7a0f950e6",
+    "proposal_events": "f264b080bde7842dd86de57958cc5a47",
     "service_catalog": "f15597e34cab36509a69f4a37675606a",
     "tool_embeddings": "49725bfcb407ad8da334ca338ebc0e8a",
     "lead_assessments": "706293747a9a45f658923d4d0107265f",
@@ -57,8 +59,11 @@
     "lead_action_audit": "f97cb0c4e296a45b377539da1ac6405a",
     "memory_embeddings": "48c880501b45d1a804dbf7b242259b66",
     "outreach_messages": "cb996b0dc0a470e7d8ff566770a95e12",
+    "proposal_versions": "bb63b0e0190c98f3ccda488ebbb293fa",
     "agent_skill_grants": "2383b260b2870d7401c924d0436c704a",
     "apollo_enrichments": "3d2c784d7a12730660b7e92e5c9d99e9",
+    "gmail_oauth_states": "20d44d64f3e6c178621e0c72925e5b6b",
+    "proposal_approvals": "0999b21bcec6052d4d0e3e6e7eedb7b9",
     "follow_up_sequences": "9f467ba5abc28737559b1bde9661de38",
     "lead_match_feedback": "d8d4cf642f81051edd0c4cd252c3d4db",
     "lead_service_matches": "c0fbb287880c6e4a74c0b69970261446",
@@ -67,17 +72,14 @@
     "job_application_drafts": "731a6cee965ae8707491777c387b5ace",
     "outreach_send_attempts": "9c7fe94144cd5ab80e756e5dc0ad355d",
     "outreach_claim_evidence": "ab548fc181a5e18ade7079358597a154",
+    "gmail_inbound_quarantine": "6a431113f7aaf645c711fddce44e0d8b",
     "opportunity_watch_topics": "1298a9286e378310d4e66e6b5027eba8",
     "opportunity_intel_reports": "1e1740f78fb22290f3ed74477a8fc512",
     "opportunity_jarvis_memory": "ad9683d69e2db30c50c55dbe491123a1",
     "opportunity_trend_signals": "9a9b3ef19e8914153899a5c83f11dc8d",
     "opportunity_trend_sources": "93ea06bfc39760f7818e081061a29698",
-    "outreach_message_versions": "a1d4ec88b504afe20be2b94449262243",
-    "proposals": "ef48b3bf954e19029ace32fa30720ff9",
-    "proposal_versions": "bb63b0e0190c98f3ccda488ebbb293fa",
-    "proposal_approvals": "0999b21bcec6052d4d0e3e6e7eedb7b9",
-    "proposal_events": "f264b080bde7842dd86de57958cc5a47"
+    "outreach_message_versions": "a1d4ec88b504afe20be2b94449262243"
   },
   "triggers_md5": "2fec56f101e2fe21be93caf015be7a74",
-  "functions_md5": "852a99a5218c9aea6373c65d506afa36"
+  "functions_md5": "7312aa69b4f815a644cfe63152cf07a0"
 }
