@@ -59,6 +59,9 @@ export default defineConfig({
       APP_SESSION_SECRET: E2E_SESSION_SECRET,
       OPERATOR_API_TOKEN: E2E_OPERATOR_TOKEN,
       GMAIL_SEND_ENABLED: 'false',
+      // Test sunucusu yerel/üretim flag'lerini miras alamaz. Bu kapı hem
+      // default-off sözleşmesini hem de E2E izolasyonunu deterministik tutar.
+      FOLLOWUP_FSM_ENABLED: 'false',
       TELEGRAM_WEBHOOK_SECRET: E2E_TELEGRAM_SECRET,
       CRON_SECRET: E2E_CRON_SECRET,
       // FINALIZATION Faz 6: test DB'de 058 KALICI → legacy fallback E2E'de
