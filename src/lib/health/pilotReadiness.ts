@@ -106,10 +106,11 @@ function schedulerReady(): boolean {
     || process.env.EXTERNAL_CRON_SCHEDULER_CONFIRMED === 'true'
 }
 
-/** Onaylı Voice DNA kuralı var mı (kalibrasyon) — settings.voice_dna. */
+/** Onaylı Voice DNA kuralı var mı (kalibrasyon) — üretim motorunun kanonik
+ * settings.voice_style_rules kaydı. Readiness ile üretim aynı kaynağı okur. */
 async function voiceCalibrated(): Promise<boolean> {
   try {
-    const { data } = await supabaseAdmin.from('settings').select('value').eq('key', 'voice_dna').maybeSingle()
+    const { data } = await supabaseAdmin.from('settings').select('value').eq('key', 'voice_style_rules').maybeSingle()
     if (!data?.value) return false
     const parsed = JSON.parse(data.value as string) as { positive?: unknown[]; negative?: unknown[] }
     return (parsed.positive?.length ?? 0) > 0 || (parsed.negative?.length ?? 0) > 0

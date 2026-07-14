@@ -54,7 +54,7 @@ function fullyReady() {
     ingestEnabled: true, hasHistoryCursor: true,
   })
   webhookInfo.mockResolvedValue({ ok: true, info: { url: 'https://agency.example/api/telegram' } })
-  settingsRows.voice_dna = JSON.stringify({ positive: ['kısa yaz'], negative: [] })
+  settingsRows.voice_style_rules = JSON.stringify({ positive: ['kısa yaz'], negative: [] })
   settingsRows.ticaret_unvani = 'Ali Cem Bozma'
   settingsRows.mersis_no = '0000000000000000'
   settingsRows.gmail_last_ingest_ok = new Date().toISOString()
@@ -115,7 +115,7 @@ describe('getPilotReadiness', () => {
 
   it('Voice DNA kalibre değil → ikna kişiselleştirmesi eksik, healthy:false', async () => {
     fullyReady()
-    delete settingsRows.voice_dna
+    delete settingsRows.voice_style_rules
     const r = await getPilotReadiness()
     expect(r.healthy).toBe(false)
     expect(r.failedRequired).toContain('voice_dna')
@@ -151,9 +151,9 @@ describe('getPilotReadiness', () => {
     expect(r.failedRequired).toContain('send_flag')
   })
 
-  it('voice_dna bozuk JSON → voice check false (parse catch, healthy’yi düşürmez)', async () => {
+  it('voice_style_rules bozuk JSON → voice check false (parse catch, healthy’yi düşürmez)', async () => {
     fullyReady()
-    settingsRows.voice_dna = 'bu json değil {{{'
+    settingsRows.voice_style_rules = 'bu json değil {{{'
     const r = await getPilotReadiness()
     expect(r.checks.find((c) => c.key === 'voice_dna')?.ok).toBe(false)
     expect(r.healthy).toBe(false)
