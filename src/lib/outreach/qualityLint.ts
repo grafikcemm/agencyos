@@ -42,6 +42,7 @@ export interface QualityViolation {
     | 'MULTIPLE_CTA'
     | 'NO_CTA'
     | 'CLAIM_WITHOUT_EVIDENCE'
+    | 'CLAIM_EVIDENCE_MISMATCH'
     | 'MISSING_OPT_OUT'
     | 'VOICE_BANNED_PHRASE'
     | 'BODY_TOO_LONG'
@@ -124,34 +125,65 @@ const CTA_PATTERNS = [
   /inceleyelim mi/gi,
 ]
 
-/** Kanıt gerektiren iddia kalıpları: sayı/süre/yüzde/performans/sonuç/gözlem. */
-const CLAIM_PATTERNS = [
-  /%\s?\d{1,3}/g, // yüzde iddiası ("%35")
-  /\d+\s*(kat|misli)\b/gi, // "3 kat artış"
-  /\d+\s*[xX]\b/g, // "3X"
-  /\d+\s*(yeni\s+)?müşteri/gi,
-  /\d+\s*(yeni\s+)?musteri/gi,
-  /\b\d+\s*(hafta|gün|gun|ay)(da|de|ta|te|\s*içinde|\s*icinde)\b/gi, // süre vaadi ("1 haftada", "90 günde")
-  /(ciro|gelir|sat[ıi]ş|satis)\s*art[ıi]ş/gi, // sonuç vaadi ("doğrudan ciro artışı")
-  /cevap\s*(alam[ıi]yor|veremiyor|alm[ıi]yor)/gi, // müşteri-davranışı gözlemi
-  /(rakibe|rakiplere)\s*geç/gi, // davranış iddiası ("rakibe geçiyor") — canlı T1 şablonu
-  /yar[ıi]ya\s*(indir|düşür|dusur)/gi, // performans vaadi ("no-show'u yarıya indiren") — canlı T5
-  /(gördüm|gordum|fark ettim|inceledim|baktım|baktim)/gi, // gözlem iddiası
+/**
+ * İddia taksonomisi (FINALIZATION Faz 1): her kalıp bir KATEGORİ taşır —
+ * kategori, kanıtın TÜRÜNE karşı deterministik uyum kontrolünde kullanılır
+ * (claimEvidence.ts). Kategoriler:
+ * - quantified: sayı/yüzde/kat/süre taşıyan ölçülebilir vaat
+ * - outcome:    sonuç vaadi (dönüşüm/ciro/randevu artışı, zaman kazanımı,
+ *               müşteri kaybını durdurma) — sayı içermese bile kanıt ister
+ * - behavioral: lead'in müşteri davranışına dair iddia (cevap alamıyor,
+ *               rakibe geçiyor, müşteri kaybediyor)
+ * - observation: birinci-elden inceleme iddiası (gördüm/baktım/inceledim)
+ */
+export type ClaimCategory = 'quantified' | 'outcome' | 'behavioral' | 'observation'
+
+export interface DetectedClaim {
+  snippet: string
+  category: ClaimCategory
+}
+
+const CLAIM_TAXONOMY: Array<{ category: ClaimCategory; pattern: RegExp }> = [
+  { category: 'quantified', pattern: /%\s?\d{1,3}/g }, // yüzde iddiası ("%35")
+  { category: 'quantified', pattern: /\d+\s*(kat|misli)\b/gi }, // "3 kat artış"
+  { category: 'quantified', pattern: /\d+\s*[xX]\b/g }, // "3X"
+  { category: 'quantified', pattern: /\d+\s*(yeni\s+)?müşteri/gi },
+  { category: 'quantified', pattern: /\d+\s*(yeni\s+)?musteri/gi },
+  { category: 'quantified', pattern: /\d+([.,]\d+)?\s*(yorum|değerlendirme|degerlendirme|puan)/gi }, // "37 yorum", "4.2 puan"
+
+  { category: 'quantified', pattern: /\b\d+\s*(hafta|gün|gun|ay)(da|de|ta|te|\s*içinde|\s*icinde)\b/gi }, // süre vaadi
+  { category: 'outcome', pattern: /(ciro|gelir|sat[ıi]ş|satis)\s*art[ıi]ş/gi }, // "doğrudan ciro artışı"
+  { category: 'outcome', pattern: /(dönüşüm|donusum|çevrim|cevrim)\s*(oran[ıi]?\s*)?art[ıi]ş/gi }, // "dönüşüm artışı"
+  { category: 'outcome', pattern: /daha\s+fazla\s+(randevu|müşteri|musteri|sat[ıi]ş|satis|hasta|dan[ıi]şan|danisan)/gi },
+  { category: 'outcome', pattern: /(randevu|rezervasyon)\s*(say[ıi]s[ıi]n[ıi]?\s*)?art/gi }, // "randevu artışı/artırır"
+  { category: 'outcome', pattern: /zaman[ıi]?(n[ıi]zdan)?\s*(kazan|tasarruf)/gi }, // "zaman kazandırır"
+  { category: 'outcome', pattern: /yar[ıi]ya\s*(indir|düşür|dusur)/gi }, // "no-show'u yarıya indiren"
+  { category: 'behavioral', pattern: /müşteri\s*kayb/gi }, // "müşteri kaybı yaşıyorsunuz"
+  { category: 'behavioral', pattern: /musteri\s*kayb/gi },
+  { category: 'behavioral', pattern: /cevap\s*(alam[ıi]yor|veremiyor|alm[ıi]yor)/gi }, // müşteri-davranışı gözlemi
+  { category: 'behavioral', pattern: /(rakibe|rakiplere)\s*(geç|gec|kapt[ıi]r)/gi }, // "rakibe geçiyor/kaptırıyor"
+  { category: 'observation', pattern: /(gördüm|gordum|fark ettim|inceledim|bakt[ıi]m)/gi }, // gözlem iddiası
 ]
+
+/** İddiaları kategorileriyle toplar — kanıt-uyum kontrolü kategori bazındadır. */
+export function detectClaimsDetailed(body: string): DetectedClaim[] {
+  const found = new Map<string, DetectedClaim>()
+  for (const { category, pattern } of CLAIM_TAXONOMY) {
+    pattern.lastIndex = 0
+    for (const m of body.matchAll(new RegExp(pattern.source, pattern.flags))) {
+      // Aynı snippet birden çok kalıba uyarsa İLK (en spesifik sıradaki) kategori kalır.
+      if (m[0] && !found.has(m[0])) found.set(m[0], { snippet: m[0], category })
+    }
+  }
+  return [...found.values()]
+}
 
 /** Metindeki iddia parçalarını (snippet) toplar — kapsam kontrolü parça bazında. */
 export function detectClaims(body: string): string[] {
-  const found: string[] = []
-  for (const p of CLAIM_PATTERNS) {
-    p.lastIndex = 0
-    for (const m of body.matchAll(new RegExp(p.source, p.flags))) {
-      if (m[0]) found.push(m[0])
-    }
-  }
-  return [...new Set(found)]
+  return detectClaimsDetailed(body).map((c) => c.snippet)
 }
 
-function fold(s: string): string {
+export function fold(s: string): string {
   return s
     .toLowerCase()
     .replace(/ğ/g, 'g').replace(/ı/g, 'i').replace(/ş/g, 's')

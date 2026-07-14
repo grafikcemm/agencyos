@@ -40,3 +40,12 @@ App DB'ye erişim yalnız Supabase MCP üzerindendir; senkron ajan tarafından �
 - Bu dizindeki SQL **supabase/migrations/ altında DEĞİLDİR** ve App DB'ye asla uygulanmaz.
 - Test DB ref'i prod ref'e eşitse `e2e/env.ts` fail-fast eder; bu koruma kaldırılamaz.
 - Test DB'de keyfi-SQL çalıştıran yardımcı fonksiyon YOKTUR (bilinçli karar: RCE yüzeyi açmamak için `e2e_admin_exec` önerisi reddedildi); tek yardımcı `e2e_schema_fingerprint()` read-only'dir.
+
+## Kanonik hedef şema (FINALIZATION sprinti, 2026-07-14)
+
+`expected-fingerprint.json` artık **kanonik HEDEF şemayı** temsil eder:
+canlı App DB + onay bekleyen migration paketi (058-062). Test DB'ye paket
+adım adım KALICI uygulanır (Faz 1: 062 v2); canlı App DB onaya kadar geride
+kalır — bu bilinçli ve belgelidir. Onay sonrası canlıya uygulanınca App DB
+fingerprint'i bu dosyayla birebir eşleşmelidir (doğrulama adımı migration
+onay paketinde).

@@ -24,6 +24,14 @@ import { buildApprovalDraft, DEFAULT_APPROVAL_TTL_MS } from '@/lib/approvals/int
 import { getApproval } from '@/lib/approvals/repo'
 import { auditCompliance, extractDomain } from '@/lib/outreach/auditCompliance'
 import { evaluateOutboundText, type GateVerdict } from '@/lib/outreach/outboundGate'
+import {
+  loadClaimEntriesForMessage,
+  persistMessageVersion,
+  remapClaims,
+  type EvidenceMeta,
+  type PersistedClaim,
+} from '@/lib/outreach/claimEvidence'
+import type { ClaimCategory, ClaimEvidenceEntry } from '@/lib/outreach/qualityLint'
 import { resolveCanonicalRecipient } from '@/lib/contacts/contactService'
 import { recordVoiceDelta, recordStyleDelta, getBannedPhrases } from '@/lib/outreach/voiceDna'
 import { isGmailSendEnabled } from '@/lib/outreach/flags'
@@ -122,19 +130,27 @@ export function computeSendArgs(
 }
 
 /** Faz 1.3: gönderim yolundaki TEK kalite değerlendirmesi. Hata fırlatırsa
- *  çağıran fail-closed davranır (onay doğmaz / gönderim yürümez). */
+ *  çağıran fail-closed davranır (onay doğmaz / gönderim yürümez).
+ *  FINALIZATION Faz 1: iddia→kanıt eşlemesi CLIENT'TAN ALINMAZ — mesajın
+ *  kayıtlı (versiyonlu) iddia bağları okunur ve güncel gövdeye deterministik
+ *  remap edilir. Kayıt yoksa/şema canlı değilse eşleme boş kalır → tespit
+ *  edilen iddialar bloklanır (fail-closed). */
 async function evaluateDraftQuality(
+  outreachMessageId: string,
   leadId: string,
   businessName: string | null,
   subject: string,
   body: string,
 ): Promise<GateVerdict> {
+  const loaded = await loadClaimEntriesForMessage(outreachMessageId)
+  const entries = loaded.schemaMissing ? [] : remapClaims(body, loaded.claims).entries
   return evaluateOutboundText({
     leadId,
     businessName: businessName ?? '',
     subject,
     body,
     kind: 'cold_email',
+    claimEvidence: entries,
   })
 }
 
@@ -171,7 +187,8 @@ export async function requestSendApproval(
   if (!lead.email) return { ok: false, error: 'Lead e-posta adresi yok — önce adres ekleyin' }
 
   // Operatör düzenlemesi (Senaryo 2: taslak → düzenle → onayla)
-  if (edits && (edits.subject !== undefined || edits.finalBody !== undefined)) {
+  const hasEdits = Boolean(edits && (edits.subject !== undefined || edits.finalBody !== undefined))
+  if (edits && hasEdits) {
     // Voice DNA v0: operatör gövdeyi düzenlediyse silinenleri öğren (aday
     // sayacı; otomatik yasaklama yok — onay operatörde). Best-effort.
     const originalBody = (row.final_body ?? row.body ?? '') as string
@@ -206,11 +223,58 @@ export async function requestSendApproval(
   // Faz 1.3: BLOCKING kalite kapısı — approval yaratılmadan ÖNCE.
   // Değerlendirme hatası → FAIL-CLOSED (onay kartı doğmaz).
   let quality: GateVerdict
+  let editorClaims: PersistedClaim[] = []
   try {
-    quality = await evaluateDraftQuality(row.lead_id, lead.business_name, subject, body)
+    const loaded = await loadClaimEntriesForMessage(outreachMessageId)
+    const remap = loaded.schemaMissing
+      ? { entries: [], unmatched: [], matchedPrior: [] as PersistedClaim[] }
+      : remapClaims(body, loaded.claims)
+    editorClaims = remap.matchedPrior
+    quality = await evaluateOutboundText({
+      leadId: row.lead_id,
+      businessName: lead.business_name ?? '',
+      subject,
+      body,
+      kind: 'cold_email',
+      claimEvidence: remap.entries,
+    })
   } catch {
     return { ok: false, error: 'Kalite kapısı değerlendirilemedi — onay isteği oluşturulmadı (fail-closed)' }
   }
+
+  // FINALIZATION Faz 1: düzenleme yeni IMMUTABLE versiyon üretir — kanıt bağları
+  // deterministik remap ile taşınır; taşınamayan iddia kapıda bloklanır. Versiyon
+  // gate SONUCUYLA birlikte yazılır (bloke edilen düzenlemenin de izi kalır).
+  // Şema canlı değilse (mig 062 onay bekliyor) iz atlanır; yazım HATASI fail-closed.
+  if (hasEdits) {
+    try {
+      await persistMessageVersion({
+        outreachMessageId,
+        channel: 'email',
+        recipient: {
+          kind: lead.contactId ? 'primary_contact' : 'lead_email',
+          contactId: lead.contactId,
+          email: lead.email,
+        },
+        subject,
+        body,
+        voiceDigest: null,
+        gate: { ok: quality.ok, digest: quality.digest, violations: quality.violations.map((v) => ({ code: v.code, detail: v.detail })) },
+        source: 'editor',
+        claims: editorClaims.map((c) => ({
+          text: c.claim_text,
+          category: (c.claim_category as ClaimCategory | null) ?? null,
+          evidenceId: c.evidence_id,
+          evidenceType: c.evidence_type ?? null,
+          evidenceSource: c.evidence_source ?? null,
+        })),
+        createdBy: 'operator:editor',
+      })
+    } catch (err) {
+      return { ok: false, error: `Taslak versiyonu yazılamadı: ${err instanceof Error ? err.message : 'bilinmeyen hata'}` }
+    }
+  }
+
   if (!quality.ok) {
     const codes = quality.violations.map((v) => v.code)
     console.warn(`[outreach.blocked] stage=quality outreach=${outreachMessageId} reasons=${codes.join(',')}`)
@@ -288,7 +352,7 @@ export async function findSendApproval(outreachMessageId: string): Promise<{ id:
   const { subject, body } = effectiveContent(row)
   let quality: GateVerdict
   try {
-    quality = await evaluateDraftQuality(row.lead_id, lead.business_name, subject, body)
+    quality = await evaluateDraftQuality(outreachMessageId, row.lead_id, lead.business_name, subject, body)
   } catch {
     return null // fail-closed: kalite değerlendirilemedi → onay "yok" görünür.
   }
@@ -347,20 +411,36 @@ export async function findSendApprovalsBatch(
   const leadIds = [...new Set(candidates.map((i) => i.leadId))]
   const { data: evidence } = await supabaseAdmin
     .from('lead_evidence')
-    .select('id, lead_id')
+    .select('id, lead_id, kind, source, summary, payload, verified')
     .in('lead_id', leadIds)
-  const evidenceByLead = new Map<string, string[]>()
+  const evidenceByLead = new Map<string, EvidenceMeta[]>()
   for (const e of evidence ?? []) {
     const arr = evidenceByLead.get(e.lead_id as string) ?? []
-    arr.push(e.id as string)
+    arr.push(e as unknown as EvidenceMeta)
     evidenceByLead.set(e.lead_id as string, arr)
   }
 
   const keyToDraft = new Map<string, string>()
   for (const item of candidates) {
+    // Digest, request-anındaki formülle BİREBİR aynı olmalı → iddia eşlemesi
+    // burada da server-side yüklenip remap edilir (client'a güven yok).
+    let claimEntries: ClaimEvidenceEntry[] = []
+    try {
+      const loaded = await loadClaimEntriesForMessage(item.draftId)
+      if (!loaded.schemaMissing) claimEntries = remapClaims(item.body, loaded.claims).entries
+    } catch {
+      continue // fail-closed: iddia kayıtları okunamıyorsa onay "yok" görünür.
+    }
     const quality = await evaluateOutboundText(
-      { leadId: item.leadId, businessName: item.businessName ?? '', subject: item.subject, body: item.body, kind: 'cold_email' },
-      { bannedPhrases: banned, validEvidenceIds: evidenceByLead.get(item.leadId) ?? [] },
+      {
+        leadId: item.leadId,
+        businessName: item.businessName ?? '',
+        subject: item.subject,
+        body: item.body,
+        kind: 'cold_email',
+        claimEvidence: claimEntries,
+      },
+      { bannedPhrases: banned, evidenceMeta: evidenceByLead.get(item.leadId) ?? [] },
     )
     const args = computeSendArgs(item.draftId, item.email!, item.subject, item.body, quality.digest, item.contactId)
     const draft = buildApprovalDraft({
@@ -526,7 +606,7 @@ async function validateSendPreconditions(
   // hesaplanır → onaydan sonra kalite girdisi değiştiyse eşleşmez.
   let sendQuality: GateVerdict
   try {
-    sendQuality = await evaluateDraftQuality(row.lead_id, lead.business_name, subject, body)
+    sendQuality = await evaluateDraftQuality(row.id, row.lead_id, lead.business_name, subject, body)
   } catch {
     return { ok: false, outcome: { ok: false, error: 'Kalite kapısı değerlendirilemedi — gönderim yürütülmedi (fail-closed)' } }
   }

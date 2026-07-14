@@ -34,7 +34,8 @@ DROP TABLE IF EXISTS
   public.opportunity_intel_reports, public.opportunity_jarvis_memory,
   public.opportunity_products, public.opportunity_trend_signals,
   public.opportunity_trend_sources, public.opportunity_watch_topics,
-  public.outreach_messages, public.outreach_send_attempts, public.person_leads,
+  public.outreach_messages, public.outreach_send_attempts,
+  public.outreach_message_versions, public.outreach_claim_evidence, public.person_leads,
   public.person_scan_runs, public.playbooks, public.projects, public.run_spans,
   public.run_step_dependencies, public.scan_runs, public.service_catalog,
   public.sessions, public.settings, public.skill_embeddings, public.skill_versions,
@@ -1621,4 +1622,16 @@ GRANT EXECUTE ON FUNCTION public.e2e_schema_fingerprint() TO anon, authenticated
 -- Şekiller supabase/life-migrations/005 + 006 (v3) ile hizalı:
 -- telegram_outbound_deliveries += attempt_count, claimed_at; status CHECK
 -- 'pending' içerir (2026-07-13 Sprint-3 Faz 1 ALTER'ı test DB'ye uygulandı).
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- FINALIZATION Faz 1 — mig 062 v2 (canonical outbound artifact) test DB'ye
+-- 2026-07-14'te KALICI uygulandı (062_claim_evidence_v2 migration'ı).
+-- expected-fingerprint.json bu tarihten itibaren KANONİK HEDEF şemayı temsil
+-- eder: "canlı App DB + onay bekleyen migration paketi". Canlı App DB, paket
+-- onaylanıp uygulanana kadar bu iki tabloda GERİDEDİR (bilinçli, belgeli fark).
+-- Kaynak DDL: migrations/062_claim_evidence.sql (v2).
+-- Test DB'de ek olarak legacy kalıpla hizalı e2e_open policy + geniş grant
+-- uygulandı (062_v2_e2e_open_policies) — ÜRETİM migration'ı STRICT kalır
+-- (service_role-only); bu fark yalnız izole test DB düzenidir.
 -- ─────────────────────────────────────────────────────────────────────────────

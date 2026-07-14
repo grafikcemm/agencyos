@@ -23,9 +23,8 @@ import { COLD_EMAIL_TEMPLATES, selectColdEmailTemplate } from '@/lib/coldEmailTe
 import { evaluateOutboundText } from '@/lib/outreach/outboundGate'
 import { getApprovedStyleRules } from '@/lib/outreach/voiceDna'
 import { resolveCanonicalRecipient } from '@/lib/contacts/contactService'
-import type { ClaimEvidenceEntry } from '@/lib/outreach/qualityLint'
-
-const SCHEMA_MISSING = new Set(['42P01', 'PGRST205'])
+import { detectClaimsDetailed, type ClaimEvidenceEntry } from '@/lib/outreach/qualityLint'
+import { persistMessageVersion, voiceRulesDigest } from '@/lib/outreach/claimEvidence'
 
 // LLM çağrısı birkaç saniye sürebilir — serverless timeout'u yükselt.
 export const maxDuration = 60
@@ -170,32 +169,51 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .single()
     if (insertErr) throw insertErr
 
-    // Faz 3.1: iddia→kanıt bağının KALICI izi (mig 062). Şema canlı değilse
-    // yazılamaz — bu durum GİZLENMEZ (claimPersisted:false döner); doğrulama
-    // zaten gate'te authoritative olduğundan güvenlik kaybı yoktur.
+    // FINALIZATION Faz 1: canonical artifact — versiyon 1 + iddia bağları TEK
+    // serviste yazılır (outreach_message_versions + outreach_claim_evidence,
+    // mig 062 v2). Şema canlı değilse iz yazılamaz — GİZLENMEZ (claimPersisted:
+    // false döner); onay/gönderim kapısı kayıtlı bağları okuyup remap ettiğinden
+    // iz olmayan taslağın iddiaları orada FAIL-CLOSED bloklanır.
     let claimPersisted = false
-    if (parsed.claims.length > 0) {
+    try {
       const evidenceMeta = new Map(
-        (evidenceRows ?? []).map((e) => [e.id as string, { kind: e.kind as string | null, source: e.source as string | null }]),
+        (evidenceRows ?? []).map((e) => [e.id as string, { kind: (e.kind as string | null) ?? null, source: (e.source as string | null) ?? null }]),
       )
-      const validRows = parsed.claims
-        .filter((c) => evidenceMeta.has(c.evidenceId))
-        .map((c) => ({
-          outreach_message_id: draft.id,
-          claim_text: c.text,
-          evidence_id: c.evidenceId,
-          evidence_type: evidenceMeta.get(c.evidenceId)?.kind ?? null,
-          evidence_source: evidenceMeta.get(c.evidenceId)?.source ?? null,
-        }))
-      if (validRows.length > 0) {
-        const { error: ceErr } = await supabaseAdmin.from('outreach_claim_evidence').insert(validRows)
-        if (!ceErr) claimPersisted = true
-        else if (SCHEMA_MISSING.has(ceErr.code ?? '')) {
-          console.warn('[cold-email] outreach_claim_evidence şeması canlı değil (mig 062 onay bekliyor) — iz yazılamadı')
-        } else {
-          console.error('[cold-email] claim_evidence izi yazılamadı:', ceErr.message)
-        }
+      const persist = await persistMessageVersion({
+        outreachMessageId: draft.id,
+        channel: 'email',
+        recipient: {
+          kind: recipient.source === 'primary_contact' ? 'primary_contact' : recipient.email ? 'lead_email' : 'none',
+          contactId: recipient.contactId,
+          email: recipient.email,
+        },
+        subject: parsed.subject,
+        body: fullBody,
+        voiceDigest: voiceRulesDigest(voiceRules ?? null, []),
+        gate: {
+          ok: quality.ok,
+          digest: quality.digest,
+          violations: quality.violations.map((v) => ({ code: v.code, detail: v.detail })),
+        },
+        source: 'generator:cold_email',
+        claims: parsed.claims
+          .filter((c) => evidenceMeta.has(c.evidenceId))
+          .map((c) => ({
+            text: c.text,
+            category: detectClaimsDetailed(c.text)[0]?.category ?? null,
+            evidenceId: c.evidenceId,
+            evidenceType: evidenceMeta.get(c.evidenceId)?.kind ?? null,
+            evidenceSource: evidenceMeta.get(c.evidenceId)?.source ?? null,
+          })),
+        createdBy: 'agent:cold_email',
+      })
+      if (persist.schemaMissing) {
+        console.warn('[cold-email] canonical artifact şeması canlı değil (mig 062 onay bekliyor) — versiyon izi yazılamadı')
+      } else {
+        claimPersisted = true
       }
+    } catch (err) {
+      console.error('[cold-email] canonical artifact yazılamadı:', err instanceof Error ? err.message : 'unknown')
     }
 
     return NextResponse.json({

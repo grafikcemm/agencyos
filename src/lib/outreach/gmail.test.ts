@@ -9,6 +9,7 @@ const db: Record<string, Array<Record<string, unknown>>> = {
   outreach_messages: [], leads: [], approval_requests: [], contacts: [],
   email_threads: [], email_messages: [], settings: [], suppression_list: [], gmail_accounts: [],
   outreach_send_attempts: [], lead_evidence: [],
+  outreach_message_versions: [], outreach_claim_evidence: [],
 }
 
 // finalize_outreach_send RPC simülasyonu — mig 054 SQL fonksiyonunun in-memory
@@ -18,6 +19,10 @@ let rpcFailNext = false
 let sentCasFailsOnce = false
 let attemptInsertFailsOnce = false
 let sendingCasFailsOnce = false
+// FINALIZATION Faz 1: canonical artifact hata enjeksiyonları.
+let versionsSelectFail: { message: string; code?: string } | null = null
+let versionsInsertFail: { message: string; code?: string } | null = null
+let claimEvSelectFail: { message: string; code?: string } | null = null
 function rpcFinalize(args: Record<string, unknown>) {
   const attempt = db.outreach_send_attempts.find(
     (a) => a.outreach_message_id === args.p_outreach_message_id && a.claim_token === args.p_claim_token
@@ -79,6 +84,15 @@ function makeQuery(table: string) {
   let conflictKey: string | null = null
 
   function exec(single: boolean): { data: unknown; error: { message: string; code?: string } | null } {
+    if (op === 'select' && table === 'outreach_message_versions' && versionsSelectFail) {
+      return { data: null, error: versionsSelectFail }
+    }
+    if (op === 'select' && table === 'outreach_claim_evidence' && claimEvSelectFail) {
+      return { data: null, error: claimEvSelectFail }
+    }
+    if (op === 'insert' && table === 'outreach_message_versions' && versionsInsertFail) {
+      return { data: null, error: versionsInsertFail }
+    }
     if (op === 'insert' && payload) {
       if (table === 'email_messages' && payload.gmail_message_id &&
         rows.some((r) => r.gmail_message_id === payload!.gmail_message_id)) {
@@ -106,6 +120,15 @@ function makeQuery(table: string) {
           reconcile_search_count: 0, last_searched_at: null,
           ...payload,
         }
+      }
+      // Toplu insert (claim satırları) — array payload satır satır eklenir.
+      if (Array.isArray(payload)) {
+        const inserted = (payload as unknown as Array<Record<string, unknown>>).map((r) => {
+          const row = { id: `id-${++seq}`, ...r }
+          rows.push(row)
+          return row
+        })
+        return { data: single ? inserted[0] : inserted, error: null }
       }
       const row = { id: `id-${++seq}`, ...payload }
       rows.push(row)
@@ -213,6 +236,7 @@ vi.mock('@/lib/contacts/contactService', () => ({
 
 import { requestSendApproval, findSendApproval, findSendApprovalsBatch, sendGmailMessage, reconcileOutreachSend, computeSendArgs, SEND_GMAIL_ACTION, buildRawMessage } from './gmail'
 import { GmailTransportError, type GmailTransport } from './sendMachine'
+import { claimKey } from './claimEvidence'
 import { computeActionDigest } from '@/lib/brain/gate'
 import { OPT_OUT_MARKER } from './auditCompliance'
 
@@ -246,6 +270,9 @@ beforeEach(() => {
   bannedThrow = false
   attemptInsertFailsOnce = false
   sendingCasFailsOnce = false
+  versionsSelectFail = null
+  versionsInsertFail = null
+  claimEvSelectFail = null
   delete process.env.GMAIL_SEND_ENABLED
 })
 
@@ -1039,5 +1066,117 @@ describe('at-most-once state machine (yarış + provider hataları)', () => {
     const r = await reconcileOutreachSend(DRAFT_ID)
     expect(r.ok).toBe(true)
     expect(r.outcome).toBe('no_action')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FINALIZATION Faz 1 — canonical artifact: editor versiyonu + server-side
+// iddia yükleme/remap dallarının kapsamı.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('canonical artifact (Faz 1): editor versiyonu + iddia yükleme', () => {
+  it('edits ile onay isteği: yeni IMMUTABLE versiyon yazılır (source=editor)', async () => {
+    const r = await requestSendApproval(DRAFT_ID, { finalBody: VALID_BODY + '\nEk not.' })
+    expect(r.ok).toBe(true)
+    expect(db.outreach_message_versions).toHaveLength(1)
+    const ver = db.outreach_message_versions[0]
+    expect(ver.source).toBe('editor')
+    expect(ver.version).toBe(1)
+    expect(ver.gate_ok).toBe(true)
+    expect(ver.recipient_email).toBe('info@testklinik.com')
+  })
+
+  it('edits ile ikinci onay isteği: versiyon 2 (zincir ilerler, üzerine yazmaz)', async () => {
+    await requestSendApproval(DRAFT_ID, { finalBody: VALID_BODY + '\nv1.' })
+    const r2 = await requestSendApproval(DRAFT_ID, { finalBody: VALID_BODY + '\nv2.' })
+    expect(r2.ok).toBe(true)
+    expect(db.outreach_message_versions.map((v) => v.version).sort()).toEqual([1, 2])
+  })
+
+  it('kayıtlı iddia bağı düzenleme sonrası taşınır: yeni versiyona claim satırı kopyalanır', async () => {
+    db.outreach_message_versions.push({ id: 'v0', outreach_message_id: DRAFT_ID, version: 1 })
+    db.outreach_claim_evidence.push({
+      message_version_id: 'v0', claim_key: 'k1',
+      claim_text: 'sitenize baktım', claim_category: 'observation',
+      evidence_id: 'e1', evidence_type: 'html_signal', evidence_source: 'scan',
+    })
+    const edited = VALID_BODY.replace('öneri...', 'sitenize baktım, öneri...')
+    const r = await requestSendApproval(DRAFT_ID, { finalBody: edited })
+    expect(r.ok).toBe(true)
+    const copied = db.outreach_claim_evidence.filter((c) => c.message_version_id !== 'v0')
+    expect(copied).toHaveLength(1)
+    expect(copied[0].claim_key).toBe(claimKey('sitenize baktım'))
+    expect(copied[0].evidence_id).toBe('e1')
+  })
+
+  it('iddia kayıtları OKUNAMAZSA (gerçek DB hatası): onay isteği fail-closed', async () => {
+    versionsSelectFail = { message: 'connection reset', code: 'XX000' }
+    const r = await requestSendApproval(DRAFT_ID)
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/fail-closed/)
+    expect(db.approval_requests).toHaveLength(0)
+  })
+
+  it('şema canlı değil (42P01): iddiasız akış onaya devam eder (iz atlanır)', async () => {
+    versionsSelectFail = { message: 'relation does not exist', code: '42P01' }
+    claimEvSelectFail = { message: 'relation does not exist', code: '42P01' }
+    const r = await requestSendApproval(DRAFT_ID, { finalBody: VALID_BODY + '\nEk.' })
+    expect(r.ok).toBe(true) // gövde iddiasız → kapı geçer; versiyon izi yazılamadı ama akış kırılmaz
+    expect(db.outreach_message_versions).toHaveLength(0)
+  })
+
+  it('versiyon YAZILAMAZSA (şema-dışı hata): onay isteği açık hatayla durur', async () => {
+    versionsInsertFail = { message: 'permission denied', code: '42501' }
+    const r = await requestSendApproval(DRAFT_ID, { finalBody: VALID_BODY + '\nEk.' })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/Taslak versiyonu yazılamadı/)
+    expect(db.approval_requests).toHaveLength(0)
+  })
+
+  it('edits YOKSA versiyon yazılmaz (spam yok) ve onay oluşur', async () => {
+    const r = await requestSendApproval(DRAFT_ID)
+    expect(r.ok).toBe(true)
+    expect(db.outreach_message_versions).toHaveLength(0)
+  })
+
+
+  it('primary contact + subject edit + kategorisiz claim satırı: versiyon primary_contact alıcıyla yazılır', async () => {
+    db.contacts.push({ id: 'c1', lead_id: LEAD_ID, is_primary: true, email: 'sahip@testklinik.com', full_name: 'Ali Veli', created_at: '2026-01-01' })
+    db.outreach_message_versions.push({ id: 'v0', outreach_message_id: DRAFT_ID, version: 3 })
+    db.outreach_claim_evidence.push({
+      message_version_id: 'v0', claim_key: 'k2',
+      claim_text: 'yorumlarınızı inceledim', claim_category: null,
+      evidence_id: 'e7', evidence_type: null, evidence_source: null,
+    })
+    const edited = VALID_BODY.replace('öneri...', 'yorumlarınızı inceledim, öneri...')
+    const r = await requestSendApproval(DRAFT_ID, { subject: 'Yeni konu', finalBody: edited })
+    expect(r.ok).toBe(true)
+    const ver = db.outreach_message_versions.find((v) => v.source === 'editor')!
+    expect(ver.recipient_kind).toBe('primary_contact')
+    expect(ver.recipient_contact_id).toBe('c1')
+    expect(ver.version).toBe(4)
+    expect(ver.subject).toBe('Yeni konu')
+    const copied = db.outreach_claim_evidence.filter((c) => c.message_version_id === ver.id)
+    expect(copied).toHaveLength(1)
+    expect(copied[0].claim_category).toBeNull()
+    expect(copied[0].evidence_type).toBeNull()
+  })
+
+  it('batch: iddia kayıtları okunamayan taslak atlanır (onay "yok" görünür)', async () => {
+    const r0 = await requestSendApproval(DRAFT_ID)
+    expect(r0.ok).toBe(true)
+    versionsSelectFail = { message: 'connection reset', code: 'XX000' }
+    const out = await findSendApprovalsBatch([
+      { draftId: DRAFT_ID, leadId: LEAD_ID, businessName: 'Test Klinik', subject: 'Web siteniz', body: VALID_BODY, email: 'info@testklinik.com', contactId: null },
+    ])
+    expect(out.size).toBe(0)
+  })
+
+  it('batch: iddia kayıtlarıyla digest, request-anındaki digest ile eşleşir', async () => {
+    const r0 = await requestSendApproval(DRAFT_ID)
+    expect(r0.ok).toBe(true)
+    const out = await findSendApprovalsBatch([
+      { draftId: DRAFT_ID, leadId: LEAD_ID, businessName: 'Test Klinik', subject: 'Web siteniz', body: VALID_BODY, email: 'info@testklinik.com', contactId: null },
+    ])
+    expect(out.get(DRAFT_ID)?.id).toBe(r0.approvalId)
   })
 })

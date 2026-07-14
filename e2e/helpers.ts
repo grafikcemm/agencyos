@@ -101,6 +101,8 @@ export async function cleanupE2E(): Promise<void> {
     await db.from('approval_requests').delete().ilike('redacted_preview', `%${E2E_EMAIL_DOMAIN}%`)
     // Audit satırları lead silinince SET NULL kalır — artık bırakmamak için önce sil.
     await db.from('lead_action_audit').delete().in('lead_id', leadIds)
+    // FINALIZATION Faz 1: kanıt satırları (claim satırları evidence silinince cascade).
+    await db.from('lead_evidence').delete().in('lead_id', leadIds)
     await db.from('projects').delete().in('lead_id', leadIds) // Faz 3.1 convert izleri
     await db.from('contacts').delete().in('lead_id', leadIds) // (cascade var; açık silme = niyet belgesi)
     await db.from('leads').delete().in('id', leadIds)

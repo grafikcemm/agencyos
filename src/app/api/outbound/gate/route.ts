@@ -8,6 +8,10 @@ import { requireApiAccess } from '@/lib/auth'
 import { enforceSameOrigin, parseJsonBody, BadRequestError } from '@/lib/api/guards'
 import { supabaseAdmin } from '@/lib/supabase'
 import { evaluateOutboundText, type OutboundKind } from '@/lib/outreach/outboundGate'
+import { loadClaimEntriesForMessage, remapClaims } from '@/lib/outreach/claimEvidence'
+import type { ClaimEvidenceEntry } from '@/lib/outreach/qualityLint'
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const GateSchema = z
   .object({
@@ -50,12 +54,29 @@ export async function POST(req: Request) {
 
     const results: Record<string, { ok: boolean; violations: Array<{ code: string; detail: string; fix: string }> }> = {}
     for (const item of body.items) {
+      // FINALIZATION Faz 1: iddia→kanıt eşlemesi CLIENT'TAN ALINMAZ. Key bir
+      // outreach mesaj id'siyse kayıtlı (versiyonlu) bağlar okunur ve verilen
+      // metne deterministik remap edilir; okuma hatası → o item fail-closed.
+      let claimEvidence: ClaimEvidenceEntry[] = []
+      if (UUID_RE.test(item.key)) {
+        try {
+          const loaded = await loadClaimEntriesForMessage(item.key)
+          if (!loaded.schemaMissing) claimEvidence = remapClaims(item.text, loaded.claims).entries
+        } catch {
+          results[item.key] = {
+            ok: false,
+            violations: [{ code: 'GATE_UNAVAILABLE', detail: 'İddia kayıtları okunamadı', fix: 'Tekrar dene' }],
+          }
+          continue
+        }
+      }
       const verdict = await evaluateOutboundText({
         leadId: body.leadId,
         businessName: (lead.business_name as string) ?? '',
         subject: item.subject ?? null,
         body: item.text,
         kind: item.kind as OutboundKind,
+        claimEvidence,
       })
       results[item.key] = { ok: verdict.ok, violations: verdict.violations }
     }
