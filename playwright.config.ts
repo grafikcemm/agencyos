@@ -19,6 +19,9 @@ export const E2E_OPERATOR_TOKEN = 'e2e-operator-token-en-az-32-karakter-uzun'
 // Testler YALNIZ yetki-reddi yollarini surer (yanlis chat/user) - bu yollar
 // hicbir DB'ye yazmadan doner; gecerli chat+user update'i ASLA gonderilmez.
 export const E2E_TELEGRAM_SECRET = 'e2e-telegram-webhook-secreti'
+// FINALIZATION Faz 3: follow-up dikey akışı E2E'si cron tick'ini gerçek route
+// üzerinden sürer — TEST secret'ı (gerçek secret DEĞİL).
+export const E2E_CRON_SECRET = 'e2e-cron-secreti-en-az-32-karakter-uzun'
 export const E2E_TELEGRAM_CHAT_ID = '111111'
 export const E2E_TELEGRAM_USER_ID = '222222'
 
@@ -56,6 +59,7 @@ export default defineConfig({
       OPERATOR_API_TOKEN: E2E_OPERATOR_TOKEN,
       GMAIL_SEND_ENABLED: 'false',
       TELEGRAM_WEBHOOK_SECRET: E2E_TELEGRAM_SECRET,
+      CRON_SECRET: E2E_CRON_SECRET,
       TELEGRAM_CHAT_ID: E2E_TELEGRAM_CHAT_ID,
       TELEGRAM_USER_ID: E2E_TELEGRAM_USER_ID,
       // Bot token BILEREK bos - E2E'de dis Telegram cagrisi yapisal imkansiz.

@@ -1,8 +1,13 @@
 import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { buildMultiChannelPlan, type CustomerType } from './channelMatrix'
-import { buildFollowUpDraft, shouldStopSequence, type FollowUpDraft } from './followupAngles'
+import { buildFollowUpDraft, shouldStopSequence, type FollowUpDraft, type FollowUpEvidence } from './followupAngles'
 import { getSuppressedSet } from './auditCompliance'
+import { evaluateOutboundText } from './outboundGate'
+import { persistMessageVersion, voiceRulesDigest } from './claimEvidence'
+import { getVoiceContext } from './voiceDna'
+import { detectClaimsDetailed } from './qualityLint'
+import { resolveCanonicalRecipient } from '@/lib/contacts/contactService'
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000
 
@@ -20,8 +25,12 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000
 // - Reply/opt-out → sequence DURUR (tüm açık adımlar iptal edilir).
 // - Suppression HER adımda fail-closed: kontrol edilemiyorsa adım BLOKLU.
 // - İş günü kuralı: hafta sonu vadesi gelen adım bir sonraki iş gününe ertelenir.
-// - followupAngles: her adım FARKLI ikna açısıyla TASLAK üretir — task input'una
-//   yazılır. OTOMATİK GÖNDERİM YOK: FOLLOWUP_FSM_ENABLED=false; gönderim yalnız
+// - FINALIZATION Faz 3: vadesi gelen adım artık GÖRÜNMEZ agent_task DEĞİL,
+//   /bugun panelinde görünen CANONICAL outreach_messages taslağı + immutable
+//   versiyon (gate sonucu + iddia→kanıt bağı + Voice snapshot) üretir. Adım,
+//   outreach_message_id ile taslağa BAĞLI kalır — sequence "tamamlandı" diye
+//   operatörden kaybolmaz; durumu draft lifecycle taşır.
+// - OTOMATİK GÖNDERİM YOK: FOLLOWUP_FSM_ENABLED=false; gönderim yalnız
 //   operatör + HITL onay + mevcut send makinesi. Bu modülde provider çağrısı YOKTUR.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -70,7 +79,12 @@ export async function scheduleMultiChannelSequence(opts: {
   }))
 
   const { error } = await supabaseAdmin.from('follow_up_sequences').insert(rows)
-  if (error) throw new Error(`sekans yazılamadı: ${error.message}`)
+  if (error) {
+    // Mig 063: (lead_id, step) WHERE done=false kısmi UNIQUE — eşzamanlı iki
+    // schedule'dan kaybeden 23505 alır; bu duplicate DEĞİL idempotent sonuçtur.
+    if (error.code === '23505') return { scheduled: 0, alreadyScheduled: true }
+    throw new Error(`sekans yazılamadı: ${error.message}`)
+  }
   return { scheduled: rows.length }
 }
 
@@ -96,7 +110,7 @@ export async function scheduleFollowUp(opts: {
 }
 
 export interface ProcessResult {
-  /** Task'ı üretilen adım sayısı. */
+  /** Görünür taslağı (outreach_messages draft + versiyon) üretilen adım sayısı. */
   processed: number
   /** Reply/opt-out ile DURDURULAN sequence'lerin iptal edilen adım sayısı. */
   stopped: number
@@ -132,9 +146,15 @@ async function loadBatchContext(leadIds: string[]) {
       .select('lead_id, body, final_body')
       .in('lead_id', leadIds)
       .eq('status', 'sent'),
-    supabaseAdmin.from('lead_evidence').select('lead_id, summary').in('lead_id', leadIds),
+    supabaseAdmin.from('lead_evidence').select('id, lead_id, summary').in('lead_id', leadIds),
   ])
+  // FINALIZATION Faz 3: HİÇBİR bağlam sorgu hatası yutulmaz — reply/önceki-gövde/
+  // kanıt bilinmeden adım işlemek yanlış karar üretebilir (örn. cevap gelmişken
+  // takip). Hata → tüm batch fail-closed durur ve GÖRÜNÜR olur.
   if (leadsQ.error) throw new Error(`lead bağlamı okunamadı: ${leadsQ.error.message}`)
+  if (threadsQ.error) throw new Error(`thread bağlamı okunamadı: ${threadsQ.error.message}`)
+  if (prevQ.error) throw new Error(`önceki gövdeler okunamadı: ${prevQ.error.message}`)
+  if (evidenceQ.error) throw new Error(`kanıt bağlamı okunamadı: ${evidenceQ.error.message}`)
 
   const leads = new Map<string, LeadCtx>()
   for (const l of leadsQ.data ?? []) leads.set(l.id as string, l as unknown as LeadCtx)
@@ -144,11 +164,12 @@ async function loadBatchContext(leadIds: string[]) {
   for (const t of threadsQ.data ?? []) threadToLead.set(t.id as string, t.lead_id as string)
   const repliedLeads = new Set<string>()
   if (threadToLead.size > 0) {
-    const { data: inbound } = await supabaseAdmin
+    const { data: inbound, error: inboundErr } = await supabaseAdmin
       .from('email_messages')
       .select('thread_id')
       .in('thread_id', [...threadToLead.keys()])
       .eq('direction', 'inbound')
+    if (inboundErr) throw new Error(`inbound cevap bağlamı okunamadı: ${inboundErr.message}`)
     for (const m of inbound ?? []) {
       const lead = threadToLead.get(m.thread_id as string)
       if (lead) repliedLeads.add(lead)
@@ -162,9 +183,11 @@ async function loadBatchContext(leadIds: string[]) {
     prevBodies.set(p.lead_id as string, arr)
   }
 
-  const evidence = new Map<string, string>()
+  const evidence = new Map<string, FollowUpEvidence>()
   for (const e of evidenceQ.data ?? []) {
-    if (!evidence.has(e.lead_id as string) && e.summary) evidence.set(e.lead_id as string, String(e.summary))
+    if (!evidence.has(e.lead_id as string) && e.summary) {
+      evidence.set(e.lead_id as string, { id: e.id as string, summary: String(e.summary) })
+    }
   }
 
   // Suppression FAIL-CLOSED (getSuppressedSet hata durumunda hepsini döner).
@@ -205,27 +228,100 @@ async function cancelOpenSteps(leadId: string): Promise<number> {
     .eq('lead_id', leadId)
     .eq('done', false)
     .select('id')
-  if (error) {
-    console.error('[sequences] sequence iptali yazılamadı', leadId, error.message)
-    return 0
-  }
+  // FINALIZATION Faz 3: iptal yazılamazsa adım işlenmiş SAYILMAZ — hata
+  // fırlatılır, satır failed sayacına düşer ve sonraki cron yeniden dener
+  // (reply/opt-out'a rağmen sessizce devam eden sequence YOK).
+  if (error) throw new Error(`sequence iptali yazılamadı: ${error.message}`)
   return (data ?? []).length
 }
 
-/** Aynı (lead, step) için kuyrukta task var mı? (crash-retry dedupe). */
-async function taskExists(leadId: string, step: number): Promise<'exists' | 'missing' | 'error'> {
-  const { data, error } = await supabaseAdmin
-    .from('agent_tasks')
+const OPT_OUT_LINE = 'Bu tür e-postaları almak istemiyorsanız "ret" yazarak yanıtlamanız yeterlidir.'
+
+interface VoiceCtx {
+  rules: { positive: string[]; negative: string[] }
+  banned: string[]
+}
+
+/**
+ * FINALIZATION Faz 3: vadeli adım → GÖRÜNÜR canonical taslak.
+ * outreach_messages draft satırı + immutable versiyon (gate sonucu + iddia→
+ * kanıt bağı + Voice snapshot). Başarısızlıkta taslak İZİ bırakılmaz (telafi
+ * silme) ve hata fırlatılır — çağıran adımı geri açar.
+ */
+async function createFollowUpDraftArtifact(opts: {
+  seq: DueRow
+  lead: LeadCtx | undefined
+  draft: FollowUpDraft
+  voice: VoiceCtx
+}): Promise<string> {
+  const { seq, lead, draft, voice } = opts
+  const businessName = lead?.business_name ?? 'İşletme'
+  const body = seq.channel === 'email' ? [draft.body, '', OPT_OUT_LINE].join('\n') : draft.body
+  const subject = `${businessName} — kısa takip (${seq.step}/6)`
+
+  // Alıcı canonical resolver'dan (primary contact → lead.email) — cold email
+  // ve Gmail onay/gönderim yoluyla BİREBİR aynı kural.
+  const recipient = await resolveCanonicalRecipient(seq.lead_id)
+
+  const quality = await evaluateOutboundText({
+    leadId: seq.lead_id,
+    businessName,
+    subject,
+    body,
+    kind: 'cold_email',
+    contactName: recipient.contactName,
+    claimEvidence: draft.claims.map((c) => ({ claim: c.text, evidenceIds: [c.evidenceId] })),
+  })
+
+  const { data: row, error: insErr } = await supabaseAdmin
+    .from('outreach_messages')
+    .insert({
+      lead_id: seq.lead_id,
+      channel: 'email',
+      status: 'draft',
+      subject,
+      body,
+      sequence_step: seq.step,
+      created_by: 'agent:followup',
+    })
     .select('id')
-    .eq('agent_key', 'sales_rep')
-    .eq('status', 'queued')
-    .contains('input', { lead_id: leadId, sequence_step: step })
-    .limit(1)
-  if (error) {
-    console.error('[sequences] task dedupe kontrolü başarısız:', error.message)
-    return 'error'
+    .single()
+  if (insErr || !row) throw new Error(`takip taslağı yazılamadı: ${insErr?.message ?? '?'}`)
+
+  try {
+    await persistMessageVersion({
+      outreachMessageId: row.id as string,
+      channel: 'email',
+      recipient: {
+        kind: recipient.source === 'primary_contact' ? 'primary_contact' : recipient.email ? 'lead_email' : 'none',
+        contactId: recipient.contactId,
+        email: recipient.email,
+      },
+      subject,
+      body,
+      voiceDigest: voiceRulesDigest(voice.rules, voice.banned),
+      gate: {
+        ok: quality.ok,
+        digest: quality.digest,
+        violations: quality.violations.map((v) => ({ code: v.code, detail: v.detail })),
+      },
+      source: 'generator:followup',
+      claims: draft.claims.map((c) => ({
+        text: c.text,
+        category: detectClaimsDetailed(c.text)[0]?.category ?? null,
+        evidenceId: c.evidenceId,
+        evidenceType: null,
+        evidenceSource: 'lead_evidence',
+      })),
+      createdBy: 'agent:followup',
+    })
+  } catch (err) {
+    // Versiyon izi yazılamadı → yarım artifact bırakma: taslağı telafiyle sil.
+    await supabaseAdmin.from('outreach_messages').delete().eq('id', row.id)
+    throw err
   }
-  return (data ?? []).length > 0 ? 'exists' : 'missing'
+
+  return row.id as string
 }
 
 /**
@@ -262,6 +358,9 @@ export async function processDueSequences(limit = 10, nowMs = Date.now()): Promi
 
   const rows = due as DueRow[]
   const ctx = await loadBatchContext([...new Set(rows.map((r) => r.lead_id))])
+  // Voice DNA bağlamı (tek okuma): banned okunamazsa batch fail-closed durur —
+  // kapı kuralsız/denetimsiz taslak üretmeyiz (görünür hata).
+  const voice = await getVoiceContext()
 
   for (const seq of rows) {
     try {
@@ -286,62 +385,51 @@ export async function processDueSequences(limit = 10, nowMs = Date.now()): Promi
         continue
       }
 
-      // CAS claim: eşzamanlı cron'lardan yalnız BİRİ task üretir.
+      // CAS claim: eşzamanlı cron'lardan yalnız BİRİ taslak üretir.
       const claimed = await claimStep(seq.id)
-      if (!claimed) continue // başka instance kazandı — duplicate task YOK.
-
-      // Crash-retry dedupe: task zaten kuyruktaysa yeniden üretme (done kalır).
-      const existing = await taskExists(seq.lead_id, seq.step)
-      if (existing === 'exists') continue
-      if (existing === 'error') {
-        // Ne duplicate riskini alırız ne adımı kaybederiz: claim'i GERİ AÇ,
-        // sonraki cron dedupe kontrolü çalıştığında yeniden dener.
-        const released = await releaseStep(seq.id)
-        if (!released) console.error('[sequences] CRITICAL: dedupe-hata telafisi yazılamadı', seq.id)
-        result.failed += 1
-        continue
-      }
+      if (!claimed) continue // başka instance kazandı — duplicate taslak YOK.
 
       const draft: FollowUpDraft = buildFollowUpDraft({
         step: seq.step,
         businessName: lead?.business_name ?? 'İşletme',
-        evidenceSnippet: ctx.evidence.get(seq.lead_id) ?? null,
+        evidence: ctx.evidence.get(seq.lead_id) ?? null,
         sector: lead?.sector ?? null,
         previousBodies: ctx.prevBodies.get(seq.lead_id) ?? [],
       })
 
-      const { error: taskErr } = await supabaseAdmin.from('agent_tasks').insert({
-        agent_key: 'sales_rep',
-        title: `Takip adımı ${seq.step} (${draft.angle}) — ${lead?.business_name ?? seq.lead_id}`,
-        input: {
-          lead_id: seq.lead_id,
-          sequence_step: seq.step,
-          channel: seq.channel,
-          angle: draft.angle,
-          draft_body: draft.body,
-          evidence_missing: draft.evidenceMissing ?? false,
-          // Yapısal not: bu task bir OPERATÖR hatırlatmasıdır; otomatik gönderim
-          // yolu YOKTUR (gönderim yalnız HITL onay + send makinesi).
-          auto_send: false,
-        },
-        status: 'queued',
-        directive_id: null,
-      })
-
-      if (taskErr) {
-        // Task yazılamadı → sequence done KALAMAZ (adım kaybolmasın).
+      // FINALIZATION Faz 3: görünmez agent_task DEĞİL — /bugun panelinde görünen
+      // canonical taslak + versiyon. Başarısızsa adım GERİ AÇILIR (kayıp yok).
+      let draftId: string
+      try {
+        draftId = await createFollowUpDraftArtifact({ seq, lead, draft, voice })
+      } catch (createErr) {
         const released = await releaseStep(seq.id)
         if (!released) {
           console.error(
-            '[sequences] CRITICAL: task insert başarısız VE telafi yazılamadı — adım kaybolabilir',
+            '[sequences] CRITICAL: taslak üretilemedi VE telafi yazılamadı — adım kaybolabilir',
             seq.id,
-            taskErr.message,
+            createErr instanceof Error ? createErr.message : 'unknown',
           )
         } else {
-          console.error('[sequences] task insert başarısız — adım geri açıldı (retry edilecek)', seq.id, taskErr.message)
+          console.error(
+            '[sequences] taslak üretilemedi — adım geri açıldı (retry edilecek)',
+            seq.id,
+            createErr instanceof Error ? createErr.message : 'unknown',
+          )
         }
         result.failed += 1
         continue
+      }
+
+      // Adım ↔ taslak bağı: sequence "tamamlandı" diye kaybolmaz; durumu
+      // draft lifecycle (draft → approval → sent) taşır. Bağ yazılamazsa
+      // duplicate ÜRETMEYİZ (claim kazanıldı) ama iz görünür loglanır.
+      const { error: linkErr } = await supabaseAdmin
+        .from('follow_up_sequences')
+        .update({ outreach_message_id: draftId })
+        .eq('id', seq.id)
+      if (linkErr) {
+        console.error('[sequences] CRITICAL: adım-taslak bağı yazılamadı', seq.id, draftId, linkErr.message)
       }
 
       result.processed += 1

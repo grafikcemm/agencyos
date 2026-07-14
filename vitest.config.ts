@@ -46,6 +46,9 @@ export default defineConfig({
         'src/lib/outreach/persuasionEval.ts': { lines: 90, branches: 85 },
         'src/lib/outreach/persuasionJudge.ts': { lines: 85, branches: 80 },
         'src/lib/outreach/persuasionMatrix.ts': { lines: 90, branches: 85 },
+        // FINALIZATION Faz 3 — follow-up dikey akışı + kokpit veri katmanı:
+        'src/lib/outreach/followupAngles.ts': { lines: 90, branches: 85 },
+        'src/lib/cockpit/today.ts': { lines: 90, branches: 85 },
       },
     },
   },

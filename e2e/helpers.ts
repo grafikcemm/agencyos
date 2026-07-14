@@ -103,6 +103,9 @@ export async function cleanupE2E(): Promise<void> {
     await db.from('lead_action_audit').delete().in('lead_id', leadIds)
     // FINALIZATION Faz 1: kanıt satırları (claim satırları evidence silinince cascade).
     await db.from('lead_evidence').delete().in('lead_id', leadIds)
+    // FINALIZATION Faz 3: follow-up adımları (açık adım kalırsa 063 kısmi
+    // unique sonraki suite koşusunda çakışabilir — iz bırakma).
+    await db.from('follow_up_sequences').delete().in('lead_id', leadIds)
     await db.from('projects').delete().in('lead_id', leadIds) // Faz 3.1 convert izleri
     await db.from('contacts').delete().in('lead_id', leadIds) // (cascade var; açık silme = niyet belgesi)
     await db.from('leads').delete().in('id', leadIds)

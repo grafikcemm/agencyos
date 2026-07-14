@@ -8,7 +8,7 @@ describe('buildFollowUpDraft — açı motoru (Faz 4.2)', () => {
     const bodies: string[] = []
     const angles = new Set<string>()
     for (let step = 1; step <= 6; step++) {
-      const d = buildFollowUpDraft({ ...BASE, step, evidenceSnippet: 'randevu formu mobilde açılmıyor', previousBodies: bodies })
+      const d = buildFollowUpDraft({ ...BASE, step, evidence: { id: 'ev-1', summary: 'randevu formu mobilde açılmıyor' }, previousBodies: bodies })
       expect(d.angle).toBe(STEP_ANGLES[step])
       angles.add(d.angle)
       // önceki gövdelerin hiçbir cümlesi tekrar edilmez
@@ -26,10 +26,17 @@ describe('buildFollowUpDraft — açı motoru (Faz 4.2)', () => {
   })
 
   it('yeni-kanıt adımı: kanıt verilirse metne SPESİFİK girer; verilmezse iddiasız + evidenceMissing', () => {
-    const withEv = buildFollowUpDraft({ ...BASE, step: 2, evidenceSnippet: 'menü linki kırık görünüyor' })
+    const withEv = buildFollowUpDraft({ ...BASE, step: 2, evidence: { id: 'ev-9', summary: 'menü linki kırık görünüyor' } })
     expect(withEv.body).toContain('menü linki kırık')
+    // FINALIZATION Faz 3: iddia→kanıt bağı claims[] ile döner (canonical artifact'e yazılır).
+    expect(withEv.claims).toHaveLength(1)
+    expect(withEv.claims[0].evidenceId).toBe('ev-9')
+    expect(withEv.body).toContain(withEv.claims[0].text)
     const withoutEv = buildFollowUpDraft({ ...BASE, step: 2 })
     expect(withoutEv.evidenceMissing).toBe(true)
+    expect(withoutEv.claims).toEqual([])
+    // Sahte gözlem cümlesi YOK: kanıtsızken "fark ettim / gözlem var" yazılmaz.
+    expect(withoutEv.body).not.toMatch(/fark ettim|somut bir gözlem/i)
     expect(withoutEv.body).not.toMatch(/%\d|kat|garanti/i)
   })
 

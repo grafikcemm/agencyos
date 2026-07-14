@@ -1635,3 +1635,8 @@ GRANT EXECUTE ON FUNCTION public.e2e_schema_fingerprint() TO anon, authenticated
 -- uygulandı (062_v2_e2e_open_policies) — ÜRETİM migration'ı STRICT kalır
 -- (service_role-only); bu fark yalnız izole test DB düzenidir.
 -- ─────────────────────────────────────────────────────────────────────────────
+
+-- FINALIZATION Faz 3 — mig 063 test DB'ye KALICI uygulandı (2026-07-14):
+-- eşzamanlı schedule yarışını kapatan kısmi UNIQUE. Canlı App DB onaya kadar geride.
+CREATE UNIQUE INDEX follow_up_sequences_open_step_uniq
+  ON public.follow_up_sequences (lead_id, step) WHERE (done = false);
