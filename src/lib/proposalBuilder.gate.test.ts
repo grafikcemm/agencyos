@@ -112,3 +112,39 @@ describe('proposalBuilder × GERÇEK gate (mock yok)', () => {
     expect(p.whatsappText).not.toContain('baktım')
   })
 })
+
+describe('builder dalları (eşik kapsamı)', () => {
+  it('offer bulunamazsa filtrelenir; boş offer seti: fiyatlar 0, varsayılan süre', () => {
+    const p = buildProposal({ lead: LEAD, offerIds: ['olmayan-offer'] })
+    expect(p.services).toEqual([])
+    expect(p.setupPrice).toBe(0)
+    expect(p.monthlyPrice).toBe(0)
+    expect(p.timeline).toBe('14 iş günü')
+    // monthlyPrice=0 → whatsapp/email "Aylık" satırı YOK.
+    expect(p.whatsappText).not.toContain('Aylık:')
+  })
+
+  it('problemOverride verilirse pain_points yerine geçer', () => {
+    const p = buildProposal({ lead: LEAD, offerIds: ['ai_lead_response'], problemOverride: 'Özel problem tanımı' })
+    expect(p.problem).toBe('Özel problem tanımı')
+  })
+
+  it('pain_points boş/iddialı → sektör profil fallback', () => {
+    const p1 = buildProposal({ lead: { ...LEAD, pain_points: [] }, offerIds: ['ai_lead_response'] })
+    expect(p1.problem.length).toBeGreaterThan(5)
+    const p2 = buildProposal({
+      lead: { ...LEAD, pain_points: ['Cironuz %40 düşüyor', 'Müşterileriniz rakibe geçiyor'] },
+      offerIds: ['ai_lead_response'],
+    })
+    expect(p2.problem).not.toContain('%40')
+    expect(p2.problem).not.toContain('rakibe')
+  })
+
+  it('İDDİASIZ why_now whatsapp açılışına girer (kişiselleştirme korunur)', () => {
+    const p = buildProposal({
+      lead: { ...LEAD, why_now: 'Yeni şube açılışınız yaklaşarken web tarafını netleştirmek istiyorsunuz.' },
+      offerIds: ['ai_lead_response'],
+    })
+    expect(p.whatsappText).toContain('Yeni şube açılışınız')
+  })
+})
