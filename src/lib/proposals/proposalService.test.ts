@@ -17,6 +17,10 @@ const db: Record<string, Row[]> = {
 }
 let seq = 0
 let rpcMissing = true // varsayılan: 061 v2 RPC yok → legacy yol
+let txRpcAvailable = false // FINALIZATION Faz 4: request/decide tx RPC'leri (061 v3)
+let txRpcUnexpectedError = false // yeni RPC'lerde beklenmedik hata (kod XX000)
+let txRpcSchemaError = false // yeni RPC'lerde 42P01
+let txRpcNullData = false // data:null (r?.ok dalları)
 let rpcRejects = false
 let rpcUnexpectedError = false
 let schemaMissing = false
@@ -25,6 +29,7 @@ let bumpNoRows = false
 let evidenceError: { message: string } | null = null
 let leadSelectError: { message: string } | null = null
 let eventInsertError: { message: string } | null = null
+let approvalInsertError: { message: string; code?: string } | null = null
 let statusCasNoRows = false
 let approvalCasNoRows = false
 let rpcNullData = false
@@ -77,6 +82,7 @@ function from(table: string) {
     if (op === 'insert' && payload) {
       if (table === 'proposal_versions' && versionInsertError) return { data: null, error: versionInsertError }
       if (table === 'proposal_events' && eventInsertError) return { data: null, error: eventInsertError }
+      if (table === 'proposal_approvals' && approvalInsertError) return { data: null, error: approvalInsertError }
       if (
         table === 'proposal_approvals' &&
         rows.some((r) => r.proposal_id === payload!.proposal_id && r.version === payload!.version)
@@ -134,11 +140,69 @@ function from(table: string) {
   return api
 }
 
+// 061 v3 RPC simülatörleri — SQL fonksiyonlarının in-memory aynası.
+function rpcRequestApproval(args: Record<string, unknown>) {
+  if (txRpcUnexpectedError) return { data: null, error: { code: 'XX000', message: 'rpc beklenmedik' } }
+  if (txRpcSchemaError) return { data: null, error: { code: '42P01', message: 'tablo yok' } }
+  if (!txRpcAvailable) return { data: null, error: { code: 'PGRST202', message: 'fn yok' } }
+  if (txRpcNullData) return { data: null, error: null }
+  const p = db.proposals.find((x) => x.id === args.p_proposal_id)
+  if (!p) return { data: { ok: false, error: 'teklif bulunamadı' }, error: null }
+  if (!['draft', 'review'].includes(String(p.status))) {
+    return { data: { ok: false, error: `bu durumda onay istenemez: ${p.status}` }, error: null }
+  }
+  const version = p.current_version as number
+  if (!db.proposal_versions.some((v) => v.proposal_id === p.id && v.version === version)) {
+    return { data: { ok: false, error: 'versiyon bulunamadı — onay bağlanamaz' }, error: null }
+  }
+  if (db.proposal_approvals.some((a) => a.proposal_id === p.id && a.version === version)) {
+    return { data: { ok: true, version, idempotent: true }, error: null }
+  }
+  db.proposal_approvals.push({
+    id: `apr-${++seq}`, proposal_id: p.id, version, decision: 'pending', action_digest: args.p_action_digest,
+  })
+  if (p.status === 'draft') p.status = 'review'
+  db.proposal_events.push({ proposal_id: p.id, version, event: 'revised' })
+  return { data: { ok: true, version }, error: null }
+}
+
+function rpcDecideApproval(args: Record<string, unknown>) {
+  if (txRpcUnexpectedError) return { data: null, error: { code: 'XX000', message: 'rpc beklenmedik' } }
+  if (!txRpcAvailable) return { data: null, error: { code: 'PGRST202', message: 'fn yok' } }
+  if (txRpcNullData) return { data: null, error: null }
+  const p = db.proposals.find((x) => x.id === args.p_proposal_id)
+  if (!p) return { data: { ok: false, error: 'teklif bulunamadı' }, error: null }
+  const a = db.proposal_approvals.find(
+    (x) => x.proposal_id === args.p_proposal_id && x.version === args.p_version,
+  )
+  if (!a) return { data: { ok: false, error: 'onay kaydı yok — onaysız approved geçişi yapılamaz' }, error: null }
+  if (a.decision !== 'pending') return { data: { ok: false, error: `onay zaten karara bağlı: ${a.decision}` }, error: null }
+  if (p.current_version !== args.p_version) {
+    return { data: { ok: false, error: 'onay eski versiyona ait — YENİDEN onay gerekir' }, error: null }
+  }
+  if (a.action_digest !== args.p_expected_digest) {
+    return { data: { ok: false, error: 'içerik/alıcı onaydan sonra değişti (digest uyuşmazlığı) — YENİDEN onay gerekir' }, error: null }
+  }
+  if ((p.contact_id ?? null) !== (args.p_contact_id ?? null)) {
+    return { data: { ok: false, error: 'alıcı onaydan sonra değişti — YENİDEN onay gerekir' }, error: null }
+  }
+  a.decision = args.p_decision
+  p.status = args.p_decision === 'approved' ? 'approved' : 'rejected'
+  db.proposal_events.push({ proposal_id: p.id, version: args.p_version, event: String(args.p_decision) })
+  return { data: { ok: true }, error: null }
+}
+
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
     from: (t: string) => from(t),
     rpc: async (fn: string, args: Record<string, unknown>) =>
-      fn === 'create_proposal_version_tx' ? rpcTx(args) : { data: null, error: { code: 'PGRST202', message: 'yok' } },
+      fn === 'create_proposal_version_tx'
+        ? rpcTx(args)
+        : fn === 'request_proposal_approval_tx'
+          ? rpcRequestApproval(args)
+          : fn === 'decide_proposal_approval_tx'
+            ? rpcDecideApproval(args)
+            : { data: null, error: { code: 'PGRST202', message: 'yok' } },
   },
 }))
 
@@ -178,6 +242,8 @@ import {
   requestProposalApproval,
   decideProposalApproval,
   computeProposalDigest,
+  listProposalsForLead,
+  getProposalDetail,
 } from './proposalService'
 
 const LEAD = 'lead-1'
@@ -186,6 +252,10 @@ beforeEach(() => {
   for (const k of Object.keys(db)) db[k] = []
   seq = 0
   rpcMissing = true
+  txRpcAvailable = false
+  txRpcUnexpectedError = false
+  txRpcSchemaError = false
+  txRpcNullData = false
   rpcRejects = false
   rpcUnexpectedError = false
   schemaMissing = false
@@ -194,6 +264,7 @@ beforeEach(() => {
   evidenceError = null
   leadSelectError = null
   eventInsertError = null
+  approvalInsertError = null
   statusCasNoRows = false
   approvalCasNoRows = false
   rpcNullData = false
@@ -201,7 +272,7 @@ beforeEach(() => {
   selectErrorTables = new Set()
   gateOk = true
   recipient = { email: 'a@b.co', contactId: 'c-1', contactName: 'Ayşe', source: 'primary_contact' }
-  db.leads.push({ id: LEAD, business_name: 'Denta Klinik', sector: 'klinik', pain_points: [], notes: null })
+  db.leads.push({ id: LEAD, business_name: 'Denta Klinik', sector: 'klinik', pain_signals: [], notes: null })
   db.lead_evidence.push({ id: 'ev-1', lead_id: LEAD })
 })
 
@@ -552,5 +623,252 @@ describe('kenar dallar (hata yolları görünür)', () => {
     expect(req.ok).toBe(true)
     const d = await decideProposalApproval({ proposalId: r0.proposalId as string, version: 1, decision: 'approved' })
     expect(d.ok).toBe(true)
+  })
+})
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FINALIZATION Faz 4 — onay isteği/kararı TEK transaction RPC yolları (061 v3).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('request/decide — tx RPC yolu (061 v3)', () => {
+  async function seedProposalViaLegacy() {
+    const r = await createProposalDraft({ leadId: LEAD, offerIds: ['whatsapp-siparis'] })
+    expect(r.ok).toBe(true)
+    return r.proposalId as string
+  }
+
+  it('onay isteği RPC ile: approval + review + idempotent ikinci çağrı', async () => {
+    const pid = await seedProposalViaLegacy()
+    txRpcAvailable = true
+    const r1 = await requestProposalApproval({ proposalId: pid })
+    expect(r1).toMatchObject({ ok: true, version: 1 })
+    expect(db.proposal_approvals).toHaveLength(1)
+    expect(db.proposals[0].status).toBe('review')
+    const r2 = await requestProposalApproval({ proposalId: pid })
+    expect(r2.ok).toBe(true)
+    expect(db.proposal_approvals).toHaveLength(1) // idempotent
+  })
+
+  it('karar RPC ile: approved yalnız digest+versiyon+alıcı birebirken', async () => {
+    const pid = await seedProposalViaLegacy()
+    txRpcAvailable = true
+    await requestProposalApproval({ proposalId: pid })
+    const ok = await decideProposalApproval({ proposalId: pid, version: 1, decision: 'approved' })
+    expect(ok.ok).toBe(true)
+    expect(db.proposals[0].status).toBe('approved')
+    expect(db.proposal_events.some((e) => e.event === 'approved')).toBe(true)
+  })
+
+  it('karar RPC: içerik onaydan sonra değişti → stale digest RED (approved geçmez)', async () => {
+    const pid = await seedProposalViaLegacy()
+    txRpcAvailable = true
+    await requestProposalApproval({ proposalId: pid })
+    // İçerik değişikliği simülasyonu: versiyon gövdesi güncellenir → digest artık tutmaz.
+    const ver = db.proposal_versions.find((v) => v.proposal_id === pid && v.version === 1)!
+    ver.email_body = 'DEĞİŞTİ'
+    const r = await decideProposalApproval({ proposalId: pid, version: 1, decision: 'approved' })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/digest uyuşmazlığı/)
+    expect(db.proposals[0].status).toBe('review') // approved OLMADI
+  })
+
+  it('karar RPC: alıcı (contact) onaydan sonra değişti → RED', async () => {
+    const pid = await seedProposalViaLegacy()
+    txRpcAvailable = true
+    await requestProposalApproval({ proposalId: pid })
+    db.proposals[0].contact_id = 'c-BASKA'
+    const r = await decideProposalApproval({ proposalId: pid, version: 1, decision: 'approved' })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/alıcı onaydan sonra değişti|digest uyuşmazlığı/)
+  })
+
+  it('karar RPC: reject yolu → rejected + event', async () => {
+    const pid = await seedProposalViaLegacy()
+    txRpcAvailable = true
+    await requestProposalApproval({ proposalId: pid })
+    const r = await decideProposalApproval({ proposalId: pid, version: 1, decision: 'rejected' })
+    expect(r.ok).toBe(true)
+    expect(db.proposals[0].status).toBe('rejected')
+  })
+
+  it('istek RPC: approved durumda onay istenemez (iş kuralı RPC içinden)', async () => {
+    const pid = await seedProposalViaLegacy()
+    txRpcAvailable = true
+    db.proposals[0].status = 'accepted'
+    const r = await requestProposalApproval({ proposalId: pid })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/bu durumda onay istenemez/)
+  })
+
+  it('legacy karar yolu: durum CAS satır etkilemezse BAŞARI DÖNMEZ', async () => {
+    const pid = await seedProposalViaLegacy()
+    await requestProposalApproval({ proposalId: pid }) // legacy istek
+    statusCasNoRows = true
+    const r = await decideProposalApproval({ proposalId: pid, version: 1, decision: 'approved' })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/durumu yenileyin/)
+  })
+})
+
+describe('application service okuma yüzeyi (UI + Telegram ortak)', () => {
+  it('listProposalsForLead: durum + pending onay versiyonu döner', async () => {
+    const r0 = await createProposalDraft({ leadId: LEAD, offerIds: ['whatsapp-siparis'] })
+    await requestProposalApproval({ proposalId: r0.proposalId as string })
+    const list = await listProposalsForLead(LEAD)
+    expect(list.ok).toBe(true)
+    expect(list.proposals[0]).toMatchObject({ status: 'review', currentVersion: 1, pendingApprovalVersion: 1 })
+  })
+
+  it('listProposalsForLead: şema yoksa schemaMissing AÇIK döner', async () => {
+    schemaMissing = true
+    const list = await listProposalsForLead(LEAD)
+    expect(list.ok).toBe(false)
+    expect(list.schemaMissing).toBe(true)
+  })
+
+  it('getProposalDetail: versiyonlar + onay + event izi', async () => {
+    const r0 = await createProposalDraft({ leadId: LEAD, offerIds: ['whatsapp-siparis'] })
+    await requestProposalApproval({ proposalId: r0.proposalId as string })
+    const d = await getProposalDetail(r0.proposalId as string)
+    expect(d.ok).toBe(true)
+    expect(d.detail!.versions).toHaveLength(1)
+    expect(d.detail!.approval).toMatchObject({ version: 1, decision: 'pending' })
+    expect(d.detail!.events.length).toBeGreaterThan(0)
+  })
+
+  it('getProposalDetail: bulunamayan teklif açık hata', async () => {
+    const d = await getProposalDetail('yok')
+    expect(d.ok).toBe(false)
+    expect(d.error).toBe('teklif bulunamadı')
+  })
+
+  it('getProposalDetail: alt sorgu hatası yutulmaz', async () => {
+    const r0 = await createProposalDraft({ leadId: LEAD, offerIds: ['whatsapp-siparis'] })
+    selectErrorTables = new Set(['proposal_events'])
+    const d = await getProposalDetail(r0.proposalId as string)
+    expect(d.ok).toBe(false)
+    expect(d.error).toMatch(/event'ler okunamadı/)
+  })
+})
+
+describe('tx RPC hata yüzeyleri (yutulmaz)', () => {
+  async function seedP() {
+    const r = await createProposalDraft({ leadId: LEAD, offerIds: ['x'] })
+    return r.proposalId as string
+  }
+
+  it('request RPC beklenmedik hata → açık hata döner', async () => {
+    const pid = await seedP()
+    txRpcAvailable = true
+    txRpcUnexpectedError = true
+    const r = await requestProposalApproval({ proposalId: pid })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/rpc beklenmedik/)
+  })
+
+  it('request RPC şema hatası (42P01) → SCHEMA_ERR', async () => {
+    const pid = await seedP()
+    txRpcAvailable = true
+    txRpcSchemaError = true
+    const r = await requestProposalApproval({ proposalId: pid })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/061/)
+  })
+
+  it('request RPC data:null → transaction reddetti mesajı', async () => {
+    const pid = await seedP()
+    txRpcAvailable = true
+    txRpcNullData = true
+    const r = await requestProposalApproval({ proposalId: pid })
+    expect(r.ok).toBe(false)
+    expect(r.error).toMatch(/transaction reddetti/)
+  })
+
+  it('decide RPC beklenmedik hata + data:null dalları', async () => {
+    const pid = await seedP()
+    txRpcAvailable = true
+    await requestProposalApproval({ proposalId: pid })
+    txRpcUnexpectedError = true
+    const r1 = await decideProposalApproval({ proposalId: pid, version: 1, decision: 'approved' })
+    expect(r1.ok).toBe(false)
+    expect(r1.error).toMatch(/rpc beklenmedik/)
+    txRpcUnexpectedError = false
+    txRpcNullData = true
+    const r2 = await decideProposalApproval({ proposalId: pid, version: 1, decision: 'approved' })
+    expect(r2.ok).toBe(false)
+    expect(r2.error).toMatch(/transaction reddetti/)
+  })
+
+  it('list/detail fallback dalları: null alanlar + onaysız detay', async () => {
+    // current_version/updated_at null satır — okuma fallback'leri.
+    db.proposals.push({ id: 'p-null', lead_id: LEAD, status: 'draft', current_version: null, updated_at: null, contact_id: null })
+    db.proposal_versions.push({ id: 'v-null', proposal_id: 'p-null', version: 1, email_subject: null, whatsapp_text: null, email_body: null, created_at: null })
+    const list = await listProposalsForLead(LEAD)
+    expect(list.ok).toBe(true)
+    expect(list.proposals[0]).toMatchObject({ currentVersion: 1, updatedAt: null, pendingApprovalVersion: null })
+    const det = await getProposalDetail('p-null')
+    expect(det.ok).toBe(true)
+    expect(det.detail!.approval).toBeNull()
+    expect(det.detail!.versions[0]).toMatchObject({ emailSubject: null, whatsappText: null, emailBody: null, createdAt: null })
+  })
+
+  it('listProposalsForLead: onay sorgusu hatası yutulmaz', async () => {
+    db.proposals.push({ id: 'p-1', lead_id: LEAD, status: 'draft', current_version: 1, updated_at: null, contact_id: null })
+    selectErrorTables = new Set(['proposal_approvals'])
+    const list = await listProposalsForLead(LEAD)
+    expect(list.ok).toBe(false)
+    expect(list.error).toMatch(/onay durumu okunamadı/)
+  })
+})
+
+describe('okuma/legacy hata dalları (kalan)', () => {
+  it('getProposalDetail: proposals select genel hata + schemaMissing dalları', async () => {
+    selectErrorTables = new Set(['proposals'])
+    const d1 = await getProposalDetail('p-x')
+    expect(d1.ok).toBe(false)
+    selectErrorTables = new Set()
+    schemaMissing = true
+    const d2 = await getProposalDetail('p-x')
+    expect(d2.ok).toBe(false)
+    expect(d2.schemaMissing).toBe(true)
+  })
+
+  it('getProposalDetail: versiyon/onay alt sorgu hataları ayrı ayrı görünür', async () => {
+    db.proposals.push({ id: 'p-2', lead_id: LEAD, status: 'draft', current_version: 1, contact_id: null })
+    selectErrorTables = new Set(['proposal_versions'])
+    const d1 = await getProposalDetail('p-2')
+    expect(d1.error).toMatch(/versiyonlar okunamadı/)
+    selectErrorTables = new Set(['proposal_approvals'])
+    const d2 = await getProposalDetail('p-2')
+    expect(d2.error).toMatch(/onay okunamadı/)
+  })
+
+  it('getProposalDetail: event satırı null alanları fallback', async () => {
+    db.proposals.push({ id: 'p-3', lead_id: LEAD, status: 'draft', current_version: 1, contact_id: null })
+    db.proposal_events.push({ proposal_id: 'p-3', event: 'created', version: null, created_at: null })
+    const d = await getProposalDetail('p-3')
+    expect(d.detail!.events[0]).toMatchObject({ event: 'created', version: null, createdAt: null })
+  })
+
+  it('request legacy: approvals insert GENEL hata (23505 dışı) yutulmaz', async () => {
+    const r0 = await createProposalDraft({ leadId: LEAD, offerIds: ['x'] })
+    approvalInsertError = { message: 'disk dolu', code: 'XX000' }
+    const r = await requestProposalApproval({ proposalId: r0.proposalId as string })
+    expect(r.ok).toBe(false)
+    expect(r.error).toBe('disk dolu')
+  })
+
+  it('request: digest hesaplama sorgusu hata verirse açık hata (catch dalı)', async () => {
+    const r0 = await createProposalDraft({ leadId: LEAD, offerIds: ['x'] })
+    selectErrorTables = new Set(['proposal_versions'])
+    const r = await requestProposalApproval({ proposalId: r0.proposalId as string })
+    expect(r.ok).toBe(false)
+  })
+
+  it('listProposalsForLead: proposals select genel hata dalı', async () => {
+    selectErrorTables = new Set(['proposals'])
+    const list = await listProposalsForLead(LEAD)
+    expect(list.ok).toBe(false)
+    expect(list.schemaMissing).toBeUndefined()
   })
 })

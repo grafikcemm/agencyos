@@ -67,9 +67,11 @@ export async function createProposalDraft(opts: {
   offerIds: string[]
   nowMs?: number
 }): Promise<ProposalDraftResult> {
+  // Gerçek şema kolonu pain_signals'tır (pain_points kolonu YOK — bu satır
+  // gerçek-şema E2E'siyle yakalanan bir hatanın düzeltmesi).
   const { data: lead, error: leadErr } = await supabaseAdmin
     .from('leads')
-    .select('id, business_name, sector, pain_points, notes')
+    .select('id, business_name, sector, pain_signals, notes')
     .eq('id', opts.leadId)
     .maybeSingle()
   if (leadErr) return { ok: false, error: leadErr.message }
@@ -83,7 +85,7 @@ export async function createProposalDraft(opts: {
       id: lead.id as string,
       business_name: (lead.business_name as string) ?? '—',
       sector: (lead.sector as string) ?? undefined,
-      pain_points: (lead.pain_points as string[]) ?? undefined,
+      pain_points: (lead.pain_signals as string[]) ?? undefined,
     },
     offerIds: opts.offerIds,
   })
@@ -345,6 +347,27 @@ export async function requestProposalApproval(opts: {
     return { ok: false, error: err instanceof Error ? err.message : 'digest hesaplanamadı' }
   }
 
+  // FINALIZATION Faz 4: onay isteği TEK transaction (RPC) — approval insert +
+  // draft→review + event atomik. RPC yoksa güvenli legacy sıra.
+  const nowIso = new Date(opts.nowMs ?? Date.now()).toISOString()
+  const rpc = await supabaseAdmin.rpc('request_proposal_approval_tx', {
+    p_proposal_id: opts.proposalId,
+    p_action_digest: digest,
+    p_now: nowIso,
+  })
+  if (!rpc.error) {
+    const r = rpc.data as { ok: boolean; version?: number; error?: string }
+    if (r?.ok) return { ok: true, version: r.version ?? version }
+    return { ok: false, error: r?.error ?? 'onay isteği transaction reddetti' }
+  }
+  if (!RPC_MISSING.has(rpc.error.code ?? '')) {
+    if (SCHEMA_MISSING.has(rpc.error.code ?? '')) return { ok: false, error: SCHEMA_ERR }
+    return { ok: false, error: rpc.error.message }
+  }
+
+  // Legacy (RPC'siz eski 061): approval önce; geçiş sonra (yarım durum riski
+  // approval yönünde güvenli — approval var ama status draft kaldıysa ikinci
+  // istek idempotent düzeltir).
   const { error } = await supabaseAdmin.from('proposal_approvals').insert({
     proposal_id: opts.proposalId,
     version,
@@ -411,7 +434,24 @@ export async function decideProposalApproval(opts: {
     return { ok: false, error: err instanceof Error ? err.message : 'digest doğrulanamadı' }
   }
 
-  // Approval kararı CAS (pending → decision).
+  // FINALIZATION Faz 4: karar TEK transaction (RPC) — karar + durum + event
+  // atomik; digest + versiyon + alıcı snapshot doğrulaması DB içinde de yapılır.
+  const rpc = await supabaseAdmin.rpc('decide_proposal_approval_tx', {
+    p_proposal_id: opts.proposalId,
+    p_version: opts.version,
+    p_decision: opts.decision,
+    p_expected_digest: approval.action_digest as string,
+    p_contact_id: (proposalRow?.contact_id as string | null) ?? null,
+    p_now: nowIso,
+  })
+  if (!rpc.error) {
+    const r = rpc.data as { ok: boolean; error?: string }
+    if (r?.ok) return { ok: true }
+    return { ok: false, error: r?.error ?? 'karar transaction reddetti' }
+  }
+  if (!RPC_MISSING.has(rpc.error.code ?? '')) return { ok: false, error: rpc.error.message }
+
+  // Legacy (RPC'siz eski 061) — approval kararı CAS (pending → decision).
   const { data: decided, error: dErr } = await supabaseAdmin
     .from('proposal_approvals')
     .update({ decision: opts.decision, decided_at: nowIso })
@@ -422,12 +462,18 @@ export async function decideProposalApproval(opts: {
   if (!decided?.length) return { ok: false, error: 'onay yarışta karara bağlandı — durumu yenileyin' }
 
   const targetStatus = opts.decision === 'approved' ? 'approved' : 'rejected'
-  const { error: sErr } = await supabaseAdmin
+  const { data: statused, error: sErr } = await supabaseAdmin
     .from('proposals')
     .update({ status: targetStatus, updated_at: nowIso })
     .eq('id', opts.proposalId)
     .eq('status', proposalRow?.status ?? 'review')
+    .select('id')
   if (sErr) return { ok: false, error: sErr.message }
+  // Etkilenen satır yoksa BAŞARI DÖNÜLMEZ: karar yazıldı ama durum geçmedi —
+  // görünür tutarsızlık; operatör durumu yenileyip yeniden karar verir.
+  if (!statused?.length) {
+    return { ok: false, error: 'karar kaydedildi ama teklif durumu yarışta değişti — durumu yenileyin' }
+  }
 
   const { error: evtErr } = await supabaseAdmin.from('proposal_events').insert({
     proposal_id: opts.proposalId,
@@ -437,4 +483,135 @@ export async function decideProposalApproval(opts: {
   })
   if (evtErr) console.error('[proposal] approval event yazılamadı:', evtErr.message)
   return { ok: true }
+}
+
+// ── Application service (FINALIZATION Faz 4): UI'dan BAĞIMSIZ okuma yüzeyi ────
+// LeadDrawer/kokpit VE Telegram komutları AYNI fonksiyonları çağırır — kopya
+// sorgu/kural yok. Şema canlı değilse schemaMissing açık döner.
+
+export interface ProposalSummary {
+  id: string
+  leadId: string
+  status: string
+  currentVersion: number
+  updatedAt: string | null
+  pendingApprovalVersion: number | null
+}
+
+export async function listProposalsForLead(
+  leadId: string,
+): Promise<{ ok: boolean; proposals: ProposalSummary[]; schemaMissing?: boolean; error?: string }> {
+  const { data, error } = await supabaseAdmin
+    .from('proposals')
+    .select('id, lead_id, status, current_version, updated_at')
+    .eq('lead_id', leadId)
+    .order('created_at', { ascending: false })
+    .limit(10)
+  if (error) {
+    if (SCHEMA_MISSING.has(error.code ?? '')) return { ok: false, proposals: [], schemaMissing: true, error: SCHEMA_ERR }
+    return { ok: false, proposals: [], error: error.message }
+  }
+  const ids = (data ?? []).map((p) => p.id as string)
+  const pendingByProposal = new Map<string, number>()
+  if (ids.length > 0) {
+    const { data: approvals, error: aErr } = await supabaseAdmin
+      .from('proposal_approvals')
+      .select('proposal_id, version, decision')
+      .in('proposal_id', ids)
+      .eq('decision', 'pending')
+    if (aErr) return { ok: false, proposals: [], error: `onay durumu okunamadı: ${aErr.message}` }
+    for (const a of approvals ?? []) pendingByProposal.set(a.proposal_id as string, a.version as number)
+  }
+  return {
+    ok: true,
+    proposals: (data ?? []).map((p) => ({
+      id: p.id as string,
+      leadId: p.lead_id as string,
+      status: p.status as string,
+      currentVersion: (p.current_version as number) ?? 1,
+      updatedAt: (p.updated_at as string) ?? null,
+      pendingApprovalVersion: pendingByProposal.get(p.id as string) ?? null,
+    })),
+  }
+}
+
+export interface ProposalDetail {
+  id: string
+  leadId: string
+  status: string
+  currentVersion: number
+  contactId: string | null
+  versions: Array<{ version: number; emailSubject: string | null; whatsappText: string | null; emailBody: string | null; createdAt: string | null }>
+  approval: { version: number; decision: string; decidedAt: string | null } | null
+  events: Array<{ event: string; version: number | null; createdAt: string | null }>
+}
+
+export async function getProposalDetail(
+  proposalId: string,
+): Promise<{ ok: boolean; detail?: ProposalDetail; schemaMissing?: boolean; error?: string }> {
+  const { data: p, error: pErr } = await supabaseAdmin
+    .from('proposals')
+    .select('id, lead_id, status, current_version, contact_id')
+    .eq('id', proposalId)
+    .maybeSingle()
+  if (pErr) {
+    if (SCHEMA_MISSING.has(pErr.code ?? '')) return { ok: false, schemaMissing: true, error: SCHEMA_ERR }
+    return { ok: false, error: pErr.message }
+  }
+  if (!p) return { ok: false, error: 'teklif bulunamadı' }
+
+  const [versionsQ, approvalQ, eventsQ] = await Promise.all([
+    supabaseAdmin
+      .from('proposal_versions')
+      .select('version, email_subject, whatsapp_text, email_body, created_at')
+      .eq('proposal_id', proposalId)
+      .order('version', { ascending: false })
+      .limit(10),
+    supabaseAdmin
+      .from('proposal_approvals')
+      .select('version, decision, decided_at')
+      .eq('proposal_id', proposalId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabaseAdmin
+      .from('proposal_events')
+      .select('event, version, created_at')
+      .eq('proposal_id', proposalId)
+      .order('created_at', { ascending: false })
+      .limit(10),
+  ])
+  if (versionsQ.error) return { ok: false, error: `versiyonlar okunamadı: ${versionsQ.error.message}` }
+  if (approvalQ.error) return { ok: false, error: `onay okunamadı: ${approvalQ.error.message}` }
+  if (eventsQ.error) return { ok: false, error: `event'ler okunamadı: ${eventsQ.error.message}` }
+
+  return {
+    ok: true,
+    detail: {
+      id: p.id as string,
+      leadId: p.lead_id as string,
+      status: p.status as string,
+      currentVersion: (p.current_version as number) ?? 1,
+      contactId: (p.contact_id as string | null) ?? null,
+      versions: (versionsQ.data ?? []).map((v) => ({
+        version: v.version as number,
+        emailSubject: (v.email_subject as string) ?? null,
+        whatsappText: (v.whatsapp_text as string) ?? null,
+        emailBody: (v.email_body as string) ?? null,
+        createdAt: (v.created_at as string) ?? null,
+      })),
+      approval: approvalQ.data
+        ? {
+            version: approvalQ.data.version as number,
+            decision: approvalQ.data.decision as string,
+            decidedAt: (approvalQ.data.decided_at as string) ?? null,
+          }
+        : null,
+      events: (eventsQ.data ?? []).map((e) => ({
+        event: e.event as string,
+        version: (e.version as number) ?? null,
+        createdAt: (e.created_at as string) ?? null,
+      })),
+    },
+  }
 }

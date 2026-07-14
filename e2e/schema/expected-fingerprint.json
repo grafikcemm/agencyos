@@ -66,14 +66,18 @@
     "run_step_dependencies": "566027a21833b9697a196b666132080e",
     "job_application_drafts": "731a6cee965ae8707491777c387b5ace",
     "outreach_send_attempts": "9c7fe94144cd5ab80e756e5dc0ad355d",
-    "outreach_claim_evidence": "e19f7ea48b5c43902ac02e080c699ef5",
+    "outreach_claim_evidence": "ab548fc181a5e18ade7079358597a154",
     "opportunity_watch_topics": "1298a9286e378310d4e66e6b5027eba8",
     "opportunity_intel_reports": "1e1740f78fb22290f3ed74477a8fc512",
     "opportunity_jarvis_memory": "ad9683d69e2db30c50c55dbe491123a1",
     "opportunity_trend_signals": "9a9b3ef19e8914153899a5c83f11dc8d",
     "opportunity_trend_sources": "93ea06bfc39760f7818e081061a29698",
-    "outreach_message_versions": "a1d4ec88b504afe20be2b94449262243"
+    "outreach_message_versions": "a1d4ec88b504afe20be2b94449262243",
+    "proposals": "ef48b3bf954e19029ace32fa30720ff9",
+    "proposal_versions": "bb63b0e0190c98f3ccda488ebbb293fa",
+    "proposal_approvals": "0999b21bcec6052d4d0e3e6e7eedb7b9",
+    "proposal_events": "f264b080bde7842dd86de57958cc5a47"
   },
   "triggers_md5": "2fec56f101e2fe21be93caf015be7a74",
-  "functions_md5": "0753759dc495e99fdfa21562997e257f"
+  "functions_md5": "57d6a3b7c1572fd3cb4b6a903e5b0017"
 }

@@ -5,6 +5,21 @@
 import { Lead, Proposal, ProposalStatus } from './types'
 import { findOfferById } from './offers'
 import { matchSectorProfile } from './sectorPriority'
+import { detectClaims } from './outreach/qualityLint'
+
+// FINALIZATION Faz 4: teklif metni CANONICAL outbound gate'ten mocksuz geçer.
+// - salesPromise (kanıtsız yüzde/süre/sonuç vaatleri) OUTBOUND metne GİRMEZ —
+//   ölçülebilir sonuç yalnız bağlı evidence ile yazılabilir; varsayılan dil
+//   DOĞRULANABİLİR süreç/çıktı dilidir.
+// - E-posta gövdesi ETK opt-out satırı taşır; her metinde TEK tanınan CTA vardır.
+const PROPOSAL_OPT_OUT = 'Bu tür e-postaları almak istemiyorsanız "ret" yazarak yanıtlamanız yeterlidir.'
+
+/** Kanıt bağı olmadan iddia taşıyan cümleler teklife GİRMEZ (fail-closed). */
+function claimFree(text: string | null | undefined): string | null {
+  const t = (text ?? '').trim()
+  if (!t) return null
+  return detectClaims(t).length === 0 ? t : null
+}
 
 export type ProposalTone = 'samimi' | 'kurumsal'
 
@@ -22,7 +37,9 @@ function formatCurrency(n: number): string {
 
 function deriveProblem(lead: Partial<Lead>, fallback: string): string {
   if (lead.pain_points && lead.pain_points.length) {
-    return lead.pain_points.join('; ')
+    // Kanıtsız iddia kalıbı taşıyan pain-point cümleleri metne alınmaz.
+    const safe = lead.pain_points.map((p) => claimFree(p)).filter((p): p is string => Boolean(p))
+    if (safe.length) return safe.join('; ')
   }
   const profile = matchSectorProfile(lead.sector)
   return fallback || profile.primaryNeed
@@ -75,7 +92,7 @@ function buildWhatsappText(p: DraftCore): string {
   if (p.monthlyPrice > 0) lines.push(`Aylık: ${formatCurrency(p.monthlyPrice)}`)
   lines.push(`Kurulum süresi: ${p.timeline}`)
   lines.push('')
-  lines.push(`Beklenen sonuç: ${p.expectedOutcome}`)
+  lines.push(`Teslimat çerçevesi: ${p.expectedOutcome}`)
   lines.push('')
   lines.push(p.tone === 'kurumsal'
     ? 'Detayları görüşmek üzere uygun olduğunuz bir zamanı iletmenizi rica ederiz.'
@@ -103,13 +120,16 @@ function buildEmailText(p: DraftCore): string {
   if (p.monthlyPrice > 0) lines.push(`• Aylık: ${formatCurrency(p.monthlyPrice)}`)
   lines.push(`• Kurulum süresi: ${p.timeline}`)
   lines.push('')
-  lines.push('Beklenen Sonuç')
+  lines.push('Teslimat Çerçevesi')
   lines.push(p.expectedOutcome)
   lines.push('')
   lines.push('Sonraki Adım')
   lines.push(p.nextStep)
   lines.push('')
   lines.push('Saygılarımızla.')
+  lines.push('')
+  // ETK/İYS: e-posta kanalı opt-out zorunlu (gate MISSING_OPT_OUT).
+  lines.push(PROPOSAL_OPT_OUT)
   return lines.join('\n')
 }
 
@@ -144,9 +164,15 @@ export function buildProposal(input: BuildProposalInput): Proposal {
     for (const item of o.checklist.slice(0, 2)) scope.push(`${o.name}: ${item}`)
   }
 
-  const expectedOutcome = offers.map(o => o.salesPromise).join(' ')
+  // FINALIZATION Faz 4: salesPromise OUTBOUND metne GİRMEZ (kanıtsız sonuç
+  // vaadi). Beklenen sonuç = doğrulanabilir SÜREÇ/ÇIKTI dili: neyin teslim
+  // edileceği + sürecin nasıl yürüyeceği.
+  const expectedOutcome =
+    `${offers.map((o) => o.name).join(', ')} teslim edilir; ` +
+    'her aşama önceden yazılı olarak netleştirilir ve ilerleme size raporlanır.'
   const timeline = `${deliveryDays} iş günü`
-  const nextStep = 'Onayınızla birlikte kickoff toplantısı planlanır ve gerekli erişimler talep edilir.'
+  // TEK tanınan CTA (kickoff cümlesi bilgi, soru CTA'dır).
+  const nextStep = 'Uygunsanız 15 dakikada birlikte üzerinden geçelim mi?'
 
   const now = new Date()
   const followUpAt = addDays(now, 2).toISOString()
@@ -163,7 +189,7 @@ export function buildProposal(input: BuildProposalInput): Proposal {
     expectedOutcome,
     nextStep,
     tone,
-    whyNow: lead.why_now ?? null,
+    whyNow: claimFree(lead.why_now),
   }
 
   const whatsappText = buildWhatsappText(draft)

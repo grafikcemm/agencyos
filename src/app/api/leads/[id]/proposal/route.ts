@@ -11,7 +11,7 @@ import { enforceSameOrigin, parseJsonBody, BadRequestError } from '@/lib/api/gua
 import { buildProposal } from '@/lib/proposalGenerator'
 import { OBJECTION_LIBRARY } from '@/lib/objectionLibrary'
 import { selectPersuasionTriggers } from '@/lib/persuasionTriggers'
-import { createProposalDraft } from '@/lib/proposals/proposalService'
+import { createProposalDraft, listProposalsForLead } from '@/lib/proposals/proposalService'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -35,11 +35,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       limitedCapacity: true,
     })
 
+    // FINALIZATION Faz 4: kalıcı tekliflerin listesi de döner (şema canlı
+    // değilse schemaMissing açık — sahte boş liste yok).
+    const persisted = await listProposalsForLead(id)
+
     return NextResponse.json({
       success: true,
       proposal,
       objections: OBJECTION_LIBRARY,
       persuasion,
+      persistedProposals: persisted.ok ? persisted.proposals : [],
+      persistedError: persisted.ok ? null : (persisted.error ?? 'okunamadı'),
+      persistedSchemaMissing: persisted.schemaMissing ?? false,
     })
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : 'Sunucu hatası'

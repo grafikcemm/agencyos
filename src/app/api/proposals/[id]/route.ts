@@ -13,7 +13,31 @@ import {
   transitionProposal,
   requestProposalApproval,
   decideProposalApproval,
+  getProposalDetail,
 } from '@/lib/proposals/proposalService'
+
+// GET /api/proposals/[id] — teklif detayı: durum + versiyonlar + onay + event izi
+// (FINALIZATION Faz 4; LeadDrawer ve Telegram AYNI application service'i kullanır).
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const auth = await requireApiUser(req)
+    if ('response' in auth) return auth.response
+    const originErr = enforceSameOrigin(req)
+    if (originErr) return originErr
+
+    const { id } = await params
+    if (!id) return NextResponse.json({ success: false, error: 'id zorunludur' }, { status: 400 })
+    const result = await getProposalDetail(id)
+    if (!result.ok) {
+      const status = result.schemaMissing ? 409 : result.error === 'teklif bulunamadı' ? 404 : 500
+      return NextResponse.json({ success: false, ...result }, { status })
+    }
+    return NextResponse.json({ success: true, detail: result.detail })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Sunucu hatası'
+    return NextResponse.json({ success: false, error: msg }, { status: 500 })
+  }
+}
 
 const Schema = z.discriminatedUnion('action', [
   z.object({

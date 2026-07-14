@@ -1640,3 +1640,10 @@ GRANT EXECUTE ON FUNCTION public.e2e_schema_fingerprint() TO anon, authenticated
 -- eşzamanlı schedule yarışını kapatan kısmi UNIQUE. Canlı App DB onaya kadar geride.
 CREATE UNIQUE INDEX follow_up_sequences_open_step_uniq
   ON public.follow_up_sequences (lead_id, step) WHERE (done = false);
+
+-- FINALIZATION Faz 4 — mig 061 v3 test DB'ye KALICI uygulandı (2026-07-14):
+-- proposals/proposal_versions/proposal_approvals/proposal_events + 3 tx RPC
+-- (create_proposal_version_tx, request_proposal_approval_tx,
+--  decide_proposal_approval_tx) + 062'nin koşullu proposal FK'si bağlandı.
+-- Test DB'de ek olarak legacy e2e_open policy + geniş grant (yalnız izole test
+-- DB düzeni). Canlı App DB onaya kadar geride. Kaynak DDL: migrations/061_proposals.sql (v3).

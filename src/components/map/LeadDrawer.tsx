@@ -404,6 +404,60 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
   // Faz 5.1: KALICI teklif — client buildProposal yalnız önizleme; kalıcı yol
   // proposalService API'si (mig 061 canlıysa tek-transaction RPC).
   const [persistState, setPersistState] = useState<{ busy: boolean; note: string | null }>({ busy: false, note: null })
+
+  // FINALIZATION Faz 4: kalıcı teklifin YÖNETİMİ — durum + versiyonlar +
+  // request approval + approve/reject; hepsi UI'dan bağımsız application
+  // service (proposalService) API'leri üzerinden. Hatalar GÖRÜNÜR.
+  interface ProposalDetailView {
+    id: string
+    status: string
+    currentVersion: number
+    versions: Array<{ version: number; createdAt: string | null }>
+    approval: { version: number; decision: string } | null
+  }
+  const [propMgr, setPropMgr] = useState<{ busy: boolean; error: string | null; detail: ProposalDetailView | null }>({
+    busy: false, error: null, detail: null,
+  })
+
+  const refreshProposalDetail = async (proposalId: string) => {
+    setPropMgr((s) => ({ ...s, busy: true, error: null }))
+    try {
+      const res = await fetch(`/api/proposals/${proposalId}`)
+      const json = await res.json().catch(() => ({}))
+      if (!json.success) {
+        setPropMgr({ busy: false, error: json.error ?? `teklif durumu okunamadı (${res.status})`, detail: null })
+        return
+      }
+      setPropMgr({ busy: false, error: null, detail: json.detail as ProposalDetailView })
+    } catch {
+      setPropMgr({ busy: false, error: 'bağlantı hatası — teklif durumu okunamadı', detail: null })
+    }
+  }
+
+  const proposalAction = async (
+    proposalId: string,
+    body: { action: 'request_approval' } | { action: 'decide'; version: number; decision: 'approved' | 'rejected' },
+  ) => {
+    setPropMgr((s) => ({ ...s, busy: true, error: null }))
+    try {
+      const res = await fetch(`/api/proposals/${proposalId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!json.success) {
+        setPropMgr((s) => ({ ...s, busy: false, error: json.error ?? `aksiyon başarısız (${res.status})` }))
+        // Hata görünür kalır ama durum da tazelenir (stale görünüm bırakma).
+        await refreshProposalDetail(proposalId)
+        return
+      }
+      await refreshProposalDetail(proposalId)
+    } catch {
+      setPropMgr((s) => ({ ...s, busy: false, error: 'bağlantı hatası — aksiyon uygulanamadı' }))
+    }
+  }
+
   const handlePersistProposal = async () => {
     const offerIds = (lead.recommended_offers || []).map((o) => o.offerId)
     if (!offerIds.length || persistState.busy) return
@@ -417,6 +471,7 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
       const json = await res.json().catch(() => ({}))
       if (json.success) {
         setPersistState({ busy: false, note: `Kalıcı teklif kaydedildi: v${json.version}${json.atomic ? '' : ' (legacy — 061 RPC bekliyor)'}` })
+        if (json.proposalId) await refreshProposalDetail(json.proposalId as string)
       } else if (json.schemaMissing) {
         setPersistState({ busy: false, note: 'Teklif şeması (mig 061) canlı değil — kalıcı kayıt onay sonrası mümkün.' })
       } else if (json.quality) {
@@ -942,6 +997,57 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
           )}
           {persistState.note && (
             <p data-testid="persist-proposal-note" className="text-[10px] text-[var(--text-secondary)]">{persistState.note}</p>
+          )}
+          {/* FINALIZATION Faz 4: kalıcı teklif yönetimi — durum/versiyon/onay. */}
+          {propMgr.detail && (
+            <div data-testid="proposal-manager" className="rounded-md border border-[var(--border-subtle)] p-2 space-y-1.5">
+              <div className="flex items-center justify-between text-[10px]">
+                <span data-testid="proposal-status" className="font-bold text-[var(--text-primary)]">
+                  Teklif durumu: {propMgr.detail.status} · v{propMgr.detail.currentVersion}
+                </span>
+                <span className="text-[var(--text-muted)]">
+                  {propMgr.detail.versions.length} versiyon
+                  {propMgr.detail.approval ? ` · onay: ${propMgr.detail.approval.decision} (v${propMgr.detail.approval.version})` : ''}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                <button
+                  onClick={() => proposalAction(propMgr.detail!.id, { action: 'request_approval' })}
+                  disabled={propMgr.busy || !['draft', 'review'].includes(propMgr.detail.status)}
+                  data-testid="proposal-request-approval"
+                  className="py-1 text-[9px] font-bold rounded border border-[var(--border-subtle)] hover:border-[var(--accent)] disabled:opacity-40"
+                >
+                  Onaya al
+                </button>
+                <button
+                  onClick={() =>
+                    proposalAction(propMgr.detail!.id, {
+                      action: 'decide', version: propMgr.detail!.currentVersion, decision: 'approved',
+                    })
+                  }
+                  disabled={propMgr.busy || propMgr.detail.approval?.decision !== 'pending'}
+                  data-testid="proposal-approve"
+                  className="py-1 text-[9px] font-bold rounded border border-[var(--border-subtle)] hover:border-[var(--success)] disabled:opacity-40"
+                >
+                  Onayla
+                </button>
+                <button
+                  onClick={() =>
+                    proposalAction(propMgr.detail!.id, {
+                      action: 'decide', version: propMgr.detail!.currentVersion, decision: 'rejected',
+                    })
+                  }
+                  disabled={propMgr.busy || propMgr.detail.approval?.decision !== 'pending'}
+                  data-testid="proposal-reject"
+                  className="py-1 text-[9px] font-bold rounded border border-[var(--border-subtle)] hover:border-red-400 disabled:opacity-40"
+                >
+                  Reddet
+                </button>
+              </div>
+            </div>
+          )}
+          {propMgr.error && (
+            <p data-testid="proposal-manager-error" className="text-[10px] text-red-400">{propMgr.error}</p>
           )}
           <div className="grid grid-cols-2 gap-2">
             <button

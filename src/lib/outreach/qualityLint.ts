@@ -123,6 +123,11 @@ const CTA_PATTERNS = [
   /de[ğg]erlendirelim mi/gi,
   /[üu]zerinden ge[çc]elim mi/gi,
   /inceleyelim mi/gi,
+  // FINALIZATION Faz 4: teklif kapanışlarının KONTROLLÜ allowlist'i — gerçek
+  // Türkçe CTA varyasyonları (soru veya rica biçiminde tek net sonraki adım).
+  /uygun oldu[ğg]unuz (bir )?zaman[ıi]? (payla[şs][ıi]r m[ıi]s[ıi]n[ıi]z|iletmenizi rica)/gi,
+  /cevaplaman[ıi]z yeterli/gi,
+  /d[öo]n[üu][şs] yapman[ıi]z yeterli/gi,
 ]
 
 /**
@@ -152,6 +157,9 @@ const CLAIM_TAXONOMY: Array<{ category: ClaimCategory; pattern: RegExp }> = [
   { category: 'quantified', pattern: /\d+([.,]\d+)?\s*(yorum|değerlendirme|degerlendirme|puan)/gi }, // "37 yorum", "4.2 puan"
 
   { category: 'quantified', pattern: /\b\d+\s*(hafta|gün|gun|ay)(da|de|ta|te|\s*içinde|\s*icinde)\b/gi }, // süre vaadi
+  // "5 dakikada dönüş/cevap/çözüm" tarzı hız vaadi — CTA'daki "15 dakikada
+  // üzerinden geçelim" (görüşme süresi) İDDİA DEĞİLDİR, sonuç kelimesi şart.
+  { category: 'quantified', pattern: /\b\d+\s*(dakika|saniye|saat)(da|de|ta|te)\s*(dönüş|donus|cevap|yan[ıi]t|çözüm|cozum|teslim|kurulum)/gi },
   { category: 'outcome', pattern: /(ciro|gelir|sat[ıi]ş|satis)\s*art[ıi]ş/gi }, // "doğrudan ciro artışı"
   { category: 'outcome', pattern: /(dönüşüm|donusum|çevrim|cevrim)\s*(oran[ıi]?\s*)?art[ıi]ş/gi }, // "dönüşüm artışı"
   { category: 'outcome', pattern: /daha\s+fazla\s+(randevu|müşteri|musteri|sat[ıi]ş|satis|hasta|dan[ıi]şan|danisan)/gi },

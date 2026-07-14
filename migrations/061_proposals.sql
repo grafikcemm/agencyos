@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 061_proposals — App DB (Faz 3.2)
+-- 061_proposals v3 — App DB (Faz 3.2 → FINALIZATION Faz 4)
 --
 -- ⚠ UYGULANMADI — kullanıcı onayı bekliyor. Onay sonrası App + test DB birlikte.
 --
@@ -121,6 +121,125 @@ $$;
 revoke all on function public.create_proposal_version_tx(uuid, uuid, jsonb, text, text, text, text, uuid[], text, timestamptz) from public;
 grant execute on function public.create_proposal_version_tx(uuid, uuid, jsonb, text, text, text, text, uuid[], text, timestamptz) to service_role;
 
+
+-- FINALIZATION Faz 4: onay İSTEĞİ tek transaction — approval insert (idempotent)
+-- + draft→review geçişi + event. Digest TS tarafında hesaplanıp verilir.
+create or replace function public.request_proposal_approval_tx(
+  p_proposal_id uuid,
+  p_action_digest text,
+  p_now timestamptz default now()
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_status text;
+  v_version integer;
+begin
+  select status, current_version into v_status, v_version
+    from proposals where id = p_proposal_id for update;
+  if v_status is null then
+    return jsonb_build_object('ok', false, 'error', 'teklif bulunamadı');
+  end if;
+  if v_status not in ('draft','review') then
+    return jsonb_build_object('ok', false, 'error', 'bu durumda onay istenemez: ' || v_status);
+  end if;
+  if not exists (select 1 from proposal_versions where proposal_id = p_proposal_id and version = v_version) then
+    return jsonb_build_object('ok', false, 'error', 'versiyon bulunamadı — onay bağlanamaz');
+  end if;
+
+  insert into proposal_approvals (proposal_id, version, decision, action_digest)
+    values (p_proposal_id, v_version, 'pending', p_action_digest)
+    on conflict (proposal_id, version) do nothing;
+  if not found then
+    -- Aynı versiyona ikinci istek: idempotent (yeni satır/geçiş yok).
+    return jsonb_build_object('ok', true, 'version', v_version, 'idempotent', true);
+  end if;
+
+  if v_status = 'draft' then
+    update proposals set status = 'review', updated_at = p_now where id = p_proposal_id;
+  end if;
+
+  insert into proposal_events (proposal_id, version, event, metadata)
+    values (p_proposal_id, v_version, 'revised',
+            jsonb_build_object('approval_requested', true, 'atomic', true));
+  return jsonb_build_object('ok', true, 'version', v_version);
+end
+$$;
+
+revoke all on function public.request_proposal_approval_tx(uuid, text, timestamptz) from public;
+grant execute on function public.request_proposal_approval_tx(uuid, text, timestamptz) to service_role;
+
+-- FINALIZATION Faz 4: onay KARARI tek transaction — 'approved' YALNIZ buradan:
+-- pending onay satırı + versiyon hâlâ current + digest birebir + alıcı snapshot
+-- eşleşmesi; karar + durum + event atomik.
+create or replace function public.decide_proposal_approval_tx(
+  p_proposal_id uuid,
+  p_version integer,
+  p_decision text,
+  p_expected_digest text,
+  p_contact_id uuid,
+  p_now timestamptz default now()
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_status text;
+  v_current integer;
+  v_contact uuid;
+  v_approval_id uuid;
+  v_decision text;
+  v_digest text;
+begin
+  if p_decision not in ('approved','rejected') then
+    return jsonb_build_object('ok', false, 'error', 'geçersiz karar: ' || coalesce(p_decision, 'null'));
+  end if;
+
+  select status, current_version, contact_id into v_status, v_current, v_contact
+    from proposals where id = p_proposal_id for update;
+  if v_status is null then
+    return jsonb_build_object('ok', false, 'error', 'teklif bulunamadı');
+  end if;
+
+  select id, decision, action_digest into v_approval_id, v_decision, v_digest
+    from proposal_approvals
+   where proposal_id = p_proposal_id and version = p_version
+   for update;
+  if v_approval_id is null then
+    return jsonb_build_object('ok', false, 'error', 'onay kaydı yok — onaysız approved geçişi yapılamaz');
+  end if;
+  if v_decision <> 'pending' then
+    return jsonb_build_object('ok', false, 'error', 'onay zaten karara bağlı: ' || v_decision);
+  end if;
+  if v_current <> p_version then
+    return jsonb_build_object('ok', false, 'error',
+      'onay ' || p_version || '. versiyona ait; teklif ' || v_current || '. versiyonda — YENİDEN onay gerekir');
+  end if;
+  if v_digest <> p_expected_digest then
+    return jsonb_build_object('ok', false, 'error',
+      'içerik/alıcı onaydan sonra değişti (digest uyuşmazlığı) — YENİDEN onay gerekir');
+  end if;
+  if v_contact is distinct from p_contact_id then
+    return jsonb_build_object('ok', false, 'error', 'alıcı onaydan sonra değişti — YENİDEN onay gerekir');
+  end if;
+
+  update proposal_approvals set decision = p_decision, decided_at = p_now where id = v_approval_id;
+  update proposals
+     set status = case when p_decision = 'approved' then 'approved' else 'rejected' end,
+         updated_at = p_now
+   where id = p_proposal_id;
+  insert into proposal_events (proposal_id, version, event, metadata)
+    values (p_proposal_id, p_version, p_decision, jsonb_build_object('via', 'proposal_approval_tx'));
+  return jsonb_build_object('ok', true);
+end
+$$;
+
+revoke all on function public.decide_proposal_approval_tx(uuid, integer, text, text, uuid, timestamptz) from public;
+grant execute on function public.decide_proposal_approval_tx(uuid, integer, text, text, uuid, timestamptz) to service_role;
+
 create index if not exists proposals_lead_idx on public.proposals (lead_id, created_at desc);
 create index if not exists proposal_events_idx on public.proposal_events (proposal_id, created_at desc);
 
@@ -131,4 +250,6 @@ alter table public.proposal_events enable row level security;
 revoke all on public.proposals, public.proposal_versions, public.proposal_approvals, public.proposal_events
   from anon, authenticated;
 grant select, insert, update on public.proposals, public.proposal_versions, public.proposal_approvals to service_role;
+-- Legacy telafi yolu (yeni teklif + versiyon yazılamadı → satır geri alınır):
+grant delete on public.proposals to service_role;
 grant select, insert on public.proposal_events to service_role;
