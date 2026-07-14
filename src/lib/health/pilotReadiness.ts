@@ -11,6 +11,8 @@
 import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getGmailStatus } from '@/lib/gmail/status'
+import { getWebhookInfo } from '@/lib/telegram/client'
+import { CRON_REQUIRES_PRO_PLAN } from '@/lib/cron/manifest'
 
 export interface ReadinessCheck {
   key: string
@@ -47,11 +49,58 @@ async function ingestCronRegistered(): Promise<boolean> {
 /** En son BAŞARILI inbound ingest zamanı (settings'e route yazarsa) — yoksa null. */
 async function lastIngestOk(): Promise<boolean> {
   try {
-    const { data } = await supabaseAdmin.from('settings').select('value').eq('key', 'gmail_last_ingest_ok').maybeSingle()
-    return Boolean(data?.value)
+    const { data, error } = await supabaseAdmin.from('settings').select('value').eq('key', 'gmail_last_ingest_ok').maybeSingle()
+    if (error || !data?.value) return false
+    const timestamp = Date.parse(data.value as string)
+    // Manifest cadence'i 3 saat; 12 saatten eski heartbeat gerçek otomasyon
+    // kanıtı değildir. Saat kayması/tek geçici hata için 4 cadence toleransı.
+    return Number.isFinite(timestamp) && Date.now() - timestamp <= 12 * 60 * 60 * 1000
   } catch {
     return false
   }
+}
+
+/** Gelir döngüsünün kanonik App şeması canlı mı. Yalnız read-only SELECT probe;
+ * tablo yok/erişilemiyorsa hazır sayılmaz. */
+async function revenueSchemaReady(): Promise<boolean> {
+  try {
+    const probes = await Promise.all([
+      supabaseAdmin.from('proposals').select('id').limit(1),
+      supabaseAdmin.from('outreach_message_versions').select('id').limit(1),
+      supabaseAdmin.from('gmail_oauth_states').select('nonce').limit(1),
+      supabaseAdmin.from('gmail_inbound_quarantine').select('gmail_message_id').limit(1),
+    ])
+    return probes.every((p) => !p.error)
+  } catch {
+    return false
+  }
+}
+
+/** Telegram env varlığı değil, provider'daki kayıtlı webhook URL eşleşmesi. */
+async function telegramWebhookReady(): Promise<boolean> {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL
+  const envReady =
+    env('TELEGRAM_BOT_TOKEN') &&
+    env('TELEGRAM_CHAT_ID') &&
+    env('TELEGRAM_USER_ID') &&
+    env('TELEGRAM_WEBHOOK_SECRET') &&
+    Boolean(appUrl)
+  if (!envReady) return false
+  try {
+    const webhook = await getWebhookInfo()
+    if (!webhook.ok) return false
+    const expected = `${appUrl!.replace(/\/$/, '')}/api/telegram`
+    return webhook.info.url === expected
+  } catch {
+    return false
+  }
+}
+
+/** Manifest sub-daily işler içerdiği için Vercel Pro (veya eşdeğer scheduler)
+ * doğrulanmadan otomasyon hazır denemez. Bu env yalnız plan yükseltildikten ve
+ * cron'lar deploy edildikten sonra açıkça true yapılır. */
+function schedulerReady(): boolean {
+  return !CRON_REQUIRES_PRO_PLAN || process.env.VERCEL_PRO_PLAN_CONFIRMED === 'true'
 }
 
 /** Onaylı Voice DNA kuralı var mı (kalibrasyon) — settings.voice_dna. */
@@ -91,27 +140,33 @@ async function life006Ready(): Promise<boolean> {
 
 export async function getPilotReadiness(): Promise<PilotReadiness> {
   const gmail = await getGmailStatus().catch(() => null)
-  const [ingestCron, ingestOk, voice, compliance, life006] = await Promise.all([
+  const [ingestCron, ingestOk, voice, compliance, life006, schema, telegram] = await Promise.all([
     ingestCronRegistered(),
     lastIngestOk(),
     voiceCalibrated(),
     complianceReady(),
     life006Ready(),
+    revenueSchemaReady(),
+    telegramWebhookReady(),
   ])
 
   const checks: ReadinessCheck[] = [
     { key: 'core_env', label: 'Çekirdek env (Supabase/OpenRouter/Cron)', ok: env('SUPABASE_SERVICE_ROLE_KEY') && env('OPENROUTER_API_KEY') && env('CRON_SECRET'), required: true, detail: 'Zorunlu API anahtarları .env/Vercel’de olmalı.' },
+    { key: 'revenue_schema', label: 'Gelir motoru canlı DB şeması', ok: schema, required: true, detail: 'Onaylı App migration paketi (058–064) canlıya uygulanmalı.' },
     { key: 'gmail_oauth', label: 'Gmail OAuth yapılandırması', ok: Boolean(gmail?.oauthConfigured), required: true, detail: 'GOOGLE_CLIENT_ID/SECRET/redirect (kullanıcı aksiyonu: Google Cloud).' },
     { key: 'gmail_account', label: 'Bağlı + doğrulanmış Gmail hesabı', ok: Boolean(gmail?.connected && gmail?.verifiedEmail), required: true, detail: 'Ayarlar → Gmail Bağla (getProfile doğrulaması).' },
     { key: 'gmail_scopes', label: 'Zorunlu izinler (send + readonly)', ok: Boolean(gmail?.requiredScopesOk), required: true, detail: 'İki scope da gerekli; eksikse yeniden bağla.' },
     { key: 'gmail_transport', label: 'Gerçek gönderim transport’u hazır', ok: Boolean(gmail?.realSendTransportReady), required: true, detail: 'Bağlı hesap + scope + OAuth env üçü de gerekli.' },
+    { key: 'send_flag', label: 'Gerçek Gmail gönderim bayrağı', ok: Boolean(gmail?.sendEnabled), required: true, detail: 'Gerçek pilot açılışında GMAIL_SEND_ENABLED=true yapılmalı; HITL yine zorunludur.' },
+    { key: 'ingest_flag', label: 'Gmail cevap ingest bayrağı', ok: Boolean(gmail?.ingestEnabled), required: true, detail: 'GMAIL_INGEST_ENABLED=true olmadan cevaplar takip edilmez.' },
+    { key: 'gmail_cursor', label: 'Gmail history cursor', ok: Boolean(gmail?.hasHistoryCursor), required: true, detail: 'İlk gerçek ingest başarıyla çalışıp cursor yazmalı.' },
     { key: 'ingest_cron', label: 'Gmail ingest cron kayıtlı', ok: ingestCron, required: true, detail: 'vercel.json + manifest parity (Faz 3).' },
-    { key: 'last_ingest', label: 'Son başarılı inbound ingest', ok: ingestOk, required: false, detail: 'İlk gerçek ingest sonrası dolar.' },
+    { key: 'scheduler_plan', label: 'Sub-daily otomasyon scheduler’ı', ok: schedulerReady(), required: true, detail: 'Mevcut manifest Vercel Pro ister; plan yükseltip VERCEL_PRO_PLAN_CONFIRMED=true yapın.' },
+    { key: 'last_ingest', label: 'Son başarılı inbound ingest', ok: ingestOk, required: true, detail: 'Son 12 saat içinde gerçek Gmail ingest heartbeat’i olmalı.' },
     { key: 'life006', label: 'LIFE 006 (Telegram imzalı aksiyon + ledger)', ok: life006, required: true, detail: 'LIFE mig 006 (code kolonu) canlı olmalı.' },
-    { key: 'telegram_webhook', label: 'Telegram webhook secret', ok: env('TELEGRAM_WEBHOOK_SECRET') && env('TELEGRAM_BOT_TOKEN'), required: false, detail: 'Webhook kaydı + bot token (deploy sonrası).' },
-    { key: 'voice_dna', label: 'Voice DNA kalibrasyonu', ok: voice, required: false, detail: 'En az bir onaylı stil kuralı (onboarding).' },
+    { key: 'telegram_webhook', label: 'Telegram webhook gerçek kaydı', ok: telegram, required: true, detail: 'Token/chat/user/secret/APP_URL tam ve provider webhook URL’i birebir eşleşmeli.' },
+    { key: 'voice_dna', label: 'Voice DNA kalibrasyonu', ok: voice, required: true, detail: 'Üst düzey kişiselleştirme için en az bir onaylı stil kuralı gerekli.' },
     { key: 'compliance', label: 'İYS/KVKK uyum bilgisi', ok: compliance, required: true, detail: 'Ticaret unvanı + MERSİS (yasal footer).' },
-    { key: 'send_flag', label: 'Gönderim bayrağı (pilot)', ok: process.env.GMAIL_SEND_ENABLED === 'true', required: false, detail: 'Pilot açılışında AÇILIR (varsayılan dry-run).' },
   ]
 
   const failedRequired = checks.filter((c) => c.required && !c.ok).map((c) => c.key)

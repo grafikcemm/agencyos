@@ -21,6 +21,7 @@ const db: Record<string, MockRow[]> = {
 }
 const selectError: Record<string, { message: string } | null> = {}
 let leadsFreshError: { message: string } | null = null // yalnız .is(next_follow_up_at,null) sorgusu
+const nullDataTables = new Set<string>()
 
 function from(table: string) {
   const rows = db[table] ?? []
@@ -32,6 +33,7 @@ function from(table: string) {
   function exec(): { data: unknown; error: { message: string } | null } {
     if (table === 'leads' && usedIsNull && leadsFreshError) return { data: null, error: leadsFreshError }
     if (selectError[table]) return { data: null, error: selectError[table] }
+    if (nullDataTables.has(table)) return { data: null, error: null }
     let matched = rows.filter((r) => filters.every((f) => f(r)))
     if (orderCols.length > 0) {
       matched = [...matched].sort((a, b) => {
@@ -130,6 +132,7 @@ function seedLead(id: string, over: MockRow = {}) {
 beforeEach(() => {
   for (const k of Object.keys(db)) db[k] = []
   for (const k of Object.keys(selectError)) selectError[k] = null
+  nullDataTables.clear()
   leadsFreshError = null
   approvalsMap = new Map()
   approvalsBatchThrow = false
@@ -207,7 +210,11 @@ describe('getTodayCockpit — mutlu yol', () => {
       { action: 'called', created_at: '2026-07-14T09:00:00Z' },
       { action: 'note', created_at: '2026-07-13T09:00:00Z' }, // dün → sayılmaz
     )
-    db.outreach_messages.push({ id: 'sent-today', channel: 'email', status: 'sent', lead_id: null, subject: 's', body: 'b', final_body: null, created_at: '2026-07-14T06:00:00Z', sent_at: '2026-07-14T06:00:00Z' })
+    db.email_messages.push(
+      { id: 'out-real', direction: 'outbound', gmail_message_id: 'provider-123', sent_at: '2026-07-14T06:00:00Z' },
+      { id: 'out-dry', direction: 'outbound', gmail_message_id: 'dryrun-draft-1', sent_at: '2026-07-14T07:00:00Z' },
+      { id: 'out-unverified', direction: 'outbound', gmail_message_id: null, sent_at: '2026-07-14T08:00:00Z' },
+    )
     db.approval_requests.push({ id: 'apx', action: 'outreach.send_gmail', created_at: '2026-07-14T05:00:00Z' })
 
     const r = await getTodayCockpit(NOW)
@@ -246,7 +253,7 @@ describe('getTodayCockpit — hata bağımsızlığı (bir panel hatası diğeri
     selectError.outreach_messages = { message: 'om down' }
     const r = await getTodayCockpit(NOW)
     expect(r.pendingSends.error).toContain('om down')
-    expect(r.opsMetrics.error).toContain('om down') // aynı tablo (gönderim metriği) — dürüst
+    expect(r.opsMetrics.error).toBeNull() // gönderim metriği canonical email ledger'dan gelir
   })
 
   it('attempt sorgusu hatası → sahte approval_missing YOK, panel error', async () => {
@@ -285,6 +292,13 @@ describe('getTodayCockpit — hata bağımsızlığı (bir panel hatası diğeri
     expect(r.opsMetrics.error).toContain('onay metriği okunamadı')
   })
 
+  it('email ledger hatası → gönderim metriği sahte 0 dönmez', async () => {
+    selectError.email_messages = { message: 'email ledger down' }
+    const r = await getTodayCockpit(NOW)
+    expect(r.opsMetrics.error).toContain('gönderim metriği okunamadı')
+    expect(r.opsMetrics.data).toBeNull()
+  })
+
   it('revenue: settings yoksa default hedef 120000', async () => {
     seedLead('c1', { status: 'contacted', expected_monthly_value_tl: 1000 })
     const r = await getTodayCockpit(NOW)
@@ -294,6 +308,28 @@ describe('getTodayCockpit — hata bağımsızlığı (bir panel hatası diğeri
 })
 
 describe('getTodayCockpit — fallback dalları (null alanlar)', () => {
+  it('PostgREST veri alanını null döndürürse bütün paneller güvenli boş duruma iner', async () => {
+    for (const table of Object.keys(db)) nullDataTables.add(table)
+
+    const r = await getTodayCockpit(NOW)
+
+    expect(r.leadsToCall).toEqual({ items: [], error: null })
+    expect(r.callDuplicates).toEqual([])
+    expect(r.pendingSends).toEqual({ items: [], error: null })
+    expect(r.replies).toEqual({ items: [], error: null })
+    expect(r.overdueFollowups).toEqual({ items: [], error: null })
+    expect(r.sendIssues).toEqual({ items: [], error: null })
+    expect(r.hotLeads).toEqual({ items: [], error: null })
+    expect(r.revenue.data).toMatchObject({ targetTl: 120000, weightedPipelineTl: 0 })
+    expect(r.opsMetrics.data).toEqual({
+      actionsByType: {},
+      totalActions: 0,
+      emailsSent: 0,
+      approvalsRequested: 0,
+    })
+    expect(r.enrichment).toEqual({ data: null, error: null })
+  })
+
   it('null alanlı satırlar güvenli fallback ile görünür (—, 0, (konu yok))', async () => {
     // Kısa telefonlu lead: normalize anahtarı null → dedupe atlanır ama listede.
     db.leads.push({
@@ -393,7 +429,7 @@ describe('computeExpectedRevenue', () => {
 })
 
 // ── Faz C4: draft darboğaz sınıflandırıcısı (deterministik) ───────────────────
-import { classifyDraftState, normalizePhoneKey, DRAFT_NEXT_ACTION } from './today'
+import { classifyDraftState, normalizePhoneKey, DRAFT_NEXT_ACTION, GMAIL_SEND_MODE_COPY } from './today'
 
 describe('classifyDraftState (finding #5-6)', () => {
   const base = {
@@ -447,5 +483,14 @@ describe('normalizePhoneKey (C2 dedupe)', () => {
   it('null/kısa değerler null', () => {
     expect(normalizePhoneKey(null)).toBeNull()
     expect(normalizePhoneKey('112')).toBeNull()
+  })
+})
+
+describe('Gmail gönderim modu metni', () => {
+  it('gerçek gönderimi dry-run gibi göstermez', () => {
+    expect(GMAIL_SEND_MODE_COPY.live.banner).toContain('GERÇEK Gmail')
+    expect(GMAIL_SEND_MODE_COPY.live.button).toContain('GERÇEK gönder')
+    expect(GMAIL_SEND_MODE_COPY['dry-run'].banner).toContain('e-posta gitmez')
+    expect(GMAIL_SEND_MODE_COPY['dry-run'].button).toContain('dry-run')
   })
 })

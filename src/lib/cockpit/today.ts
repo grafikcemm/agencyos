@@ -449,9 +449,9 @@ async function loadOpsMetrics(nowIso: string): Promise<OpsMetrics> {
   const [auditQ, sentQ, approvalsQ] = await Promise.all([
     supabaseAdmin.from('lead_action_audit').select('action').gte('created_at', dayStart),
     supabaseAdmin
-      .from('outreach_messages')
-      .select('id')
-      .eq('status', 'sent')
+      .from('email_messages')
+      .select('gmail_message_id')
+      .eq('direction', 'outbound')
       .gte('sent_at', dayStart),
     supabaseAdmin
       .from('approval_requests')
@@ -471,7 +471,12 @@ async function loadOpsMetrics(nowIso: string): Promise<OpsMetrics> {
   return {
     actionsByType,
     totalActions: (auditQ.data ?? []).length,
-    emailsSent: (sentQ.data ?? []).length,
+    // Dry-run, send makinesini ve DB finalize yolunu kanıtlar ama dışarı
+    // e-posta ÇIKARMAZ. Gelir kokpiti yalnız gerçek provider ledger'ını sayar.
+    emailsSent: (sentQ.data ?? []).filter((row) => {
+      const providerId = String(row.gmail_message_id ?? '').trim()
+      return providerId.length > 0 && !providerId.startsWith('dryrun-')
+    }).length,
     approvalsRequested: (approvalsQ.data ?? []).length,
   }
 }
@@ -539,9 +544,18 @@ export async function getTodayCockpit(nowMs: number = Date.now()): Promise<Today
     ])
   // Faz 7: panelleri zaman-bütçesi aksiyonlarına çevir (UI değer/süre sıralar).
   const budgetActions: BudgetAction[] = [
-    ...callResult.items.map((l) => ({ id: `call:${l.id}`, kind: 'call' as const, label: `Ara: ${l.businessName}` })),
-    ...pendingSends.items.map((d) => ({ id: `send:${d.draftId}`, kind: 'approve_send' as const, label: `Onayla/gönder: ${d.businessName}` })),
-    ...overdueFollowups.items.map((f) => ({ id: `fu:${f.id}`, kind: 'followup' as const, label: `Takip: ${f.businessName}` })),
+    ...callResult.items.map((l) => ({
+      id: `call:${l.id}`, kind: 'call' as const, label: `Ara: ${l.businessName}`,
+      targetTestId: `call-lead-${l.id}`,
+    })),
+    ...pendingSends.items.map((d) => ({
+      id: `send:${d.draftId}`, kind: 'approve_send' as const, label: `Onayla/gönder: ${d.businessName}`,
+      targetTestId: `send-draft-${d.draftId}`,
+    })),
+    ...overdueFollowups.items.map((f) => ({
+      id: `fu:${f.id}`, kind: 'followup' as const, label: `Takip: ${f.businessName}`,
+      targetTestId: `followup-${f.id}`,
+    })),
   ]
 
   return {

@@ -116,6 +116,10 @@ function transport(messages: InboundMessage[], nextHistoryId: string | null = nu
   return { kind: 'fake', listInbound: async () => ({ messages, nextHistoryId }) }
 }
 
+function inboundRows(): Row[] {
+  return db.email_messages.filter((r) => r.direction === 'inbound')
+}
+
 beforeEach(() => {
   for (const k of Object.keys(db)) db[k] = []
   for (const k of Object.keys(errors)) errors[k] = null
@@ -125,6 +129,10 @@ beforeEach(() => {
   stopMock.mockReset().mockResolvedValue(1)
   db.outreach_send_attempts.push({ outreach_message_id: 'om-1', rfc_message_id: RFC })
   db.outreach_messages.push({ id: 'om-1', lead_id: 'lead-1', gmail_thread_id: 'th-g' })
+  db.email_messages.push({
+    id: 'email-out-1', outreach_message_id: 'om-1', gmail_message_id: 'gmail-out-1',
+    direction: 'outbound', to_address: LEAD_EMAIL, sent_at: '2026-07-14T08:00:00.000Z',
+  })
   db.email_threads.push({ id: 'thread-row-1', gmail_thread_id: 'th-g' })
   db.leads.push({ id: 'lead-1', status: 'contacted', do_not_contact: false, email: LEAD_EMAIL })
 })
@@ -133,7 +141,7 @@ describe('ingest — attribution + gönderen doğrulama + FSM yan etkileri', () 
   it('pozitif cevap (gönderen=alıcı): inbound kayıt + responded + follow-up DURUR + thread bağı', async () => {
     const c = await ingestInboundReplies(transport([msg()]))
     expect(c).toMatchObject({ scanned: 1, ingested: 1, responded: 1, failed: 0, unmatched: 0, senderMismatch: 0 })
-    expect(db.email_messages[0]).toMatchObject({
+    expect(inboundRows()[0]).toMatchObject({
       direction: 'inbound', outreach_message_id: 'om-1', thread_id: 'thread-row-1', from_address: LEAD_EMAIL,
     })
     expect(db.leads[0].status).toBe('responded')
@@ -152,7 +160,7 @@ describe('ingest — attribution + gönderen doğrulama + FSM yan etkileri', () 
     expect(db.leads[0].do_not_contact).toBe(false)
     expect(db.suppression_list).toHaveLength(0)
     expect(db.gmail_inbound_quarantine[0]).toMatchObject({ reason: 'sender_mismatch' })
-    expect(db.email_messages).toHaveLength(0)
+    expect(inboundRows()).toHaveLength(0)
     warnSpy.mockRestore()
   })
 
@@ -176,7 +184,7 @@ describe('ingest — attribution + gönderen doğrulama + FSM yan etkileri', () 
     expect(c.responded).toBe(0)
     expect(db.leads[0].status).toBe('contacted')
     expect(stopMock).not.toHaveBeenCalled()
-    expect(db.email_messages).toHaveLength(1)
+    expect(inboundRows()).toHaveLength(1)
   })
 
   it('DEDUPE (email_messages): aynı gmail_message_id ikinci turda işlenmez', async () => {
@@ -187,7 +195,7 @@ describe('ingest — attribution + gönderen doğrulama + FSM yan etkileri', () 
     expect(c2.deduped).toBe(1)
     expect(c2.ingested).toBe(0)
     expect(stopMock).not.toHaveBeenCalled()
-    expect(db.email_messages).toHaveLength(1)
+    expect(inboundRows()).toHaveLength(1)
   })
 
   it('KARANTİNA dedupe: karantinadaki mesaj full-sync fallback\'te YENİDEN işlenmez', async () => {
@@ -208,7 +216,7 @@ describe('ingest — attribution + gönderen doğrulama + FSM yan etkileri', () 
     const c = await ingestInboundReplies(transport([msg({ inReplyTo: '<baska@x>', references: null })]))
     expect(c.unmatched).toBe(1)
     expect(c.quarantined).toBe(1)
-    expect(db.email_messages).toHaveLength(0)
+    expect(inboundRows()).toHaveLength(0)
     expect(db.leads[0].status).toBe('contacted')
     expect(db.gmail_inbound_quarantine[0]).toMatchObject({ reason: 'unmatched' })
   })
@@ -227,21 +235,37 @@ describe('ingest — attribution + gönderen doğrulama + FSM yan etkileri', () 
     warnSpy.mockRestore()
   })
 
+  it('primary contact alıcısı lead.email\'den farklıysa GERÇEK outbound snapshot ile eşleşir', async () => {
+    db.leads[0].email = 'genel@firma.com'
+    db.email_messages[0].to_address = 'karar.verici@firma.com'
+    const c = await ingestInboundReplies(transport([msg({ fromAddress: 'Karar Verici <karar.verici@firma.com>' })]))
+    expect(c).toMatchObject({ ingested: 1, senderMismatch: 0, responded: 1 })
+  })
+
+  it('outbound alıcı snapshot yoksa lead.email\'e güvenmez → fail-closed karantina', async () => {
+    db.email_messages[0].to_address = null
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const c = await ingestInboundReplies(transport([msg()]))
+    expect(c).toMatchObject({ ingested: 0, senderMismatch: 1, quarantined: 1 })
+    expect(db.leads[0].status).toBe('contacted')
+    warnSpy.mockRestore()
+  })
+
   it('gmail_thread_id NULL: thread_id null yazılır ama mesaj ingest edilir', async () => {
     db.outreach_messages[0].gmail_thread_id = null
     const c = await ingestInboundReplies(transport([msg()]))
     expect(c.ingested).toBe(1)
-    expect(db.email_messages[0].thread_id).toBeNull()
+    expect(inboundRows()[0].thread_id).toBeNull()
   })
 
   it('internalDateMs null → sent_at null (kayıt yine oluşur)', async () => {
     const c = await ingestInboundReplies(transport([msg({ internalDateMs: null })]))
     expect(c.ingested).toBe(1)
-    expect(db.email_messages[0].sent_at).toBeNull()
+    expect(inboundRows()[0].sent_at).toBeNull()
   })
 
-  it('lead e-postası okuma hatası → satır failed (fail-closed)', async () => {
-    errors['leads:select'] = { message: 'lead read down' }
+  it('gönderilen alıcı snapshot okuma hatası → satır failed (fail-closed)', async () => {
+    errors['email_messages:select'] = { message: 'sent recipient read down' }
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const c = await ingestInboundReplies(transport([msg()]))
     expect(c.failed).toBe(1)
@@ -253,7 +277,7 @@ describe('ingest — attribution + gönderen doğrulama + FSM yan etkileri', () 
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const c = await ingestInboundReplies(transport([msg({ bodyText: 'ret' })]))
     expect(c.failed).toBe(1)
-    expect(db.email_messages).toHaveLength(0)
+    expect(inboundRows()).toHaveLength(0)
     errSpy.mockRestore()
   })
 
@@ -262,7 +286,7 @@ describe('ingest — attribution + gönderen doğrulama + FSM yan etkileri', () 
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const c = await ingestInboundReplies(transport([msg()]))
     expect(c.failed).toBe(1)
-    expect(db.email_messages).toHaveLength(0)
+    expect(inboundRows()).toHaveLength(0)
     errSpy.mockRestore()
   })
 

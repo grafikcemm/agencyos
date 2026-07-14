@@ -35,6 +35,8 @@ export interface BudgetAction {
   id: string
   kind: ActionKind
   label: string
+  /** Kokpitte ilgili satıra tek tıkla gitmek için data-testid hedefi. */
+  targetTestId?: string
   /** Opsiyonel ek değer (ör. hot lead / yüksek skor) — temel değere eklenir. */
   valueBoost?: number
 }

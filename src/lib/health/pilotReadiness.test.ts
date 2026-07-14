@@ -5,12 +5,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const gmailStatus = vi.fn()
 vi.mock('@/lib/gmail/status', () => ({ getGmailStatus: () => gmailStatus() }))
+const webhookInfo = vi.fn()
+vi.mock('@/lib/telegram/client', () => ({ getWebhookInfo: () => webhookInfo() }))
 
 const settingsRows: Record<string, string | null> = {}
+const schemaErrors: Record<string, { message: string } | null> = {}
 const lifeSelectError = { value: null as { message: string } | null }
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
-    from: () => {
+    from: (table: string) => {
       const filters: string[] = []
       const api: Record<string, unknown> = {}
       Object.assign(api, {
@@ -20,11 +23,16 @@ vi.mock('@/lib/supabase', () => ({
         limit: () => api,
         maybeSingle: async () => {
           const key = filters[0]
-          return { data: settingsRows[key] != null ? { value: settingsRows[key] } : null, error: null }
+          return {
+            data: table === 'settings' && settingsRows[key] != null ? { value: settingsRows[key] } : null,
+            error: schemaErrors[table] ?? null,
+          }
         },
         then: (res: (v: unknown) => unknown) => {
-          const rows = filters.filter((k) => settingsRows[k] != null).map((k) => ({ key: k, value: settingsRows[k] }))
-          return Promise.resolve({ data: rows, error: null }).then(res)
+          const rows = table === 'settings'
+            ? filters.filter((k) => settingsRows[k] != null).map((k) => ({ key: k, value: settingsRows[k] }))
+            : []
+          return Promise.resolve({ data: rows, error: schemaErrors[table] ?? null }).then(res)
         },
       })
       return api
@@ -42,23 +50,32 @@ import { getPilotReadiness } from './pilotReadiness'
 function fullyReady() {
   gmailStatus.mockResolvedValue({
     oauthConfigured: true, connected: true, verifiedEmail: 'ops@x.com',
-    requiredScopesOk: true, realSendTransportReady: true,
+    requiredScopesOk: true, realSendTransportReady: true, sendEnabled: true,
+    ingestEnabled: true, hasHistoryCursor: true,
   })
+  webhookInfo.mockResolvedValue({ ok: true, info: { url: 'https://agency.example/api/telegram' } })
   settingsRows.voice_dna = JSON.stringify({ positive: ['kısa yaz'], negative: [] })
   settingsRows.ticaret_unvani = 'Ali Cem Bozma'
   settingsRows.mersis_no = '0000000000000000'
-  settingsRows.gmail_last_ingest_ok = '2026-07-14T00:00:00Z'
+  settingsRows.gmail_last_ingest_ok = new Date().toISOString()
   lifeSelectError.value = null
 }
 
 beforeEach(() => {
   for (const k of Object.keys(settingsRows)) delete settingsRows[k]
+  for (const k of Object.keys(schemaErrors)) delete schemaErrors[k]
   gmailStatus.mockReset()
+  webhookInfo.mockReset()
   lifeSelectError.value = null
   vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'x')
   vi.stubEnv('OPENROUTER_API_KEY', 'x')
   vi.stubEnv('CRON_SECRET', 'x')
-  vi.stubEnv('GMAIL_SEND_ENABLED', '')
+  vi.stubEnv('TELEGRAM_BOT_TOKEN', 'x')
+  vi.stubEnv('TELEGRAM_CHAT_ID', '1')
+  vi.stubEnv('TELEGRAM_USER_ID', '1')
+  vi.stubEnv('TELEGRAM_WEBHOOK_SECRET', 'x')
+  vi.stubEnv('APP_URL', 'https://agency.example')
+  vi.stubEnv('VERCEL_PRO_PLAN_CONFIRMED', 'true')
 })
 afterEach(() => vi.unstubAllEnvs())
 
@@ -95,11 +112,12 @@ describe('getPilotReadiness', () => {
     expect(r.failedRequired).toContain('compliance')
   })
 
-  it('Voice DNA kalibre değil → required DEĞİL (healthy’yi düşürmez ama check false)', async () => {
+  it('Voice DNA kalibre değil → ikna kişiselleştirmesi eksik, healthy:false', async () => {
     fullyReady()
     delete settingsRows.voice_dna
     const r = await getPilotReadiness()
-    expect(r.healthy).toBe(true) // voice required değil
+    expect(r.healthy).toBe(false)
+    expect(r.failedRequired).toContain('voice_dna')
     expect(r.checks.find((c) => c.key === 'voice_dna')?.ok).toBe(false)
   })
 
@@ -119,11 +137,17 @@ describe('getPilotReadiness', () => {
     expect(r.failedRequired).toContain('gmail_oauth')
   })
 
-  it('send bayrağı required DEĞİL; kapalıyken bile healthy olabilir', async () => {
+  it('send bayrağı kapalı → gerçek pilot hazır sayılmaz', async () => {
     fullyReady()
+    gmailStatus.mockResolvedValue({
+      oauthConfigured: true, connected: true, verifiedEmail: 'ops@x.com',
+      requiredScopesOk: true, realSendTransportReady: true, sendEnabled: false,
+      ingestEnabled: true, hasHistoryCursor: true,
+    })
     const r = await getPilotReadiness()
     expect(r.checks.find((c) => c.key === 'send_flag')?.ok).toBe(false)
-    expect(r.healthy).toBe(true)
+    expect(r.healthy).toBe(false)
+    expect(r.failedRequired).toContain('send_flag')
   })
 
   it('voice_dna bozuk JSON → voice check false (parse catch, healthy’yi düşürmez)', async () => {
@@ -131,13 +155,40 @@ describe('getPilotReadiness', () => {
     settingsRows.voice_dna = 'bu json değil {{{'
     const r = await getPilotReadiness()
     expect(r.checks.find((c) => c.key === 'voice_dna')?.ok).toBe(false)
-    expect(r.healthy).toBe(true) // voice required değil
+    expect(r.healthy).toBe(false)
   })
 
   it('send bayrağı açık → send_flag check true', async () => {
     fullyReady()
-    vi.stubEnv('GMAIL_SEND_ENABLED', 'true')
     const r = await getPilotReadiness()
     expect(r.checks.find((c) => c.key === 'send_flag')?.ok).toBe(true)
+  })
+
+  it('kanonik gelir şeması eksik → healthy:false', async () => {
+    fullyReady()
+    schemaErrors.proposals = { message: 'relation does not exist' }
+    const r = await getPilotReadiness()
+    expect(r.failedRequired).toContain('revenue_schema')
+  })
+
+  it('Telegram webhook provider URL’i beklenen deploy ile eşleşmiyor → healthy:false', async () => {
+    fullyReady()
+    webhookInfo.mockResolvedValue({ ok: true, info: { url: 'https://eski.example/api/telegram' } })
+    const r = await getPilotReadiness()
+    expect(r.failedRequired).toContain('telegram_webhook')
+  })
+
+  it('ingest heartbeat 12 saatten eski → healthy:false', async () => {
+    fullyReady()
+    settingsRows.gmail_last_ingest_ok = new Date(Date.now() - 13 * 60 * 60 * 1000).toISOString()
+    const r = await getPilotReadiness()
+    expect(r.failedRequired).toContain('last_ingest')
+  })
+
+  it('Vercel Pro scheduler doğrulanmamış → sub-daily otomasyon hazır sayılmaz', async () => {
+    fullyReady()
+    vi.stubEnv('VERCEL_PRO_PLAN_CONFIRMED', '')
+    const r = await getPilotReadiness()
+    expect(r.failedRequired).toContain('scheduler_plan')
   })
 })

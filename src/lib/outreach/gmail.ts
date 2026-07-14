@@ -52,6 +52,7 @@ import {
   type SendAttempt,
 } from '@/lib/outreach/sendMachine'
 import { createGmailRestTransport } from '@/lib/outreach/gmailRestTransport'
+import { scheduleMultiChannelSequence } from '@/lib/outreach/sequences'
 
 export const SEND_GMAIL_ACTION = 'send-gmail'
 
@@ -66,6 +67,7 @@ interface OutreachRow {
   sent_at: string | null
   gmail_message_id: string | null
   gmail_thread_id: string | null
+  sequence_step: number
 }
 
 interface LeadContact {
@@ -78,7 +80,7 @@ interface LeadContact {
 async function loadOutreachRow(id: string): Promise<OutreachRow | null> {
   const { data } = await supabaseAdmin
     .from('outreach_messages')
-    .select('id, lead_id, channel, status, subject, body, final_body, sent_at, gmail_message_id, gmail_thread_id')
+    .select('id, lead_id, channel, status, subject, body, final_body, sent_at, gmail_message_id, gmail_thread_id, sequence_step')
     .eq('id', id)
     .maybeSingle()
   return (data as OutreachRow) ?? null
@@ -487,6 +489,27 @@ export interface SendGmailOutcome {
   error?: string
   gmailMessageId?: string | null
   gmailThreadId?: string | null
+  /** İlk GERÇEK e-posta sonrası follow-up planı var/oluşturuldu. */
+  followUpScheduled?: boolean
+  /** E-posta gitti ama takip planı yazılamadı; gönderim tekrarlanmaz, uyarı görünür. */
+  followUpScheduleError?: string
+}
+
+async function ensureInitialFollowUps(
+  row: OutreachRow,
+  dryRun: boolean,
+): Promise<{ followUpScheduled?: boolean; followUpScheduleError?: string }> {
+  // Dry-run gerçek temas değildir; takip saati başlatılmaz. Follow-up taslağının
+  // kendisi (sequence_step>0) de yeni bir sekans doğuramaz.
+  if (dryRun || !row.lead_id || (row.sequence_step ?? 0) > 0) return {}
+  try {
+    await scheduleMultiChannelSequence({ leadId: row.lead_id, customerType: 'local' })
+    return { followUpScheduled: true }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'takip planı yazılamadı'
+    console.error(`[email.followup_schedule_failed] outreach=${row.id} err=${redactForLog(message, 160)}`)
+    return { followUpScheduled: false, followUpScheduleError: message }
+  }
 }
 
 interface GmailAccountRow {
@@ -667,13 +690,20 @@ export async function sendGmailMessage(opts: {
         subject,
         body,
       })
+      const wasDryRun = claim.attempt.provider_message_id
+        ? claim.attempt.provider_message_id.startsWith('dryrun-')
+        : undefined
+      const followUp = outcome.finalizePending || wasDryRun === undefined
+        ? {}
+        : await ensureInitialFollowUps(row, wasDryRun)
       return {
         ok: true,
         alreadySent: true,
-        dryRun: claim.attempt.provider_message_id?.startsWith('dryrun-') ?? undefined,
+        dryRun: wasDryRun,
         finalizePending: outcome.finalizePending,
         gmailMessageId: claim.attempt.provider_message_id,
         gmailThreadId: claim.attempt.provider_thread_id,
+        ...followUp,
       }
     }
     case 'inProgress':
@@ -766,7 +796,14 @@ export async function sendGmailMessage(opts: {
     `[email.sent] outreach=${row.id} lead=${row.lead_id} domain=${extractDomain(toAddress)} dryRun=${dryRun} gmailMessageId=${providerResult.id} preview=${redactForLog(subject, 80)}`
   )
 
-  return { ok: true, dryRun, gmailMessageId: providerResult.id, gmailThreadId: providerResult.threadId }
+  const followUp = await ensureInitialFollowUps(row, dryRun)
+  return {
+    ok: true,
+    dryRun,
+    gmailMessageId: providerResult.id,
+    gmailThreadId: providerResult.threadId,
+    ...followUp,
+  }
 }
 
 /** alreadySent yolunda finalize yarıda kalmışsa idempotent onarır (provider'a

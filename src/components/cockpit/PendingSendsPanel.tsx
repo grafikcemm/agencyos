@@ -2,14 +2,20 @@
 
 // Taslak darboğazı paneli (/bugun, Faz C4 — finding #5-6): TÜM email taslakları
 // görünür, her biri deterministik durum + TEK güvenli sonraki adım taşır.
-// pending → "Onayla" → approved → "Gönder (dry-run)". Gönderim her zaman
+// pending → "Onayla" → approved → görünür gönderim modu. Gönderim her zaman
 // at-most-once state machine + digest-lock arkasında; bu panel yalnız tetikler.
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { MailCheck, Check, Send, UserPlus, PenLine } from 'lucide-react'
 import { DraftEditor } from '@/components/outreach/DraftEditor'
-import type { PanelResult, PendingSendDraft, DraftState } from '@/lib/cockpit/shared'
+import {
+  GMAIL_SEND_MODE_COPY,
+  type GmailSendMode,
+  type PanelResult,
+  type PendingSendDraft,
+  type DraftState,
+} from '@/lib/cockpit/shared'
 
 type RowState = { status: string | null; busy: boolean; error: string | null; sent: boolean; dryRun?: boolean }
 
@@ -117,8 +123,15 @@ const STATE_BADGE: Record<DraftState, { label: string; cls: string }> = {
   failed: { label: 'Hata', cls: 'bg-red-500/15 text-red-400' },
 }
 
-export function PendingSendsPanel({ initial }: { initial: PanelResult<PendingSendDraft> }) {
+export function PendingSendsPanel({
+  initial,
+  sendMode,
+}: {
+  initial: PanelResult<PendingSendDraft>
+  sendMode: GmailSendMode
+}) {
   const router = useRouter()
+  const modeCopy = GMAIL_SEND_MODE_COPY[sendMode]
   const [rows, setRows] = useState<Record<string, RowState>>(() =>
     Object.fromEntries(
       initial.items.map((d) => [d.draftId, { status: d.approvalStatus, busy: false, error: null, sent: false }])
@@ -159,7 +172,14 @@ export function PendingSendsPanel({ initial }: { initial: PanelResult<PendingSen
       })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`)
-      patch(d.draftId, { busy: false, sent: true, dryRun: Boolean(json.data?.dryRun) })
+      patch(d.draftId, {
+        busy: false,
+        sent: true,
+        dryRun: Boolean(json.data?.dryRun),
+        error: json.data?.followUpScheduleError
+          ? `E-posta gönderildi; takip planı kurulamadı: ${json.data.followUpScheduleError}`
+          : null,
+      })
     } catch (err) {
       patch(d.draftId, { busy: false, error: err instanceof Error ? err.message : 'hata' })
     }
@@ -182,6 +202,17 @@ export function PendingSendsPanel({ initial }: { initial: PanelResult<PendingSen
         )}
       </div>
 
+      <div
+        data-testid="gmail-send-mode"
+        className={`mb-3 rounded-lg border px-2.5 py-2 text-[11px] font-semibold ${
+          sendMode === 'live'
+            ? 'border-red-500/40 bg-red-500/10 text-red-300'
+            : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+        }`}
+      >
+        {modeCopy.banner}
+      </div>
+
       {initial.error ? (
         <p className="text-[12px] text-red-400">Panel yüklenemedi: {initial.error}</p>
       ) : initial.items.length === 0 ? (
@@ -199,7 +230,7 @@ export function PendingSendsPanel({ initial }: { initial: PanelResult<PendingSen
             const canApprove = effectiveState === 'approval_pending' && d.approvalId
             const canSend = effectiveState === 'approved' && d.approvalId
             return (
-              <li key={d.draftId} data-testid={`send-draft-${d.draftId}`} className="text-[13px]">
+              <li key={d.draftId} data-testid={`send-draft-${d.draftId}`} tabIndex={-1} className="text-[13px]">
                 <div className="flex items-center gap-2">
                   <span className="text-[var(--text-primary)] font-medium truncate">{d.businessName}</span>
                   <span
@@ -223,7 +254,8 @@ export function PendingSendsPanel({ initial }: { initial: PanelResult<PendingSen
                       onClick={() => send(d)}
                       className="flex items-center gap-1 text-[12px] font-semibold px-3 py-1.5 rounded-lg bg-[var(--accent)] text-white hover:brightness-110 active:scale-95 transition disabled:opacity-50"
                     >
-                      <Send className="w-3.5 h-3.5" /> Gönder (dry-run)
+                      <Send className="w-3.5 h-3.5" />
+                      {modeCopy.button}
                     </button>
                   ) : canApprove ? (
                     <button

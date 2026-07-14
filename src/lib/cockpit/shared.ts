@@ -74,13 +74,30 @@ export interface PendingSendDraft {
   nextAction: string
 }
 
+export type GmailSendMode = 'live' | 'dry-run'
+
+/** Operatör gerçek gönderim ile simülasyonu ASLA karıştırmasın. */
+export const GMAIL_SEND_MODE_COPY: Record<
+  GmailSendMode,
+  { banner: string; button: string }
+> = {
+  live: {
+    banner: 'Gönderim modu: GERÇEK Gmail — buton alıcıya e-posta yollar.',
+    button: 'Gmail’den GERÇEK gönder',
+  },
+  'dry-run': {
+    banner: 'Gönderim modu: dry-run — dışarıya e-posta gitmez.',
+    button: 'Gönder (dry-run)',
+  },
+}
+
 /** Durum → tek güvenli aksiyon. */
 export const DRAFT_NEXT_ACTION: Record<DraftState, string> = {
   recipient_missing: 'Alıcıyı bu satırdan ekle (kişi + e-posta)',
   compliance_blocked: 'Suppression kaydını incele — bu adrese gönderim yasak',
   approval_missing: 'Onay isteği oluştur',
   approval_pending: 'Onayı bekle veya incele',
-  approved: 'Kokpitten gönder (dry-run)',
+  approved: 'Kokpitten gönder — üstteki gönderim modunu doğrula',
   sent: 'Tamamlandı — aksiyon gerekmez',
   unknown: 'Reconcile çalıştır',
   finalize_pending: 'Reconcile çalıştır (provider gönderdi, finalize eksik)',

@@ -18,6 +18,7 @@ import {
   type InboundTransport,
 } from '@/lib/gmail/replyIngest'
 import { createGmailInboundTransport } from '@/lib/gmail/gmailInboundTransport'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export const maxDuration = 120
 
@@ -85,6 +86,21 @@ async function handle(req: Request) {
   }
 
   const counters = await ingestInboundReplies(transport)
+  // Health/readiness heartbeat yalnız GERÇEK provider turu tamamen güvenli
+  // bittiğinde yazılır. Fake E2E, shadow veya satır hatalı batch pilot kanıtı
+  // üretemez. Yazım hatası görünür 500'dür; sistem kendini hazır sanmaz.
+  if (transport.kind === 'gmail' && counters.failed === 0) {
+    const { error: heartbeatError } = await supabaseAdmin.from('settings').upsert(
+      { key: 'gmail_last_ingest_ok', value: new Date().toISOString() },
+      { onConflict: 'key' },
+    )
+    if (heartbeatError) {
+      return NextResponse.json(
+        { success: false, error: `gmail ingest heartbeat yazılamadı: ${heartbeatError.message}`, counters },
+        { status: 500 },
+      )
+    }
+  }
   return NextResponse.json({ success: true, transport: transport.kind, counters })
 }
 

@@ -64,6 +64,7 @@ function Panel({
 
 export default async function BugunPage() {
   const c = await getTodayCockpit()
+  const sendMode = process.env.GMAIL_SEND_ENABLED === 'true' ? 'live' : 'dry-run'
 
   return (
     <div className="max-w-6xl mx-auto px-5 py-8">
@@ -109,7 +110,7 @@ export default async function BugunPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <CallListPanel initial={c.leadsToCall} duplicates={c.callDuplicates} />
 
-        <PendingSendsPanel initial={c.pendingSends} />
+        <PendingSendsPanel initial={c.pendingSends} sendMode={sendMode} />
 
         <Panel icon={Inbox} title="Cevaplar" count={c.replies.items.length}
           error={c.replies.error}
@@ -127,7 +128,7 @@ export default async function BugunPage() {
           error={c.overdueFollowups.error} empty="Geciken follow-up yok." testId="panel-followups">
           <ul className="flex flex-col gap-2">
             {c.overdueFollowups.items.map((f) => (
-              <li key={f.id} className="flex items-center gap-2 text-[13px]">
+              <li key={f.id} data-testid={`followup-${f.id}`} tabIndex={-1} className="flex items-center gap-2 text-[13px]">
                 <span className="text-[var(--text-primary)] truncate">{f.businessName}</span>
                 <span className="text-[11px] text-[var(--text-muted)]">adım {f.step}</span>
                 <span className="ml-auto text-[11px] text-amber-400">

@@ -90,6 +90,7 @@ test('kokpit panelleri: aranacaklar + geciken follow-up + unknown attempt + sıc
 
   // C4 (finding #5-6): approval'ı OLMAYAN taslak da panelde görünür + durum rozeti.
   const drafts = page.getByTestId('panel-approvals')
+  await expect(drafts.getByTestId('gmail-send-mode')).toContainText('dry-run — dışarıya e-posta gitmez')
   await expect(drafts.getByTestId(`draft-state-${call.draftId}`)).toContainText('Onay yok')
 
   // Gönderim sorunları: unknown attempt görünür + Reconcile aksiyonu (finding #9)
@@ -235,6 +236,14 @@ test('kokpitten tam HITL akışı: Onayla → Gönder (dry-run) → Gönderildi 
   expect(msgs).toHaveLength(1)
   const { data: om } = await db.from('outreach_messages').select('status').eq('id', seeded.draftId).single()
   expect(om?.status).toBe('sent')
+
+  // Dry-run operasyonel makineyi kanıtlar; gelir metriğini şişiremez.
+  await page.reload()
+  await expect(page.getByTestId('ops-metrics')).toContainText('Gerçek gönderim: 0')
+  const kpiRes = await request.get('/api/outreach/metrics', { headers: AUTH_HEADERS })
+  expect(kpiRes.status()).toBe(200)
+  const kpi = await kpiRes.json()
+  expect(kpi.metrics).toMatchObject({ totalSent: 0, positiveReplyRate: 0, benchmark: 'insufficient' })
 })
 
 test('Faz 4: taslağı DÜZENLE → ihlal bağlama → "İhlalleri düzelt" → GERÇEK finalBody ile onaya al', async ({ page }) => {

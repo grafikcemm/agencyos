@@ -78,9 +78,9 @@ export function OpsMetricsBar({ metrics, error }: { metrics: OpsMetrics | null; 
             <BadgeCheck className="w-3.5 h-3.5 text-amber-400" />
             Onaya alınan: <b className="text-[var(--text-primary)]">{metrics.approvalsRequested}</b>
           </span>
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1" title="Dry-run hariç, Gmail provider ledger'ında doğrulanan outbound e-postalar">
             <Mail className="w-3.5 h-3.5 text-sky-400" />
-            Gönderilen: <b className="text-[var(--text-primary)]">{metrics.emailsSent}</b>
+            Gerçek gönderim: <b className="text-[var(--text-primary)]">{metrics.emailsSent}</b>
           </span>
         </>
       ) : null}

@@ -16,6 +16,7 @@ const MUTATION_ROUTES = [
   { method: 'POST' as const, path: '/api/leads/scan', body: {} },
   { method: 'POST' as const, path: '/api/memory', body: { fact: 'x' } },
   { method: 'POST' as const, path: '/api/jobs/scan', body: {} },
+  { method: 'POST' as const, path: '/api/gmail/oauth/revoke', body: {} },
 ]
 
 test.describe('mutation güvenlik kapıları', () => {

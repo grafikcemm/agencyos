@@ -120,12 +120,15 @@ export function DirectivePanel() {
 interface OutreachMetrics {
   totalSent: number
   replyCount: number
+  replyRate: number
   positiveReplyRate: number
   bounceRate: number
-  benchmark: "below" | "ok" | "good"
+  sampleSufficient: boolean
+  benchmark: "insufficient" | "below" | "ok" | "good"
 }
 
 const BENCHMARK_META: Record<OutreachMetrics["benchmark"], { label: string; color: string }> = {
+  insufficient: { label: "VERİ BEKLİYOR", color: "var(--text-secondary)" },
   below: { label: "DÜŞÜK", color: "var(--danger)" },
   ok: { label: "İYİ", color: "var(--warning)" },
   good: { label: "GÜÇLÜ", color: "var(--success)" },
@@ -172,8 +175,9 @@ export function OutreachKpi() {
           <div className="num text-2xl font-bold text-[var(--text-primary)]">{metrics.totalSent}</div>
         </div>
         <div>
-          <div className="text-[10px] text-[var(--text-secondary)] tracking-[0.15em] mb-1 font-bold uppercase">Yanıt Oranı</div>
+          <div className="text-[10px] text-[var(--text-secondary)] tracking-[0.15em] mb-1 font-bold uppercase">Pozitif Yanıt</div>
           <div className="num text-2xl font-bold text-[var(--text-primary)]">{pct(metrics.positiveReplyRate)}</div>
+          <div className="text-[9px] text-[var(--text-muted)] mt-1">İnsan yanıtı {pct(metrics.replyRate)}</div>
         </div>
         <div>
           <div className="text-[10px] text-[var(--text-secondary)] tracking-[0.15em] mb-1 font-bold uppercase">Bounce</div>
@@ -182,6 +186,9 @@ export function OutreachKpi() {
         <div>
           <div className="text-[10px] text-[var(--text-secondary)] tracking-[0.15em] mb-1 font-bold uppercase">Durum</div>
           <div className="text-2xl font-bold tracking-tight" style={{ color: bm.color }}>{bm.label}</div>
+          {!metrics.sampleSufficient && (
+            <div className="text-[9px] text-[var(--text-muted)] mt-1">En az 20 gerçek gönderim gerekir</div>
+          )}
         </div>
       </div>
     </section>

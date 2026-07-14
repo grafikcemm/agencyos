@@ -290,9 +290,19 @@ describe('confirmAndExecute — kod eşleşince GERÇEK servise dispatch', () =>
   })
 
   it('sales_send GERÇEK gönderim (dryRun false)', async () => {
-    sendGmailMessage.mockResolvedValue({ ok: true, dryRun: false })
+    sendGmailMessage.mockResolvedValue({ ok: true, dryRun: false, followUpScheduled: true })
     consumeSignedAction.mockResolvedValue({ status: 'ok', action: { type: 'sales_send', payload: { draftId: 'd', approvalId: 'a', businessName: 'X' } } })
-    expect((await confirmAndExecute('chat', 'abc234')).text).toContain('GERÇEK')
+    const text = (await confirmAndExecute('chat', 'abc234')).text
+    expect(text).toContain('GERÇEK')
+    expect(text).toContain('takip planı otomatik')
+  })
+
+  it('sales_send başarılı ama takip kurulamadı → Telegram uyarıyı saklamaz', async () => {
+    sendGmailMessage.mockResolvedValue({ ok: true, dryRun: false, followUpScheduleError: 'sequence db down' })
+    consumeSignedAction.mockResolvedValue({ status: 'ok', action: { type: 'sales_send', payload: { draftId: 'd', approvalId: 'a', businessName: 'X' } } })
+    const text = (await confirmAndExecute('chat', 'abc234')).text
+    expect(text).toContain('E-posta gönderildi')
+    expect(text).toContain('sequence db down')
   })
 
   it('sales_send blocked (error only, blockedReasons yok) → error metni', async () => {

@@ -23,6 +23,11 @@ export const AUTH_HEADERS = {
 export const E2E_MARK = 'e2e-sprint-p0'
 export const E2E_EMAIL_DOMAIN = 'e2e-test.example'
 
+async function mustCleanup(label: string, query: PromiseLike<unknown>): Promise<void> {
+  const result = (await query) as { error?: { message: string } | null }
+  if (result.error) throw new Error(`E2E cleanup (${label}) başarısız: ${result.error.message}`)
+}
+
 // Opt-out marker'ı auditCompliance.OPT_OUT_MARKER ile hizalı (import edilemez:
 // dosya server-only). Marker değişirse bu sabit de güncellenmeli.
 // Faz 1.3'ten beri kalite lint'i BLOCKING: gövde işletme adını, TEK CTA'yı ve
@@ -84,36 +89,45 @@ export async function seedDraft(suffix: string): Promise<SeededDraft> {
 /** Bu suite'in yazdığı HER kaydı siler (artık bırakmama kuralı). */
 export async function cleanupE2E(): Promise<void> {
   const db = supabaseAdmin()
-  const { data: leads } = await db.from('leads').select('id').ilike('business_name', `%(${E2E_MARK})%`)
+  // Bazı spec'ler helper'ın "(...mark...)" biçimini, enrichment ise doğrudan
+  // "... mark" biçimini kullanır. Marker'ın herhangi bir yerde olması yeterli;
+  // test DB zaten production ref guard'ıyla yapısal olarak izoledir.
+  const { data: leads, error: leadsErr } = await db
+    .from('leads')
+    .select('id')
+    .ilike('business_name', `%${E2E_MARK}%`)
+  if (leadsErr) throw new Error(`E2E cleanup (leads select) başarısız: ${leadsErr.message}`)
   const leadIds = (leads ?? []).map((l) => l.id as string)
   if (leadIds.length > 0) {
-    const { data: drafts } = await db.from('outreach_messages').select('id').in('lead_id', leadIds)
+    const { data: drafts, error: draftsErr } = await db.from('outreach_messages').select('id').in('lead_id', leadIds)
+    if (draftsErr) throw new Error(`E2E cleanup (draft select) başarısız: ${draftsErr.message}`)
     const draftIds = (drafts ?? []).map((d) => d.id as string)
     if (draftIds.length > 0) {
-      await db.from('email_messages').delete().in('outreach_message_id', draftIds)
-      await db.from('outreach_send_attempts').delete().in('outreach_message_id', draftIds)
+      await mustCleanup('email_messages', db.from('email_messages').delete().in('outreach_message_id', draftIds))
+      await mustCleanup('outreach_send_attempts', db.from('outreach_send_attempts').delete().in('outreach_message_id', draftIds))
       // FINAL PILOT BLOCKERS Faz 3: inbound karantina izleri (unmatched/mismatch).
-      await db.from('gmail_inbound_quarantine').delete().ilike('subject', `%${E2E_MARK}%`)
+      await mustCleanup('gmail_inbound_quarantine', db.from('gmail_inbound_quarantine').delete().ilike('subject', `%${E2E_MARK}%`))
       for (const id of draftIds) {
-        await db.from('email_threads').delete().eq('gmail_thread_id', `dryrun-thread-${id}`)
+        await mustCleanup('email_threads', db.from('email_threads').delete().eq('gmail_thread_id', `dryrun-thread-${id}`))
       }
-      await db.from('outreach_messages').delete().in('id', draftIds)
+      await mustCleanup('outreach_messages', db.from('outreach_messages').delete().in('id', draftIds))
     }
     // idempotency_key hash'tir — onaylar preview'daki e2e domain izinden silinir.
-    await db.from('approval_requests').delete().ilike('redacted_preview', `%${E2E_EMAIL_DOMAIN}%`)
+    await mustCleanup('approval_requests', db.from('approval_requests').delete().ilike('redacted_preview', `%${E2E_EMAIL_DOMAIN}%`))
     // Audit satırları lead silinince SET NULL kalır — artık bırakmamak için önce sil.
-    await db.from('lead_action_audit').delete().in('lead_id', leadIds)
+    await mustCleanup('lead_action_audit', db.from('lead_action_audit').delete().in('lead_id', leadIds))
     // FINALIZATION Faz 1: kanıt satırları (claim satırları evidence silinince cascade).
-    await db.from('lead_evidence').delete().in('lead_id', leadIds)
+    await mustCleanup('lead_evidence', db.from('lead_evidence').delete().in('lead_id', leadIds))
     // FINALIZATION Faz 3: follow-up adımları (açık adım kalırsa 063 kısmi
     // unique sonraki suite koşusunda çakışabilir — iz bırakma).
-    await db.from('follow_up_sequences').delete().in('lead_id', leadIds)
-    await db.from('projects').delete().in('lead_id', leadIds) // Faz 3.1 convert izleri
-    await db.from('contacts').delete().in('lead_id', leadIds) // (cascade var; açık silme = niyet belgesi)
-    await db.from('leads').delete().in('id', leadIds)
+    await mustCleanup('follow_up_sequences', db.from('follow_up_sequences').delete().in('lead_id', leadIds))
+    await mustCleanup('projects', db.from('projects').delete().in('lead_id', leadIds)) // Faz 3.1 convert izleri
+    await mustCleanup('contacts', db.from('contacts').delete().in('lead_id', leadIds)) // (cascade var; açık silme = niyet belgesi)
+    await mustCleanup('leads', db.from('leads').delete().in('id', leadIds))
   }
-  await db.from('suppression_list').delete().ilike('address', `%@${E2E_EMAIL_DOMAIN}`)
-  await db.from('suppression_list').delete().ilike('address', E2E_EMAIL_DOMAIN)
+  await mustCleanup('suppression_list/domain', db.from('suppression_list').delete().ilike('address', `%@${E2E_EMAIL_DOMAIN}`))
+  await mustCleanup('suppression_list/exact', db.from('suppression_list').delete().ilike('address', E2E_EMAIL_DOMAIN))
+  await mustCleanup('enrichment_last_run', db.from('settings').delete().eq('key', 'enrichment_last_run'))
 }
 
 export async function requestSend(api: APIRequestContext, draftId: string, edits?: Record<string, string>) {

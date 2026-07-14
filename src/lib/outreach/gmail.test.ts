@@ -10,6 +10,7 @@ const db: Record<string, Array<Record<string, unknown>>> = {
   email_threads: [], email_messages: [], settings: [], suppression_list: [], gmail_accounts: [],
   outreach_send_attempts: [], lead_evidence: [],
   outreach_message_versions: [], outreach_claim_evidence: [],
+  follow_up_sequences: [],
 }
 
 // finalize_outreach_send RPC simülasyonu — mig 054 SQL fonksiyonunun in-memory
@@ -252,6 +253,7 @@ function seed() {
     id: DRAFT_ID, lead_id: LEAD_ID, channel: 'email', status: 'draft',
     subject: 'Web siteniz', body: VALID_BODY, final_body: null,
     sent_at: null, gmail_message_id: null, gmail_thread_id: null, error: null,
+    sequence_step: 0,
   })
 }
 
@@ -530,6 +532,7 @@ describe('sendGmailMessage (T5/T6/T8 + dry-run)', () => {
     expect(row.gmail_message_id).toBe(`dryrun-${DRAFT_ID}`)
     expect(db.email_threads).toHaveLength(1)
     expect(db.email_messages).toHaveLength(1)
+    expect(db.follow_up_sequences).toHaveLength(0) // dry-run gerçek takip başlatmaz
     expect(db.approval_requests[0].status).toBe('executed')
     expect(logSpy.mock.calls.some((c) => String(c[0]).includes('[email.sent]'))).toBe(true)
     logSpy.mockRestore()
@@ -592,6 +595,24 @@ describe('sendGmailMessage (T5/T6/T8 + dry-run)', () => {
     expect(r.ok).toBe(false)
     expect(r.error).toContain('aktif gmail_accounts kaydı yok')
     expect(db.email_messages).toHaveLength(0)
+  })
+
+  it('ilk GERÇEK gönderim başarıyla finalize olunca follow-up planı otomatik kurulur', async () => {
+    process.env.GMAIL_SEND_ENABLED = 'true'
+    db.gmail_accounts.push({
+      id: 'acc-1', email_address: 'ops@ajans.com', vault_secret_id: 'vault-1',
+      active: true, created_at: '2026-07-14T00:00:00Z',
+    })
+    const req = await requestSendApproval(DRAFT_ID)
+    approve(req.approvalId!)
+    const { transport, calls } = countingTransport()
+
+    const r = await sendGmailMessage({ outreachMessageId: DRAFT_ID, approvalId: req.approvalId!, transport })
+
+    expect(r).toMatchObject({ ok: true, dryRun: false, followUpScheduled: true })
+    expect(calls()).toBe(1)
+    expect(db.follow_up_sequences.length).toBeGreaterThan(0)
+    expect(db.follow_up_sequences.every((s) => s.lead_id === LEAD_ID)).toBe(true)
   })
 })
 

@@ -180,6 +180,7 @@ export function CallListPanel({
                 <li
                   key={l.id}
                   data-testid={`call-lead-${l.id}`}
+                  tabIndex={-1}
                   className={`text-[13px] rounded-lg px-2 py-1.5 ${isNext ? 'bg-[var(--accent)]/8 border border-[var(--accent)]/25' : ''} ${st?.done ? 'opacity-55' : ''}`}
                 >
                   <div className="flex items-center gap-2">

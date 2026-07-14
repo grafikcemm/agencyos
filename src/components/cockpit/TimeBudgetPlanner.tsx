@@ -11,6 +11,13 @@ export function TimeBudgetPlanner({ actions }: { actions: BudgetAction[] }) {
   const [budget, setBudget] = useState<number>(DEFAULT_BUDGET_MIN)
   const plan = planTimeBudget(actions, budget)
 
+  function goTo(action: BudgetAction) {
+    if (!action.targetTestId) return
+    const target = document.querySelector<HTMLElement>(`[data-testid="${action.targetTestId}"]`)
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    target?.focus({ preventScroll: true })
+  }
+
   return (
     <section
       data-testid="time-budget"
@@ -48,7 +55,14 @@ export function TimeBudgetPlanner({ actions }: { actions: BudgetAction[] }) {
             {plan.planned.map((a, i) => (
               <li key={a.id} className="flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
                 <span className="text-[var(--accent)] font-bold w-5">{i + 1}.</span>
-                <span className="truncate flex-1">{a.label}</span>
+                <button
+                  type="button"
+                  onClick={() => goTo(a)}
+                  disabled={!a.targetTestId}
+                  className="truncate flex-1 text-left hover:text-[var(--accent)] disabled:hover:text-inherit"
+                >
+                  {a.label}
+                </button>
                 <span className="text-[10px] text-[var(--text-muted)] shrink-0">~{a.minutes} dk</span>
               </li>
             ))}

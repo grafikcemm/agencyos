@@ -4,7 +4,7 @@
 
 | Dosya | İçerik |
 |---|---|
-| `e2e-schema.sql` | App DB'nin (dfedeh…) pg_catalog'undan deterministik çıkarılmış TAM şema: 60 tablo, tüm constraint/index/fonksiyon/trigger + RLS. Test projesine (**agencyos-e2e / luhvfbujwnlnpnoelzhg**) uygulanır. |
+| `e2e-schema.sql` | Kanonik hedef App DB şeması: 70 tablo + constraint/index/fonksiyon/trigger/RLS; ayrıca fingerprint dışı, yeniden-kurulabilir LIFE test yüzeyi (`daily_v2`, `active_tasks`, `telegram_*`). Test projesine (**agencyos-e2e / luhvfbujwnlnpnoelzhg**) uygulanır. |
 | `expected-fingerprint.json` | App DB'den alınmış kanonik fingerprint (tablo başına md5 + functions/triggers md5). Drift testinin referansı. |
 
 Drift testi: `e2e/schema-drift.spec.ts` — test DB'deki `e2e_schema_fingerprint()` RPC çıktısını `expected-fingerprint.json` ile karşılaştırır. Kapsam: tablolar, kolonlar (ad/tip/notnull/default/identity), PK/UNIQUE/CHECK/FK constraint tanımları, constraint-dışı indexler, public fonksiyon tanımları, triggerlar, RLS enabled bayrağı.
@@ -12,10 +12,11 @@ Drift testi: `e2e/schema-drift.spec.ts` — test DB'deki `e2e_schema_fingerprint
 ## Bilinçli sapmalar (fingerprint DIŞI — testte karşılaştırılmaz)
 
 1. **Policy'ler**: App DB'de policy yok (service-role-only erişim). Test DB'de her tabloda permissive `e2e_open` policy var, çünkü test istemcisi anon anahtarı service yerine kullanır (RLS `enabled` bayrağı iki tarafta da true → fingerprint'e dahil ve eşit).
-2. **GRANT'lar** klonlanmaz (Supabase default privilege'ları yeterli).
+2. **GRANT'lar** App fingerprint'ine dahil değildir. App migration'larında üretim yüzeyi service-role-only açık grant/revoke kullanır; fingerprint dışı LIFE test tabloları izole E2E için anon/authenticated/service_role `e2e_open` + açık grant taşır. Yeni Supabase projelerinde tablo exposure otomatik olmadığı için bootstrap grant'leri açık yazılmıştır.
 3. **Event trigger** (`ensure_rls`): test DB'ye kurulmaz; RLS'i `e2e-schema.sql` açıkça açar. (`rls_auto_enable()` FONKSİYONU parity için mevcut.)
 4. **`e2e_%` fonksiyonları** (fingerprint RPC) test DB'ye özgüdür, fingerprint kendilerini dışlar.
 5. **Uzantılar**: vault/pg_stat_statements yapısal parity'ye dahil değil; `vector` App ile aynı şekilde `extensions` şemasındadır (public'te olursa `avg(vector)` aggregate'i fonksiyon parity'sini bozar — yaşandı, düzeltildi).
+6. **LIFE test yüzeyi**: `daily_v2`, `active_tasks`, `telegram_%` tabloları ve `telegram_%` fonksiyonları App fingerprint'i dışında tutulur; DDL'leri yine bu dosyada gerçek bootstrap parçasıdır (yorum/elle kurulmuş gizli önkoşul değildir).
 
 ## KRİTİK: deparse nitelendirmesi
 

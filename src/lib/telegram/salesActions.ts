@@ -200,11 +200,16 @@ async function executeAction(action: PendingAction, nowMs: number): Promise<stri
     }
     case 'sales_send': {
       const r = await sendGmailMessage({ outreachMessageId: String(p.draftId), approvalId: String(p.approvalId), nowMs })
-      if (r.alreadySent) return `✅ ${name}: zaten gönderilmiş (idempotent).`
+      const followUpNote = r.followUpScheduleError
+        ? `\n⚠ E-posta gönderildi; takip planı kurulamadı: ${r.followUpScheduleError}`
+        : r.followUpScheduled
+          ? '\n🔁 Cevap gelmezse takip planı otomatik kuruldu.'
+          : ''
+      if (r.alreadySent) return `✅ ${name}: zaten gönderilmiş (idempotent).${followUpNote}`
       if (r.needsReconciliation) return `⚠ ${name}: gönderim sonucu belirsiz — otomatik tekrar YOK; reconcile gerekli.`
       if (r.inProgress) return `⏳ ${name}: gönderim başka istekte yürütülüyor.`
       if (!r.ok) return `⛔ ${name}: gönderilemedi — ${r.blockedReasons?.join(', ') ?? r.error ?? 'hata'}.`
-      return `📤 ${name}: ${r.dryRun ? 'DRY-RUN' : 'GERÇEK'} gönderim tamam (at-most-once).`
+      return `📤 ${name}: ${r.dryRun ? 'DRY-RUN' : 'GERÇEK'} gönderim tamam (at-most-once).${followUpNote}`
     }
     case 'sales_proposal_decision': {
       const r = await decideProposalApproval({

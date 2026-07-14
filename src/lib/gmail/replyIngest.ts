@@ -78,7 +78,7 @@ function extractRfcIds(msg: InboundMessage): string[] {
 }
 
 async function resolveAttribution(msg: InboundMessage): Promise<
-  | { matched: true; outreachMessageId: string; leadId: string | null; leadEmail: string | null; threadRowId: string | null }
+  | { matched: true; outreachMessageId: string; leadId: string | null; recipientEmail: string | null; threadRowId: string | null }
   | { matched: false }
 > {
   const rfcIds = extractRfcIds(msg)
@@ -99,17 +99,20 @@ async function resolveAttribution(msg: InboundMessage): Promise<
     .maybeSingle()
   if (omErr) throw new Error(`outreach mesajı okunamadı: ${omErr.message}`)
 
-  // Alıcı e-postasını çöz — inbound gönderenin DOĞRULAMASI için (aşağıda).
-  let leadEmail: string | null = null
-  if (om?.lead_id) {
-    const { data: lead, error: leadErr } = await supabaseAdmin
-      .from('leads')
-      .select('email')
-      .eq('id', om.lead_id)
-      .maybeSingle()
-    if (leadErr) throw new Error(`lead e-postası okunamadı: ${leadErr.message}`)
-    leadEmail = (lead?.email as string) ?? null
-  }
+  // Göndereni lead.email ile değil, GERÇEKTEN gönderilen outbound kaydının
+  // alıcı snapshot'ıyla doğrula. Canonical recipient primary contact olabilir
+  // ve lead.email null/farklı kalabilir. Contact sonradan değişse bile bu
+  // tarihsel snapshot değişmez.
+  const { data: outbound, error: outboundErr } = await supabaseAdmin
+    .from('email_messages')
+    .select('to_address')
+    .eq('outreach_message_id', attempt.outreach_message_id)
+    .eq('direction', 'outbound')
+    .order('sent_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (outboundErr) throw new Error(`gönderilen alıcı snapshot'ı okunamadı: ${outboundErr.message}`)
+  const recipientEmail = (outbound?.to_address as string) ?? null
 
   let threadRowId: string | null = null
   if (om?.gmail_thread_id) {
@@ -125,7 +128,7 @@ async function resolveAttribution(msg: InboundMessage): Promise<
     matched: true,
     outreachMessageId: attempt.outreach_message_id as string,
     leadId: (om?.lead_id as string) ?? null,
-    leadEmail,
+    recipientEmail,
     threadRowId,
   }
 }
@@ -239,13 +242,13 @@ export async function ingestInboundReplies(transport: InboundTransport): Promise
 
       // GÖNDEREN DOĞRULAMASI: inbound 'From', gönderdiğimiz alıcıyla eşleşmeli.
       // Alakasız/forward edilmiş bir mesaj bilinen In-Reply-To taşısa bile
-      // lead'i responded/suppressed YAPAMAZ (audit bulgu #7). leadId/leadEmail/
+      // lead'i responded/suppressed YAPAMAZ (audit bulgu #7). leadId/recipientEmail/
       // fromAddress ÜÇÜ de non-null olmalı (lead'siz outreach → uyuşmazlık).
       const senderOk =
         attribution.leadId != null &&
-        attribution.leadEmail != null &&
+        attribution.recipientEmail != null &&
         msg.fromAddress != null &&
-        normalizeEmail(msg.fromAddress) === normalizeEmail(attribution.leadEmail)
+        normalizeEmail(msg.fromAddress) === normalizeEmail(attribution.recipientEmail)
       if (!senderOk) {
         await quarantine(msg, 'sender_mismatch')
         counters.senderMismatch += 1
