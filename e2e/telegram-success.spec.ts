@@ -12,7 +12,7 @@ import {
   E2E_TELEGRAM_CHAT_ID,
   E2E_TELEGRAM_USER_ID,
 } from '../playwright.config'
-import { seedDraft, cleanupE2E, supabaseAdmin } from './helpers'
+import { seedDraft, cleanupE2E, supabaseAdmin, requestSend, approve } from './helpers'
 
 const WEBHOOK = '/api/telegram'
 // Her koşuda çakışmayan update_id aralığı (bigint).
@@ -159,6 +159,61 @@ test('pending add-task: "görev ekle" → durable pending → "1" → active_tas
     .select('chat_key')
     .eq('chat_key', E2E_TELEGRAM_CHAT_ID)
     .maybeSingle()
+  expect(consumed).toBeNull()
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FINAL PILOT BLOCKERS Faz 6 — İMZALI (kod'lu) send akışı: onay → GÖNDER kartı
+// (kod DB'den) → yanlış kod REDDEDİLİR (tüketmez) → doğru kod DRY-RUN gönderim
+// (at-most-once). "Onayla" ≠ "Gönder" ayrı adımlar.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('imzalı send: approved onay → "gönder" kartı (kod) → yanlış kod red → doğru kod DRY-RUN gönderim', async ({ request }) => {
+  const db = supabaseAdmin()
+  const seeded = await seedDraft('tg-signed-send')
+  // Ayırt edici ada işaretle (resolveLeadByName ilike ile bulsun).
+  const token = `tgsigned${Date.now() % 100000}`
+  await db.from('leads').update({ business_name: `${token} (e2e-sprint-p0)` }).eq('id', seeded.leadId)
+
+  // GERÇEK HITL onayı: request + approve (web application service).
+  const rq = await requestSend(request, seeded.draftId)
+  expect(rq.status).toBe(200)
+  const ap = await approve(request, rq.body.data.approvalId as string)
+  expect(ap.status).toBe(200)
+
+  // Telegram "gönder" → imzalı aksiyon kurulur (mutasyon YOK; kod DB'de).
+  const send1 = await request.post(WEBHOOK, { headers: tgHeaders(), data: update(BASE_ID + 20, `${token} gönder`) })
+  expect(send1.status()).toBe(200)
+  const { data: pending } = await db
+    .from('telegram_pending_actions')
+    .select('action_type, code, payload')
+    .eq('chat_key', E2E_TELEGRAM_CHAT_ID)
+    .maybeSingle()
+  expect(pending?.action_type).toBe('sales_send')
+  const code = pending!.code as string
+  expect(code).toMatch(/^[A-Z2-9]{6}$/)
+  // Henüz GÖNDERİM YOK (kart aşaması) — send attempt oluşmadı.
+  const { data: attempt0 } = await db.from('outreach_send_attempts').select('id').eq('outreach_message_id', seeded.draftId)
+  expect(attempt0 ?? []).toHaveLength(0)
+
+  // Yanlış kod → reddedilir, aksiyon TÜKETİLMEZ (tampered/replay güvenliği).
+  const wrong = await request.post(WEBHOOK, { headers: tgHeaders(), data: update(BASE_ID + 21, 'onayla ZZZ999') })
+  expect(wrong.status()).toBe(200)
+  const { data: stillPending } = await db.from('telegram_pending_actions').select('code').eq('chat_key', E2E_TELEGRAM_CHAT_ID).maybeSingle()
+  expect(stillPending?.code).toBe(code) // hâlâ orada
+
+  // Doğru kod → DRY-RUN gönderim (at-most-once; sendMachine attempt oluşur, sent).
+  const right = await request.post(WEBHOOK, { headers: tgHeaders(), data: update(BASE_ID + 22, `onayla ${code}`) })
+  expect(right.status()).toBe(200)
+  const { data: attempt1 } = await db
+    .from('outreach_send_attempts')
+    .select('state, rfc_message_id')
+    .eq('outreach_message_id', seeded.draftId)
+    .single()
+  expect(['sent', 'reconciled'].includes(attempt1!.state as string)).toBe(true)
+  expect(attempt1!.rfc_message_id).toBeTruthy()
+  // İmzalı aksiyon tüketildi (tek-kullanımlık — replay edilemez).
+  const { data: consumed } = await db.from('telegram_pending_actions').select('chat_key').eq('chat_key', E2E_TELEGRAM_CHAT_ID).maybeSingle()
   expect(consumed).toBeNull()
 })
 

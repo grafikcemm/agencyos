@@ -15,7 +15,14 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { lifeSupabaseAdmin } from '@/lib/lifeSupabaseAdmin'
 import { escapeTelegramHtml as esc } from '@/lib/telegramHtml'
 import type { SalesCommand } from './salesCommands'
-import { consumePendingAction } from './pendingActions'
+import { peekPendingAction } from './pendingActions'
+import {
+  confirmAndExecute,
+  stageSend,
+  stageApprovalDecision,
+  stageProposalDecision,
+  stageReconcileDecision,
+} from './salesActions'
 import { generateColdEmailDraft } from '@/lib/outreach/coldEmailService'
 import { requestSendApproval, findSendApproval } from '@/lib/outreach/gmail'
 import { createProposalDraft, listProposalsForLead } from '@/lib/proposals/proposalService'
@@ -451,13 +458,17 @@ async function handleShowReconcile(): Promise<string> {
 }
 
 async function handleGenericApprove(chatKey: string): Promise<string> {
-  // Tek kullanımlık, TTL'li, digest'li pending aksiyon YOKSA generic onay hiçbir şey yapmaz.
-  const pending = await consumePendingAction(chatKey)
-  if (!pending) {
-    return 'Bekleyen bir onay aksiyonu yok — hiçbir şey gönderilmedi. E-posta onayı yalnız /bugun kokpitindeki HITL akışından yapılır.'
+  // Bare "onayla" (kodsuz): imzalı aksiyonu TÜKETMEZ (audit bulgu #10 — sonuçsuz
+  // tüketim yok). Bekleyen imzalı aksiyon varsa kodla teyide yönlendirir.
+  const pending = await peekPendingAction(chatKey)
+  if (pending?.hasCode) {
+    return '🔐 Bekleyen imzalı bir aksiyon var. Teyit için karttaki kodla yaz: <b>onayla &lt;KOD&gt;</b> (yalnız "onayla" bir şey yapmaz).'
   }
-  // Şu an Telegram'dan onaylanabilir tek aksiyon tipi yok (send onayı BİLİNÇLİ kokpitte).
-  return 'Bu aksiyon Telegram üzerinden onaylanamaz — /bugun kokpitini kullan. (Aksiyon tüketildi, tekrar denemek için yeniden başlat.)'
+  if (pending) {
+    // Legacy kodsuz aksiyon (ör. görev seçimi) — burada tüketilmez.
+    return 'Bekleyen bir seçim var ama bu komut onu tüketmez — ilgili seçim komutunu kullan.'
+  }
+  return 'Bekleyen bir onay aksiyonu yok — hiçbir şey gönderilmedi. E-posta gönderimi için: "onaya al" → "&lt;lead&gt; taslak onayla" → "onayla &lt;KOD&gt;" → "&lt;lead&gt; gönder" → "onayla &lt;KOD&gt;".'
 }
 
 /** Satış komutunu işler ve kullanıcıya dönecek HTML metnini üretir. */
@@ -492,7 +503,30 @@ export async function handleSalesCommand(
       return handleLeadAction(cmd, ctx.updateId)
     case 'prepare_draft':
       return handlePrepareDraft(cmd)
+    case 'confirm_action':
+      return (await confirmAndExecute(ctx.chatKey, cmd.code)).text
+    case 'send_draft':
+      return handleStagedAction(cmd.leadName, (leadId, name) => stageSend(ctx.chatKey, leadId, name))
+    case 'approval_decision':
+      return handleStagedAction(cmd.leadName, (leadId, name) => stageApprovalDecision(ctx.chatKey, leadId, name, cmd.decision))
+    case 'proposal_decision':
+      return handleStagedAction(cmd.leadName, (leadId, name) => stageProposalDecision(ctx.chatKey, leadId, name, cmd.decision))
+    case 'reconcile_decision':
+      return handleStagedAction(cmd.leadName, (leadId, name) => stageReconcileDecision(ctx.chatKey, leadId, name, cmd.confirmNotFound))
     case 'generic_approve':
       return handleGenericApprove(ctx.chatKey)
   }
+}
+
+/** Lead adını çözer, ardından imzalı aksiyon kartını kurar (mutasyon YOK). */
+async function handleStagedAction(
+  leadName: string,
+  stager: (leadId: string, businessName: string) => Promise<{ ok: boolean; text: string }>,
+): Promise<string> {
+  const resolved = await resolveLeadByName(leadName)
+  if (resolved.kind === 'error') return LEAD_LOOKUP_ERR(resolved.message)
+  if (resolved.kind === 'none') return `"${esc(leadName)}" adında lead bulamadım. Tam adıyla dener misin?`
+  if (resolved.kind === 'many') return `Birden fazla eşleşme: ${resolved.names.map(esc).join(', ')}. Daha belirgin ad ver.`
+  const c = await stager(resolved.id, resolved.businessName)
+  return c.text
 }

@@ -49,6 +49,10 @@ export default defineConfig({
         'src/lib/telegram/salesHandlers.ts': { lines: 90, branches: 85 },
         'src/lib/telegram/updateClaims.ts': { lines: 90, branches: 85 },
         'src/lib/telegram/client.ts': { lines: 90, branches: 85 },
+        // FINAL PILOT BLOCKERS Faz 6 — imzalı satış aksiyonları (Telegram parity):
+        'src/lib/telegram/salesActions.ts': { lines: 90, branches: 85 },
+        'src/lib/telegram/pendingActions.ts': { lines: 90, branches: 85 },
+        'src/lib/telegram/salesCommands.ts': { lines: 90, branches: 85 },
         // FINALIZATION Faz 1 — kanıt/kalite çekirdeği (gelir akışının kapısı):
         'src/lib/outreach/outboundGate.ts': { lines: 90, branches: 85 },
         'src/lib/outreach/claimEvidence.ts': { lines: 90, branches: 85 },

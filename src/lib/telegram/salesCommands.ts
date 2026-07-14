@@ -24,6 +24,12 @@ export type SalesCommand =
   | { type: 'request_send_approval'; leadName: string }
   | { type: 'create_proposal'; leadName: string }
   | { type: 'show_reconcile' }
+  // FINAL PILOT BLOCKERS Faz 6 — imzalı satış aksiyonları (kod'lu teyit):
+  | { type: 'confirm_action'; code: string }
+  | { type: 'send_draft'; leadName: string }
+  | { type: 'approval_decision'; leadName: string; decision: 'approved' | 'rejected' }
+  | { type: 'proposal_decision'; leadName: string; decision: 'approved' | 'rejected' }
+  | { type: 'reconcile_decision'; leadName: string; confirmNotFound: boolean }
   | { type: 'generic_approve'; raw: string }
 
 function normalise(s: string): string {
@@ -60,6 +66,13 @@ const DRAFT_STATUS_RE = /taslak\s*durum(u|unu)?(\s*goster)?/
 const REQUEST_APPROVAL_RE = /onaya\s*al/
 const RECONCILE_RE = /^(reconcile|belirsizler|bekleyen sorunlar)$/
 const WHO_TO_CALL_RE = /(bugun\s+)?kimi\s+aray[a-z]*|aranacaklar(i)?\s*(kim|goster|listele)?$/
+// Faz 6 — imzalı aksiyon regexleri (SIRA: confirm > lead-scoped > generic).
+// Kod alfabesi 0/O/1/I hariç; küçük-harf normalise sonrası [a-z2-9]{6}.
+const CONFIRM_CODE_RE = /^onayla\s+([a-z2-9]{6})$/
+const SEND_DRAFT_RE = /^(.{2,60}?)\s+g[oö]nder$/
+const DRAFT_APPROVE_RE = /^(.{2,60}?)\s+taslak\s*(onayla|reddet)$/
+const PROPOSAL_DECISION_RE = /^(.{2,60}?)\s+teklif\s*(onayla|reddet)$/
+const RECONCILE_DECISION_RE = /^(.{2,60}?)\s+(gonderildi|gonderilmedi)$/
 const GENERIC_APPROVE_RE = /^(onayla|onay|gonder|evet gonder|send)$/
 
 /** İşletme adını komut kalıntılarından arındırır. */
@@ -78,6 +91,37 @@ export function parseSalesCommand(text: string): SalesCommand | null {
 
   const slash = SLASH_COMMANDS[lower]
   if (slash) return slash
+
+  // Faz 6 — imzalı aksiyonlar generic'ten ÖNCE (spesifik kazanır).
+  const confirmM = norm.match(CONFIRM_CODE_RE)
+  if (confirmM) return { type: 'confirm_action', code: confirmM[1] }
+
+  let sm = norm.match(DRAFT_APPROVE_RE)
+  if (sm) {
+    return {
+      type: 'approval_decision',
+      leadName: extractOriginal(raw, sm[1]),
+      decision: sm[2] === 'onayla' ? 'approved' : 'rejected',
+    }
+  }
+  sm = norm.match(PROPOSAL_DECISION_RE)
+  if (sm) {
+    return {
+      type: 'proposal_decision',
+      leadName: extractOriginal(raw, sm[1]),
+      decision: sm[2] === 'onayla' ? 'approved' : 'rejected',
+    }
+  }
+  sm = norm.match(RECONCILE_DECISION_RE)
+  if (sm) {
+    return {
+      type: 'reconcile_decision',
+      leadName: extractOriginal(raw, sm[1]),
+      confirmNotFound: sm[2] === 'gonderilmedi',
+    }
+  }
+  sm = norm.match(SEND_DRAFT_RE)
+  if (sm) return { type: 'send_draft', leadName: extractOriginal(raw, sm[1]) }
 
   if (GENERIC_APPROVE_RE.test(norm)) return { type: 'generic_approve', raw }
 

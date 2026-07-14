@@ -111,3 +111,36 @@ describe('parity komutları (Faz 5)', () => {
     })
   })
 })
+
+describe('FINAL PILOT BLOCKERS Faz 6 — imzalı satış aksiyonları', () => {
+  it('onayla <KOD> → confirm_action (generic onaylardan ÖNCE)', () => {
+    expect(parseSalesCommand('onayla ABC234')).toEqual({ type: 'confirm_action', code: 'abc234' })
+    // Bare "onayla" (kodsuz) → generic (confirm DEĞİL).
+    expect(parseSalesCommand('onayla')).toEqual({ type: 'generic_approve', raw: 'onayla' })
+  })
+
+  it('<lead> gönder → send_draft', () => {
+    expect(parseSalesCommand('Denta gönder')).toEqual({ type: 'send_draft', leadName: 'Denta' })
+    // Bare "gönder" → generic.
+    expect(parseSalesCommand('gönder')).toEqual({ type: 'generic_approve', raw: 'gönder' })
+  })
+
+  it('<lead> taslak onayla/reddet → approval_decision', () => {
+    expect(parseSalesCommand('Denta taslak onayla')).toEqual({ type: 'approval_decision', leadName: 'Denta', decision: 'approved' })
+    expect(parseSalesCommand('Denta taslak reddet')).toEqual({ type: 'approval_decision', leadName: 'Denta', decision: 'rejected' })
+  })
+
+  it('<lead> teklif onayla/reddet → proposal_decision', () => {
+    expect(parseSalesCommand('Denta teklif onayla')).toEqual({ type: 'proposal_decision', leadName: 'Denta', decision: 'approved' })
+    expect(parseSalesCommand('Denta teklif reddet')).toEqual({ type: 'proposal_decision', leadName: 'Denta', decision: 'rejected' })
+  })
+
+  it('<lead> gonderildi/gonderilmedi → reconcile_decision', () => {
+    expect(parseSalesCommand('Denta gönderildi')).toEqual({ type: 'reconcile_decision', leadName: 'Denta', confirmNotFound: false })
+    expect(parseSalesCommand('Denta gönderilmedi')).toEqual({ type: 'reconcile_decision', leadName: 'Denta', confirmNotFound: true })
+  })
+
+  it('Türkçe karakterli lead adı imzalı komutlarda korunur', () => {
+    expect(parseSalesCommand('Güler Kliniği gönder')).toEqual({ type: 'send_draft', leadName: 'Güler Kliniği' })
+  })
+})

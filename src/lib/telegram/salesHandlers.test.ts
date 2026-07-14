@@ -113,13 +113,25 @@ vi.mock('@/lib/outreach/auditCompliance', () => ({
   getSuppressedSet: async () => suppressedSet,
 }))
 
-let pendingAction: { type: string; payload: Record<string, unknown> } | null = null
+let pendingAction: { type: string; hasCode: boolean } | null = null
+let peekCalled = 0
 vi.mock('./pendingActions', () => ({
-  consumePendingAction: async () => {
-    const p = pendingAction
-    pendingAction = null
-    return p
+  peekPendingAction: async () => {
+    peekCalled += 1
+    return pendingAction // TÜKETMEZ (peek)
   },
+  // salesActions bu modülü paylaşır — kullanılmayan yollar için no-op stub'lar.
+  setPendingAction: async () => ({ digest: 'd', mode: 'memory' }),
+  consumeSignedAction: async () => ({ status: 'missing' }),
+  makeConfirmCode: () => 'ABC234',
+}))
+// salesActions handler'ları bu testte sürülmez; modül yükü için stub'la.
+vi.mock('./salesActions', () => ({
+  confirmAndExecute: async () => ({ text: 'stub' }),
+  stageSend: async () => ({ ok: true, text: 'stub' }),
+  stageApprovalDecision: async () => ({ ok: true, text: 'stub' }),
+  stageProposalDecision: async () => ({ ok: true, text: 'stub' }),
+  stageReconcileDecision: async () => ({ ok: true, text: 'stub' }),
 }))
 
 import { handleSalesCommand, parseLaterHint } from './salesHandlers'
@@ -365,15 +377,19 @@ describe('prepare_draft — CANONICAL cold-email servisi (web ile parity)', () =
   })
 })
 
-describe('generic_approve — Telegram üzerinden gönderim onayı YAPISAL kapalı', () => {
+describe('generic_approve — bare "onayla" imzalı aksiyonu TÜKETMEZ (audit #10)', () => {
   it('pending yok → hiçbir şey gönderilmedi mesajı', async () => {
+    pendingAction = null
     expect(await run({ type: 'generic_approve' } as SalesCommand)).toContain('hiçbir şey gönderilmedi')
   })
-  it('pending olsa bile Telegram onayı reddedilir (tüketilir)', async () => {
-    pendingAction = { type: 'send_email', payload: {} }
+  it('imzalı (kodlu) aksiyon varsa → KODLA teyide yönlendirir, TÜKETMEZ (peek)', async () => {
+    pendingAction = { type: 'sales_send', hasCode: true }
+    peekCalled = 0
     const msg = await run({ type: 'generic_approve' } as SalesCommand)
-    expect(msg).toContain('Telegram üzerinden onaylanamaz')
-    expect(pendingAction).toBeNull() // tüketildi — replay edilemez
+    expect(msg).toContain('onayla')
+    expect(msg).toContain('KOD')
+    expect(pendingAction).not.toBeNull() // TÜKETİLMEDİ — replay/consume yok
+    expect(peekCalled).toBe(1) // peek (consume DEĞİL)
   })
 })
 

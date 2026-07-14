@@ -101,3 +101,13 @@ comment on column public.telegram_outbound_deliveries.claimed_at is
 alter table public.telegram_outbound_deliveries enable row level security;
 revoke all on table public.telegram_outbound_deliveries from anon, authenticated;
 grant select, insert, update on table public.telegram_outbound_deliveries to service_role;
+
+-- ── FINAL PILOT BLOCKERS Faz 6: imzalı (kod'lu) satış aksiyonları ────────────
+-- telegram_pending_actions'a tek-kullanımlık teyit kodu kolonu. "Onayla" ile
+-- "Gönder" ayrı; imzalı aksiyon YALNIZ doğru kodla tüketilir (tampered/replay
+-- reddi). Additive; mevcut satırlar code=null (legacy, kod aranmaz).
+alter table public.telegram_pending_actions
+  add column if not exists code text;
+
+comment on column public.telegram_pending_actions.code is
+  'Tek-kullanımlık kısa teyit kodu (imzalı satış aksiyonları). null=legacy kod-suz aksiyon.';
