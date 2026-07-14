@@ -3,16 +3,28 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { CRON_MANIFEST, manifestCronPairs } from './manifest'
 
-// PARITY: kanonik cron manifesti ⇔ vercel.json crons BİREBİR. Bir taraf
+// PARITY: kanonik cron manifesti ⇔ GitHub Actions scheduler BİREBİR. Bir taraf
 // değişip diğeri unutulursa bu test KIRILIR → UI'ın gösterdiği sıklık her
 // zaman GERÇEKTEN deploy edilen sıklıktır (audit bulgu #3).
 
-function loadVercelCrons(): Array<{ path: string; schedule: string }> {
-  const vercelPath = fileURLToPath(new URL('../../../vercel.json', import.meta.url))
-  const json = JSON.parse(readFileSync(vercelPath, 'utf8')) as {
-    crons?: Array<{ path: string; schedule: string }>
+function loadExternalSchedulerCrons(): Array<{ path: string; schedule: string }> {
+  const workflowPath = fileURLToPath(new URL('../../../.github/workflows/agencyos-cron.yml', import.meta.url))
+  const workflow = readFileSync(workflowPath, 'utf8')
+  const pairs: Array<{ path: string; schedule: string }> = []
+
+  for (const line of workflow.split(/\r?\n/)) {
+    const route = line.match(/^\s*((?:"[^"]+"\|?)+)\)\s+endpoint="([a-z0-9-]+)"\s*;;/)
+    if (!route) continue
+    const schedules = [...route[1].matchAll(/"([^"]+)"/g)].map((match) => match[1])
+    for (const schedule of schedules) pairs.push({ path: `/api/cron/${route[2]}`, schedule })
   }
-  return json.crons ?? []
+
+  return pairs
+}
+
+function loadVercelConfig(): { crons?: unknown[] } {
+  const vercelPath = fileURLToPath(new URL('../../../vercel.json', import.meta.url))
+  return JSON.parse(readFileSync(vercelPath, 'utf8')) as { crons?: unknown[] }
 }
 
 function sortPairs(pairs: Array<{ path: string; schedule: string }>) {
@@ -21,18 +33,22 @@ function sortPairs(pairs: Array<{ path: string; schedule: string }>) {
   )
 }
 
-describe('cron manifest ⇔ vercel.json parity', () => {
-  it('manifest ve vercel.json AYNI (path, schedule) kümesini içerir', () => {
+describe('cron manifest ⇔ external scheduler parity', () => {
+  it('manifest ve GitHub Actions AYNI (path, schedule) kümesini içerir', () => {
     const manifest = sortPairs(manifestCronPairs())
-    const vercel = sortPairs(loadVercelCrons())
-    expect(manifest).toEqual(vercel)
+    const external = sortPairs(loadExternalSchedulerCrons())
+    expect(manifest).toEqual(external)
   })
 
   it('gmail-ingest cron KAYITLI (Faz 3 — reply SLA)', () => {
     const paths = manifestCronPairs().map((p) => p.path)
     expect(paths).toContain('/api/cron/gmail-ingest')
-    const vercelPaths = loadVercelCrons().map((p) => p.path)
-    expect(vercelPaths).toContain('/api/cron/gmail-ingest')
+    const externalPaths = loadExternalSchedulerCrons().map((p) => p.path)
+    expect(externalPaths).toContain('/api/cron/gmail-ingest')
+  })
+
+  it('Vercel Hobby deploy’unu engelleyecek yerleşik cron içermez', () => {
+    expect(loadVercelConfig().crons ?? []).toEqual([])
   })
 
   it('her manifest girdisi geçerli 5-alanlı cron ifadesine sahip', () => {

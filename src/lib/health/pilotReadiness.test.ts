@@ -76,6 +76,7 @@ beforeEach(() => {
   vi.stubEnv('TELEGRAM_WEBHOOK_SECRET', 'x')
   vi.stubEnv('APP_URL', 'https://agency.example')
   vi.stubEnv('VERCEL_PRO_PLAN_CONFIRMED', 'true')
+  vi.stubEnv('EXTERNAL_CRON_SCHEDULER_CONFIRMED', '')
 })
 afterEach(() => vi.unstubAllEnvs())
 
@@ -190,5 +191,13 @@ describe('getPilotReadiness', () => {
     vi.stubEnv('VERCEL_PRO_PLAN_CONFIRMED', '')
     const r = await getPilotReadiness()
     expect(r.failedRequired).toContain('scheduler_plan')
+  })
+
+  it('doğrulanmış harici scheduler → Vercel Pro olmadan hazır sayılır', async () => {
+    fullyReady()
+    vi.stubEnv('VERCEL_PRO_PLAN_CONFIRMED', '')
+    vi.stubEnv('EXTERNAL_CRON_SCHEDULER_CONFIRMED', 'true')
+    const r = await getPilotReadiness()
+    expect(r.failedRequired).not.toContain('scheduler_plan')
   })
 })

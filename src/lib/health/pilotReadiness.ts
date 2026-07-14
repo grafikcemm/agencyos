@@ -12,7 +12,7 @@ import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getGmailStatus } from '@/lib/gmail/status'
 import { getWebhookInfo } from '@/lib/telegram/client'
-import { CRON_REQUIRES_PRO_PLAN } from '@/lib/cron/manifest'
+import { CRON_REQUIRES_SUB_DAILY_SCHEDULER } from '@/lib/cron/manifest'
 
 export interface ReadinessCheck {
   key: string
@@ -96,11 +96,14 @@ async function telegramWebhookReady(): Promise<boolean> {
   }
 }
 
-/** Manifest sub-daily işler içerdiği için Vercel Pro (veya eşdeğer scheduler)
- * doğrulanmadan otomasyon hazır denemez. Bu env yalnız plan yükseltildikten ve
- * cron'lar deploy edildikten sonra açıkça true yapılır. */
+/** Manifest sub-daily işler içerdiği için Vercel Pro veya eşdeğer harici
+ * scheduler doğrulanmadan otomasyon hazır denemez. Bayraklar yalnız gerçek
+ * schedule deploy edilip korumalı endpoint başarıyla çalıştırıldıktan sonra
+ * açılır. */
 function schedulerReady(): boolean {
-  return !CRON_REQUIRES_PRO_PLAN || process.env.VERCEL_PRO_PLAN_CONFIRMED === 'true'
+  return !CRON_REQUIRES_SUB_DAILY_SCHEDULER
+    || process.env.VERCEL_PRO_PLAN_CONFIRMED === 'true'
+    || process.env.EXTERNAL_CRON_SCHEDULER_CONFIRMED === 'true'
 }
 
 /** Onaylı Voice DNA kuralı var mı (kalibrasyon) — settings.voice_dna. */
@@ -160,8 +163,8 @@ export async function getPilotReadiness(): Promise<PilotReadiness> {
     { key: 'send_flag', label: 'Gerçek Gmail gönderim bayrağı', ok: Boolean(gmail?.sendEnabled), required: true, detail: 'Gerçek pilot açılışında GMAIL_SEND_ENABLED=true yapılmalı; HITL yine zorunludur.' },
     { key: 'ingest_flag', label: 'Gmail cevap ingest bayrağı', ok: Boolean(gmail?.ingestEnabled), required: true, detail: 'GMAIL_INGEST_ENABLED=true olmadan cevaplar takip edilmez.' },
     { key: 'gmail_cursor', label: 'Gmail history cursor', ok: Boolean(gmail?.hasHistoryCursor), required: true, detail: 'İlk gerçek ingest başarıyla çalışıp cursor yazmalı.' },
-    { key: 'ingest_cron', label: 'Gmail ingest cron kayıtlı', ok: ingestCron, required: true, detail: 'vercel.json + manifest parity (Faz 3).' },
-    { key: 'scheduler_plan', label: 'Sub-daily otomasyon scheduler’ı', ok: schedulerReady(), required: true, detail: 'Mevcut manifest Vercel Pro ister; plan yükseltip VERCEL_PRO_PLAN_CONFIRMED=true yapın.' },
+    { key: 'ingest_cron', label: 'Gmail ingest cron kayıtlı', ok: ingestCron, required: true, detail: 'GitHub Actions workflow + manifest parity.' },
+    { key: 'scheduler_plan', label: 'Sub-daily otomasyon scheduler’ı', ok: schedulerReady(), required: true, detail: 'Vercel Pro veya doğrulanmış harici scheduler gerekli (EXTERNAL_CRON_SCHEDULER_CONFIRMED=true).' },
     { key: 'last_ingest', label: 'Son başarılı inbound ingest', ok: ingestOk, required: true, detail: 'Son 12 saat içinde gerçek Gmail ingest heartbeat’i olmalı.' },
     { key: 'life006', label: 'LIFE 006 (Telegram imzalı aksiyon + ledger)', ok: life006, required: true, detail: 'LIFE mig 006 (code kolonu) canlı olmalı.' },
     { key: 'telegram_webhook', label: 'Telegram webhook gerçek kaydı', ok: telegram, required: true, detail: 'Token/chat/user/secret/APP_URL tam ve provider webhook URL’i birebir eşleşmeli.' },

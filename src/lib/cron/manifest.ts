@@ -1,21 +1,20 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // KANONİK cron manifesti (FINAL PILOT BLOCKERS Faz 3).
 //
-// TEK KAYNAK: hem vercel.json crons'u hem /schedule UI bundan türer. UI artık
+// TEK KAYNAK: GitHub Actions scheduler ve /schedule UI bundan türer. UI artık
 // "hayali sıklık" göstermez (audit bulgu #3 — "*/10" ≠ gerçek "0 9 * * *").
-// Parity CI testi (manifest.test.ts) vercel.json ⇔ bu manifest eşitliğini
+// Parity CI testi (manifest.test.ts) GitHub workflow ⇔ bu manifest eşitliğini
 // zorlar; bir taraf değişip diğeri unutulursa test KIRILIR.
 //
-// PLAN NOTU: birden çok günlük/saatlik cron Vercel Hobby'de DESTEKLENMEZ
-// (Hobby = günde 1, en çok 2 cron). Bu manifest sub-daily (orchestrator 4×,
-// gmail-ingest 8×) içerdiğinden Vercel PRO gerektirir — plan yetersizse
-// deploy'da cron reddi görünür (aşağıdaki requiresProPlan bayrağı UI'da uyarır).
+// BARINDIRMA NOTU: Vercel Hobby sub-daily cron kabul etmez. Uygulama Hobby'de,
+// bu manifest ise ücretsiz GitHub Actions scheduler'ında çalışır. Böylece Pro
+// planı olmadan aynı cadence korunur; readiness gerçek scheduler doğrulamasını ister.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface CronJob {
-  /** Vercel cron path (vercel.json ile birebir). */
+  /** Korunan cron endpoint'i (GitHub workflow ile birebir). */
   path: string
-  /** Cron ifadesi (UTC — Vercel cron'ları UTC yorumlar). */
+  /** Cron ifadesi (UTC — GitHub Actions UTC yorumlar). */
   schedule: string
   /** UI başlığı. */
   name: string
@@ -27,8 +26,8 @@ export interface CronJob {
   slaCritical: boolean
 }
 
-/** Sub-daily cron sayısı Hobby limitini aştığından Pro gerekir. */
-export const CRON_REQUIRES_PRO_PLAN = true
+/** Sub-daily işler doğrulanmış bir scheduler olmadan hazır sayılamaz. */
+export const CRON_REQUIRES_SUB_DAILY_SCHEDULER = true
 
 export const CRON_MANIFEST: CronJob[] = [
   {
@@ -137,7 +136,7 @@ export const CRON_MANIFEST: CronJob[] = [
   },
 ]
 
-/** vercel.json crons'u ile karşılaştırma için normalize (path+schedule çifti). */
+/** Scheduler workflow ile karşılaştırma için normalize (path+schedule çifti). */
 export function manifestCronPairs(): Array<{ path: string; schedule: string }> {
   return CRON_MANIFEST.map((j) => ({ path: j.path, schedule: j.schedule }))
 }

@@ -1,10 +1,10 @@
 "use client"
 
-import { CalendarClock, Info, AlertTriangle, Zap } from 'lucide-react'
-import { CRON_MANIFEST, CRON_REQUIRES_PRO_PLAN } from '@/lib/cron/manifest'
+import { CalendarClock, Info, Zap } from 'lucide-react'
+import { CRON_MANIFEST, CRON_REQUIRES_SUB_DAILY_SCHEDULER } from '@/lib/cron/manifest'
 
 // Zamanlanmış işler artık KANONİK manifest'ten (src/lib/cron/manifest.ts) türer —
-// vercel.json ile parity CI testi (manifest.test.ts) garantidir. UI hiçbir
+// GitHub Actions workflow ile parity CI testi (manifest.test.ts) garantidir. UI hiçbir
 // "hayali sıklık" göstermez; gösterilen cron ifadesi GERÇEKTEN deploy edilendir.
 
 export default function SchedulePage() {
@@ -17,11 +17,11 @@ export default function SchedulePage() {
           <h2 className="label-eyebrow">Zamanlanmış Ajan İşleri</h2>
         </div>
 
-        {CRON_REQUIRES_PRO_PLAN && (
-          <div className="flex items-start gap-2.5 text-[11px] text-[var(--warning)] bg-[var(--warning)]/10 border border-[var(--warning)]/30 rounded-xl px-4 py-3 leading-relaxed font-medium">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-            Bu zamanlama sub-daily (saatlik/çok-kez) cron içerir ve Vercel <b>Pro</b> planı gerektirir.
-            Hobby planında bu cron’lar deploy’da reddedilir — takip/cevap SLA’sı gecikir.
+        {CRON_REQUIRES_SUB_DAILY_SCHEDULER && (
+          <div className="flex items-start gap-2.5 text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3 leading-relaxed font-medium">
+            <Info className="w-4 h-4 shrink-0 mt-0.5" />
+            Uygulama Vercel Hobby’de ücretsiz barındırılır; sub-daily işler GitHub Actions scheduler’ı üzerinden çalışır.
+            Vercel Pro gerekmez.
           </div>
         )}
 
@@ -70,7 +70,7 @@ export default function SchedulePage() {
 
         <div className="flex items-start gap-2.5 text-[11px] text-[var(--text-muted)] bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 leading-relaxed font-medium italic">
           <Info className="w-4 h-4 shrink-0 mt-0.5" />
-          Gösterilen cron ifadeleri vercel.json ile birebir aynıdır (parity CI testi ile doğrulanır).
+          Gösterilen cron ifadeleri GitHub Actions workflow ile birebir aynıdır (parity CI testi ile doğrulanır).
           Cron saatleri UTC yorumlanır; etiketlerdeki TR saatleri UTC+3’tür.
         </div>
 
