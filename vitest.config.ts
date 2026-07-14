@@ -54,6 +54,8 @@ export default defineConfig({
         'src/lib/outreach/claimEvidence.ts': { lines: 90, branches: 85 },
         'src/lib/outreach/qualityLint.ts': { lines: 90, branches: 85 },
         'src/lib/coldEmail.ts': { lines: 90, branches: 85 },
+        // FINAL PILOT BLOCKERS Faz 5 — canonical cold-email üretim servisi:
+        'src/lib/outreach/coldEmailService.ts': { lines: 90, branches: 85 },
         // FINALIZATION Faz 2 — Voice DNA + persuasion çekirdeği:
         'src/lib/outreach/voiceDna.ts': { lines: 90, branches: 85 },
         'src/lib/outreach/persuasionEval.ts': { lines: 90, branches: 85 },

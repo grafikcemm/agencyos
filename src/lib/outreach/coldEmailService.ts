@@ -32,18 +32,20 @@ import { persistMessageVersion, voiceRulesDigest } from '@/lib/outreach/claimEvi
 const LEAD_SELECT =
   'id, business_name, sector, district, rating, review_count, has_real_website, has_whatsapp, has_ads_signal, has_job_signal, instagram_as_site, website, pain_signals, proof_points, why_now, why_this_will_convert'
 
-// İmza linkleri + İYS/KVKK uyum ayarlarını tek sorguda yükler.
-async function loadEmailSettings(): Promise<Record<string, string>> {
+// İmza linkleri + İYS/KVKK uyum ayarlarını tek sorguda yükler. Sorgu hatası
+// SESSİZCE yutulmaz — footer/uyum bilgisi eksik gitmesin (İYS/KVKK yasal
+// zorunluluk); hata üste taşınır ve servis fail-closed reddeder.
+async function loadEmailSettings(): Promise<{ settings: Record<string, string>; error?: string }> {
   const settings: Record<string, string> = {}
-  const { data } = await supabaseAdmin
+  const { data, error } = await supabaseAdmin
     .from('settings')
     .select('key, value')
     .in('key', [...SIGNATURE_SETTING_KEYS, ...COMPLIANCE_SETTING_KEYS])
-
+  if (error) return { settings, error: error.message }
   for (const row of data ?? []) {
     if (row.key && row.value) settings[row.key] = row.value
   }
-  return settings
+  return { settings }
 }
 
 export interface ColdEmailGenerateResult {
@@ -58,6 +60,12 @@ export interface ColdEmailGenerateResult {
   claims?: Array<{ text: string; evidenceId: string }>
   claimPersisted?: boolean
   voiceDegraded?: boolean
+  /** Canonical şema canlı değil (mig 062 onay bekliyor) — beklenen; onay/gönderim
+   *  kapısı iddiaları yine de bloklar (fail-closed downstream). */
+  canonicalPending?: boolean
+  /** Canonical versiyon izi BEKLENMEDİK hata ile yazılamadı (şema-eksik değil) —
+   *  görünür; taslak vardır ama izlenebilirlik zedelendi. */
+  canonicalError?: string
 }
 
 /** Lead için canonical cold-email taslağı üretir (LLM + gate + versiyon izi). */
@@ -126,7 +134,11 @@ export async function generateColdEmailDraft(leadId: string): Promise<ColdEmailG
     return { ok: false, modelFailed: true, error: 'Model taslak üretemedi, tekrar deneyin.' }
   }
 
-  const emailSettings = await loadEmailSettings()
+  // Uyum/İmza ayarları — sorgu hatası fail-closed (footer eksik gitmesin).
+  const { settings: emailSettings, error: settingsErr } = await loadEmailSettings()
+  if (settingsErr) {
+    return { ok: false, error: `ayar (imza/uyum) okunamadı: ${settingsErr}` }
+  }
   const footer = buildComplianceFooter(emailSettings)
   const fullBody = [parsed.body.trim(), buildSignatureBlock(emailSettings), footer]
     .filter(Boolean)
@@ -166,6 +178,8 @@ export async function generateColdEmailDraft(leadId: string): Promise<ColdEmailG
   // yazılamaz (claimPersisted:false GÖRÜNÜR); onay/gönderim kapısı kayıtlı
   // bağları okuduğundan iz olmayan taslağın iddiaları orada bloklanır.
   let claimPersisted = false
+  let canonicalPending = false
+  let canonicalError: string | undefined
   try {
     const evidenceMeta = new Map(
       (evidenceRows ?? []).map((e) => [
@@ -202,12 +216,17 @@ export async function generateColdEmailDraft(leadId: string): Promise<ColdEmailG
       createdBy: 'agent:cold_email',
     })
     if (persist.schemaMissing) {
+      // BEKLENEN pre-migration durumu — draft kullanılabilir; onay/gönderim
+      // kapısı iddiaları kayıtlı-bağ yokluğunda bloklar (fail-closed downstream).
+      canonicalPending = true
       console.warn('[cold-email] canonical artifact şeması canlı değil (mig 062 onay bekliyor) — versiyon izi yazılamadı')
     } else {
       claimPersisted = true
     }
   } catch (err) {
-    console.error('[cold-email] canonical artifact yazılamadı:', err instanceof Error ? err.message : 'unknown')
+    // BEKLENMEDİK hata (şema-eksik değil) → GÖRÜNÜR; draft var ama iz zedeli.
+    canonicalError = err instanceof Error ? err.message : 'canonical yazım hatası'
+    console.error('[cold-email] canonical artifact yazılamadı:', canonicalError)
   }
 
   return {
@@ -216,6 +235,8 @@ export async function generateColdEmailDraft(leadId: string): Promise<ColdEmailG
     quality: { ok: quality.ok, violations: quality.violations },
     claims: parsed.claims,
     claimPersisted,
+    ...(canonicalPending ? { canonicalPending: true } : {}),
+    ...(canonicalError ? { canonicalError } : {}),
     ...(voiceDegraded ? { voiceDegraded: true } : {}),
   }
 }
