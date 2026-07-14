@@ -75,3 +75,12 @@ agencyos guncelleme/
 agencyos g*ncelleme/
 
 .vercel
+
+# OpenNext
+.open-next
+
+# wrangler files
+.wrangler
+.wrangler-dry-run
+.dev.vars*
+!.dev.vars.example

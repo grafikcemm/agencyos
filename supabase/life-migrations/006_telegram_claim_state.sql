@@ -72,7 +72,7 @@ begin
 end
 $$;
 
-revoke all on function public.telegram_acquire_update(bigint, integer) from public;
+revoke all on function public.telegram_acquire_update(bigint, integer) from public, anon, authenticated;
 grant execute on function public.telegram_acquire_update(bigint, integer) to service_role;
 
 -- Outbound delivery ledger (webhook cevapları) — at-most-once provider çağrısı.

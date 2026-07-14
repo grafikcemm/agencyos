@@ -1,0 +1,87 @@
+name: AgencyOS cron
+
+on:
+  schedule:
+    - cron: "0 5 * * *"       # daily-scan
+    - cron: "0 6 * * 1"       # opportunity-scan
+    - cron: "0 9 * * *"       # agent-tick
+    - cron: "0 4 * * *"       # job-scan
+    - cron: "30 3 * * *"      # person-scan
+    - cron: "30 5 * * *"      # orchestrator
+    - cron: "0 10 * * *"      # orchestrator
+    - cron: "30 16 * * *"     # orchestrator
+    - cron: "30 19 * * *"     # orchestrator
+    - cron: "0 */3 * * *"     # gmail-ingest
+    - cron: "0 1 * * *"       # enrichment
+    - cron: "0 16 * * 0"      # weekly-retro
+    - cron: "0 2 * * *"       # model-health-check
+  workflow_dispatch:
+    inputs:
+      endpoint:
+        description: "Cron endpoint name (for example: model-health-check)"
+        required: true
+        type: string
+
+concurrency:
+  group: agencyos-cron-${{ github.event.schedule || inputs.endpoint }}
+  cancel-in-progress: false
+
+jobs:
+  invoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      AGENCYOS_BASE_URL: ${{ secrets.AGENCYOS_BASE_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      SCHEDULE: ${{ github.event.schedule }}
+      MANUAL_ENDPOINT: ${{ inputs.endpoint }}
+    steps:
+      - name: Resolve endpoint
+        id: endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -n "${MANUAL_ENDPOINT:-}" ]]; then
+            endpoint="$MANUAL_ENDPOINT"
+          else
+            case "$SCHEDULE" in
+              "0 5 * * *") endpoint="daily-scan" ;;
+              "0 6 * * 1") endpoint="opportunity-scan" ;;
+              "0 9 * * *") endpoint="agent-tick" ;;
+              "0 4 * * *") endpoint="job-scan" ;;
+              "30 3 * * *") endpoint="person-scan" ;;
+              "30 5 * * *"|"0 10 * * *"|"30 16 * * *"|"30 19 * * *") endpoint="orchestrator" ;;
+              "0 */3 * * *") endpoint="gmail-ingest" ;;
+              "0 1 * * *") endpoint="enrichment" ;;
+              "0 16 * * 0") endpoint="weekly-retro" ;;
+              "0 2 * * *") endpoint="model-health-check" ;;
+              *) echo "Unknown schedule: $SCHEDULE" >&2; exit 2 ;;
+            esac
+          fi
+
+          if [[ ! "$endpoint" =~ ^[a-z0-9-]+$ ]]; then
+            echo "Invalid endpoint name" >&2
+            exit 2
+          fi
+
+          echo "name=$endpoint" >> "$GITHUB_OUTPUT"
+
+      - name: Invoke protected cron route
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${AGENCYOS_BASE_URL:?Missing AGENCYOS_BASE_URL repository secret}"
+          : "${CRON_SECRET:?Missing CRON_SECRET repository secret}"
+
+          base_url="${AGENCYOS_BASE_URL%/}"
+          curl \
+            --fail-with-body \
+            --silent \
+            --show-error \
+            --retry 2 \
+            --retry-all-errors \
+            --connect-timeout 20 \
+            --max-time 540 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${base_url}/api/cron/${{ steps.endpoint.outputs.name }}"

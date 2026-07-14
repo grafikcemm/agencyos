@@ -1,5 +1,8 @@
 # AgencyOS V2 — Codex Finalization Audit (2026-07-14)
 
+> Bu raporun canlı migration/hosting durumu daha sonra değişti. Güncel tek kaynak:
+> `docs/handoffs/2026-07-14-correct-supabase-cloudflare.md`.
+
 Worktree `agency-os-v2-sprint0` · branch `feat/agencyos-v2-sprint0` · base
 `7c20b9b`. Push/merge/deploy/canlı migration/gerçek provider çağrısı yapılmadı.
 

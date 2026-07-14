@@ -29,6 +29,19 @@ test.describe('Akış 1 — yetkisiz istekler reddedilir', () => {
     await page.goto('/konsol')
     await expect(page).toHaveURL(/\/login/)
   })
+
+  test('sahte oturum cookie\'si sayfa kapısını aşamaz', async ({ context, page }) => {
+    await context.addCookies([
+      {
+        name: 'agencyos_session',
+        value: 'v1.9999999999.sahte-imza',
+        url: 'http://localhost:3200',
+      },
+    ])
+
+    await page.goto('/konsol')
+    await expect(page).toHaveURL(/\/login/)
+  })
 })
 
 test.describe('Akış 2 — operatör girişi', () => {
