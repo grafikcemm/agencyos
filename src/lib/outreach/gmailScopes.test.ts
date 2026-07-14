@@ -14,10 +14,36 @@ describe('checkGrantedScopes', () => {
     expect(r.gmailScopes).toEqual([SEND, READONLY])
   })
 
-  it('kimlik scope\'ları tolere edilir ama envantere GİRMEZ', () => {
-    const r = checkGrantedScopes(['openid', 'email', SEND])
+  it('kimlik scope\'ları tolere edilir ama envantere GİRMEZ (iki gmail scope ile)', () => {
+    const r = checkGrantedScopes(['openid', 'email', SEND, READONLY])
     expect(r.ok).toBe(true)
-    expect(r.gmailScopes).toEqual([SEND])
+    expect(r.gmailScopes).toEqual([SEND, READONLY])
+  })
+
+  it('ZORUNLU scope eksik (yalnız send) → red; missing readonly listeler', () => {
+    const r = checkGrantedScopes(['openid', 'email', SEND])
+    expect(r.ok).toBe(false)
+    expect(r.missing).toEqual([READONLY])
+    expect(r.disallowed).toEqual([])
+  })
+
+  it('ZORUNLU scope eksik (yalnız readonly) → red; missing send listeler', () => {
+    const r = checkGrantedScopes([READONLY])
+    expect(r.ok).toBe(false)
+    expect(r.missing).toEqual([SEND])
+  })
+
+  it('boş grant → red (her iki zorunlu scope eksik)', () => {
+    const r = checkGrantedScopes([])
+    expect(r.ok).toBe(false)
+    expect(r.missing).toEqual([SEND, READONLY])
+  })
+
+  it('yalnız kimlik scope\'ları → red (gmail yetkisi yok)', () => {
+    const r = checkGrantedScopes(['openid', 'email', 'profile'])
+    expect(r.ok).toBe(false)
+    expect(r.missing).toHaveLength(2)
+    expect(r.disallowed).toEqual([])
   })
 
   it('gmail.modify → red (fail-closed)', () => {

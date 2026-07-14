@@ -12,7 +12,26 @@
 import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto'
 import { ALLOWED_GMAIL_SCOPES } from '@/lib/outreach/gmailScopes'
 
-const STATE_TTL_MS = 10 * 60 * 1000
+export const STATE_TTL_MS = 10 * 60 * 1000
+
+/** Google endpoint çağrıları için üst süre — asılı kalan istek fonksiyon
+ *  bütçesini tüketmesin. */
+export const OAUTH_HTTP_TIMEOUT_MS = 12_000
+
+async function fetchWithTimeout(
+  fetchImpl: typeof fetch,
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    return await fetchImpl(url, { ...init, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 function hmacSecret(): string {
   const secret = process.env.APP_SESSION_SECRET
@@ -26,12 +45,25 @@ function b64url(buf: Buffer): string {
   return buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '')
 }
 
-/** İmzalı state üretir: <nonce>.<expMs>.<hmac>. */
-export function createOAuthState(nowMs: number = Date.now()): string {
+export interface OAuthState {
+  state: string
+  nonce: string
+  expMs: number
+}
+
+/** İmzalı state üretir: <nonce>.<expMs>.<hmac>. Nonce ayrıca tek-kullanımlık
+ *  DB kaydına (gmail_oauth_states) yazılır — replay reddi callback'te. */
+export function createOAuthState(nowMs: number = Date.now()): OAuthState {
   const nonce = b64url(randomBytes(16))
-  const exp = String(nowMs + STATE_TTL_MS)
-  const sig = createHmac('sha256', hmacSecret()).update(`${nonce}.${exp}`).digest('hex')
-  return `${nonce}.${exp}.${sig}`
+  const expMs = nowMs + STATE_TTL_MS
+  const sig = createHmac('sha256', hmacSecret()).update(`${nonce}.${expMs}`).digest('hex')
+  return { state: `${nonce}.${expMs}.${sig}`, nonce, expMs }
+}
+
+/** State'ten nonce'u ayıklar (tek-kullanımlık DB tüketimi için). Bozuksa null. */
+export function extractStateNonce(state: string): string | null {
+  const parts = state.split('.')
+  return parts.length === 3 && parts[0] ? parts[0] : null
 }
 
 /** State doğrulama: imza + TTL. Bozuk/expired → false (fail-closed). */
@@ -106,7 +138,6 @@ export interface TokenExchangeResult {
   refreshToken?: string
   accessToken?: string
   grantedScopes?: string[]
-  emailAddress?: string
   error?: string
 }
 
@@ -120,50 +151,74 @@ export async function exchangeCodeForTokens(
 ): Promise<TokenExchangeResult> {
   let res: Response
   try {
-    res = await fetchImpl('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: env.clientId,
-        client_secret: env.clientSecret,
-        redirect_uri: env.redirectUri,
-        grant_type: 'authorization_code',
-        code,
-        code_verifier: verifier,
-      }),
-    })
+    res = await fetchWithTimeout(
+      fetchImpl,
+      'https://oauth2.googleapis.com/token',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: env.clientId,
+          client_secret: env.clientSecret,
+          redirect_uri: env.redirectUri,
+          grant_type: 'authorization_code',
+          code,
+          code_verifier: verifier,
+        }),
+      },
+      OAUTH_HTTP_TIMEOUT_MS,
+    )
   } catch (err) {
-    return { ok: false, error: `token endpoint erişilemedi: ${err instanceof Error ? err.name : 'network'}` }
+    const isAbort = err instanceof Error && err.name === 'AbortError'
+    return { ok: false, error: isAbort ? 'token endpoint zaman aşımı' : `token endpoint erişilemedi: ${err instanceof Error ? err.name : 'network'}` }
   }
   const body = (await res.json().catch(() => null)) as {
     refresh_token?: string
     access_token?: string
     scope?: string
-    id_token?: string
     error?: string
   } | null
   if (!res.ok || !body?.refresh_token) {
     return { ok: false, error: `token değişimi başarısız (${res.status}): ${body?.error ?? 'refresh_token yok'}` }
   }
-  // id_token payload'ından email (imza doğrulaması Google'dan geldiği kanal
-  // TLS+code exchange olduğu için bu bağlamda yeterli; ayrı JWKS doğrulaması
-  // pilot açılışında güvenlik incelemesi maddesi olarak listelendi).
-  let emailAddress: string | undefined
-  if (body.id_token) {
-    try {
-      const payload = JSON.parse(Buffer.from(body.id_token.split('.')[1], 'base64url').toString('utf8')) as {
-        email?: string
-      }
-      emailAddress = payload.email
-    } catch {
-      emailAddress = undefined
-    }
-  }
+  // NOT: hesap e-postası burada id_token'dan OKUNMAZ (imza doğrulanmamış
+  // payload güvenilmez). Callback, access_token ile users.getProfile üzerinden
+  // DOĞRULANMIŞ mailbox adresini alır (fetchVerifiedEmail). unknown@unknown YOK.
   return {
     ok: true,
     refreshToken: body.refresh_token,
     accessToken: body.access_token,
     grantedScopes: (body.scope ?? '').split(/\s+/).filter(Boolean),
-    emailAddress,
   }
+}
+
+/**
+ * DOĞRULANMIŞ hesap e-postası: access_token ile Gmail users.getProfile çağrılır
+ * ve gerçek mailbox adresi (emailAddress) döner. Bu, gönderim yapılacak kutunun
+ * ta kendisidir — imza doğrulanmamış id_token payload'ına güvenmekten üstün.
+ * Hata/timeout/boş sonuç → fail-closed (hesap saklanamaz).
+ */
+export async function fetchVerifiedEmail(
+  accessToken: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ ok: true; email: string } | { ok: false; error: string }> {
+  let res: Response
+  try {
+    res = await fetchWithTimeout(
+      fetchImpl,
+      'https://gmail.googleapis.com/gmail/v1/users/me/profile',
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+      OAUTH_HTTP_TIMEOUT_MS,
+    )
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === 'AbortError'
+    return { ok: false, error: isAbort ? 'getProfile zaman aşımı' : `getProfile erişilemedi: ${err instanceof Error ? err.name : 'network'}` }
+  }
+  if (!res.ok) return { ok: false, error: `getProfile başarısız (${res.status})` }
+  const body = (await res.json().catch(() => null)) as { emailAddress?: string } | null
+  const email = body?.emailAddress?.trim().toLowerCase()
+  if (!email || !email.includes('@')) {
+    return { ok: false, error: 'getProfile geçerli e-posta döndürmedi — hesap doğrulanamadı' }
+  }
+  return { ok: true, email }
 }

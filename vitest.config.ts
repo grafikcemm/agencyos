@@ -24,6 +24,11 @@ export default defineConfig({
         'src/lib/outreach/gmail.ts': { statements: 90, lines: 90, branches: 85 },
         // FINAL PILOT BLOCKERS Faz 1 — gerçek Gmail REST transport (send+arama):
         'src/lib/outreach/gmailRestTransport.ts': { lines: 90, branches: 85 },
+        // FINAL PILOT BLOCKERS Faz 2 — OAuth + Vault + durum (güvenlik çekirdeği):
+        'src/lib/gmail/oauth.ts': { lines: 90, branches: 85 },
+        'src/lib/gmail/tokenVault.ts': { lines: 90, branches: 85 },
+        'src/lib/gmail/status.ts': { lines: 90, branches: 85 },
+        'src/lib/outreach/gmailScopes.ts': { lines: 90, branches: 85 },
         'src/lib/outreach/sendMachine.ts': { statements: 90, lines: 90, branches: 80 },
         'src/lib/outreach/auditCompliance.ts': { statements: 90, lines: 90, branches: 85 },
         'src/lib/models/**/*.ts': { statements: 90, branches: 80 },

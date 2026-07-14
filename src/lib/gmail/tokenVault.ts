@@ -15,8 +15,6 @@ import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { checkGrantedScopes } from '@/lib/outreach/gmailScopes'
 
-const VAULT_SECRET_NAME = 'gmail_refresh_token_primary'
-
 /** Hata metninden olası token değerlerini söker — asla sızmasın. */
 function redactSecret(text: string, secret: string | null): string {
   if (!secret) return text
@@ -45,60 +43,62 @@ export async function getActiveGmailAccount(): Promise<GmailAccountRow | null> {
 }
 
 /**
- * OAuth callback'ten gelen refresh token'ı Vault'a yazar ve hesabı aktive eder.
- * Scope'lar pozitif allowlist'ten geçmeden ÇAĞRILMAMALIDIR (callback zorlar);
- * yine de burada da fail-closed doğrulanır (defense-in-depth).
+ * OAuth callback'ten gelen refresh token'ı DOĞRULANMIŞ hesap e-postasıyla
+ * Vault'a yazar ve hesabı aktive eder — TEK TRANSACTION RPC (gmail_connect_account):
+ * vault rotate/create + diğer hesapları deaktive + bu hesabı aktif upsert
+ * hepsi atomiktir. DB hatasında hiçbiri kalıcı olmaz (orphan/yanlış-eşleşme YOK).
+ *
+ * emailAddress DOĞRULANMIŞ olmalı (getProfile — callback zorlar). Scope'lar
+ * hem allowlist hem ZORUNLU-küme (send+readonly) fail-closed doğrulanır.
  */
 export async function storeGmailTokens(opts: {
   emailAddress: string
   refreshToken: string
   grantedScopes: string[]
 }): Promise<{ ok: true; accountId: string } | { ok: false; error: string }> {
+  const email = opts.emailAddress.trim().toLowerCase()
+  if (!email || !email.includes('@') || email === 'unknown@unknown') {
+    return { ok: false, error: 'doğrulanmış hesap e-postası yok — token saklanmadı (unknown@unknown yasak)' }
+  }
   const scopeCheck = checkGrantedScopes(opts.grantedScopes)
   if (!scopeCheck.ok) {
-    return { ok: false, error: `allowlist dışı scope: ${scopeCheck.disallowed.join(', ')} — token saklanmadı` }
+    const reason = scopeCheck.disallowed.length
+      ? `allowlist dışı scope: ${scopeCheck.disallowed.join(', ')}`
+      : `zorunlu scope eksik: ${scopeCheck.missing.join(', ')}`
+    return { ok: false, error: `${reason} — token saklanmadı` }
   }
 
-  const { data: secretId, error: vaultErr } = await supabaseAdmin.rpc('gmail_vault_store', {
-    p_name: VAULT_SECRET_NAME,
-    p_secret: opts.refreshToken,
+  // Tek-tx bağlama: vault + hesap aktivasyonu bölünmez.
+  const { data: accountId, error } = await supabaseAdmin.rpc('gmail_connect_account', {
+    p_email: email,
+    p_refresh_token: opts.refreshToken,
+    p_scopes: scopeCheck.gmailScopes,
   })
-  if (vaultErr || !secretId) {
+  if (error || !accountId) {
     return {
       ok: false,
-      error: redactSecret(`vault yazımı başarısız: ${vaultErr?.message ?? 'boş yanıt'}`, opts.refreshToken),
+      error: redactSecret(`gmail hesabı bağlanamadı: ${error?.message ?? 'boş yanıt'}`, opts.refreshToken),
     }
   }
+  return { ok: true, accountId: accountId as string }
+}
 
-  // Tek hesap modeli: e-posta adresine upsert; diğer satırlar pasifleşir.
-  const { data: existing, error: exErr } = await supabaseAdmin
-    .from('gmail_accounts')
-    .select('id')
-    .eq('email_address', opts.emailAddress.toLowerCase())
-    .maybeSingle()
-  if (exErr) return { ok: false, error: `gmail hesabı okunamadı: ${exErr.message}` }
+/** OAuth state nonce'unu tek-kullanımlık kaydeder (start route). */
+export async function recordOAuthState(nonce: string, expMs: number): Promise<{ ok: boolean; error?: string }> {
+  const { error } = await supabaseAdmin.from('gmail_oauth_states').insert({
+    nonce,
+    expires_at: new Date(expMs).toISOString(),
+  })
+  if (error) return { ok: false, error: error.message }
+  return { ok: true }
+}
 
-  const patch = {
-    vault_secret_id: secretId as string,
-    scopes: scopeCheck.gmailScopes,
-    active: true,
-    updated_at: new Date().toISOString(),
-  }
-  let accountId: string
-  if (existing) {
-    const { error } = await supabaseAdmin.from('gmail_accounts').update(patch).eq('id', existing.id)
-    if (error) return { ok: false, error: `gmail hesabı güncellenemedi: ${error.message}` }
-    accountId = existing.id as string
-  } else {
-    const { data: created, error } = await supabaseAdmin
-      .from('gmail_accounts')
-      .insert({ email_address: opts.emailAddress.toLowerCase(), ...patch })
-      .select('id')
-      .single()
-    if (error || !created) return { ok: false, error: `gmail hesabı yazılamadı: ${error?.message ?? '?'}` }
-    accountId = created.id as string
-  }
-  return { ok: true, accountId }
+/** OAuth state nonce'unu ATOMİK tüketir (callback). Zaten tüketilmiş/expired/
+ *  yok → false (replay reddi). */
+export async function consumeOAuthState(nonce: string): Promise<boolean> {
+  const { data, error } = await supabaseAdmin.rpc('gmail_consume_oauth_state', { p_nonce: nonce })
+  if (error) return false
+  return data === true
 }
 
 /** Vault'tan refresh token okur — YALNIZ transport katmanı çağırır; değer
@@ -177,14 +177,12 @@ export async function revokeGmailTokens(
     console.warn('[gmail] Google revoke erişilemedi — yerel temizlik yine yapılıyor:', err instanceof Error ? err.name : 'network')
   }
 
-  const { error: delErr } = await supabaseAdmin.rpc('gmail_vault_delete', {
-    p_id: tokenRead.account.vault_secret_id,
+  // Tek-tx, idempotent revoke: vault sil + hesap pasifleştir bölünmez;
+  // tekrar çağrılırsa no-op (vault_secret_id zaten null).
+  const { data: disconnected, error: rpcErr } = await supabaseAdmin.rpc('gmail_disconnect_account', {
+    p_account_id: tokenRead.account.id,
   })
-  if (delErr) return { ok: false, error: `vault silinemedi: ${delErr.message}` }
-  const { error: updErr } = await supabaseAdmin
-    .from('gmail_accounts')
-    .update({ active: false, vault_secret_id: null, updated_at: new Date().toISOString() })
-    .eq('id', tokenRead.account.id)
-  if (updErr) return { ok: false, error: `hesap pasifleştirilemedi: ${updErr.message}` }
+  if (rpcErr) return { ok: false, error: `hesap bağlantısı kaldırılamadı: ${rpcErr.message}` }
+  if (disconnected !== true) return { ok: false, error: 'hesap bulunamadı (zaten kaldırılmış olabilir)' }
   return { ok: true }
 }

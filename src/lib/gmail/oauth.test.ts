@@ -2,10 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   createOAuthState,
   verifyOAuthState,
+  extractStateNonce,
   createPkcePair,
   buildConsentUrl,
   resolveOAuthEnv,
   exchangeCodeForTokens,
+  fetchVerifiedEmail,
 } from './oauth'
 import { ALLOWED_GMAIL_SCOPES } from '@/lib/outreach/gmailScopes'
 
@@ -17,19 +19,22 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllEnvs())
 
-describe('state (HMAC + TTL)', () => {
-  it('üretilen state doğrulanır; kurcalanmış imza reddedilir', () => {
-    const s = createOAuthState()
-    expect(verifyOAuthState(s)).toBe(true)
-    const [n, e, sig] = s.split('.')
+describe('state (HMAC + TTL + nonce)', () => {
+  it('üretilen state doğrulanır; kurcalanmış imza reddedilir; nonce çıkar', () => {
+    const { state, nonce, expMs } = createOAuthState()
+    expect(verifyOAuthState(state)).toBe(true)
+    expect(extractStateNonce(state)).toBe(nonce)
+    expect(typeof expMs).toBe('number')
+    const [n, e, sig] = state.split('.')
     expect(verifyOAuthState(`${n}.${e}.${sig.slice(0, -2)}ab`)).toBe(false)
     expect(verifyOAuthState(`kurcalanmis.${e}.${sig}`)).toBe(false)
   })
 
-  it('TTL geçmiş state reddedilir; bozuk format reddedilir', () => {
-    const s = createOAuthState(Date.now() - 11 * 60 * 1000)
-    expect(verifyOAuthState(s)).toBe(false)
+  it('TTL geçmiş state reddedilir; bozuk format reddedilir; nonce null', () => {
+    const { state } = createOAuthState(Date.now() - 11 * 60 * 1000)
+    expect(verifyOAuthState(state)).toBe(false)
     expect(verifyOAuthState('tek-parca')).toBe(false)
+    expect(extractStateNonce('tek-parca')).toBeNull()
   })
 
   it('APP_SESSION_SECRET yoksa state üretimi FIRLATIR (imzasız akış yok)', () => {
@@ -72,15 +77,14 @@ describe('env guard + consent URL', () => {
 describe('exchangeCodeForTokens (fetch enjekte — gerçek çağrı yok)', () => {
   const ENV = { clientId: 'cid', clientSecret: 'csec', redirectUri: 'https://x/cb' }
 
-  it('başarı: refresh token + scope listesi + id_token e-postası', async () => {
-    const idPayload = Buffer.from(JSON.stringify({ email: 'ali@ornek.com' })).toString('base64url')
+  it('başarı: refresh + access token + scope listesi (e-posta id_token’dan OKUNMAZ)', async () => {
     const fakeFetch = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
           refresh_token: 'rt-1',
           access_token: 'at-1',
           scope: ALLOWED_GMAIL_SCOPES.join(' '),
-          id_token: `h.${idPayload}.s`,
+          id_token: 'h.payload.s',
         }),
         { status: 200 },
       ),
@@ -88,7 +92,8 @@ describe('exchangeCodeForTokens (fetch enjekte — gerçek çağrı yok)', () =>
     const r = await exchangeCodeForTokens(ENV, 'code-1', 'verifier-1', fakeFetch as unknown as typeof fetch)
     expect(r.ok).toBe(true)
     expect(r.refreshToken).toBe('rt-1')
-    expect(r.emailAddress).toBe('ali@ornek.com')
+    expect(r.accessToken).toBe('at-1')
+    expect((r as { emailAddress?: string }).emailAddress).toBeUndefined()
     const sent = new URLSearchParams(String(fakeFetch.mock.calls[0][1].body))
     expect(sent.get('code_verifier')).toBe('verifier-1')
     expect(sent.get('grant_type')).toBe('authorization_code')
@@ -102,5 +107,36 @@ describe('exchangeCodeForTokens (fetch enjekte — gerçek çağrı yok)', () =>
     const r2 = await exchangeCodeForTokens(ENV, 'c', 'v', failFetch as unknown as typeof fetch)
     expect(r2.ok).toBe(false)
     expect(r2.error).toContain('erişilemedi')
+  })
+})
+
+describe('fetchVerifiedEmail (getProfile — doğrulanmış mailbox)', () => {
+  it('başarı: emailAddress küçük harfe indirilir', async () => {
+    const fakeFetch = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ emailAddress: 'Ops@Ajans.Example' }), { status: 200 }),
+    )
+    const r = await fetchVerifiedEmail('at-1', fakeFetch as unknown as typeof fetch)
+    expect(r).toEqual({ ok: true, email: 'ops@ajans.example' })
+    expect(fakeFetch.mock.calls[0][0]).toContain('/users/me/profile')
+    expect((fakeFetch.mock.calls[0][1].headers as Record<string, string>).Authorization).toBe('Bearer at-1')
+  })
+
+  it('HTTP hatası → ok:false (fail-closed)', async () => {
+    const fakeFetch = vi.fn().mockResolvedValue(new Response('{}', { status: 403 }))
+    const r = await fetchVerifiedEmail('at-1', fakeFetch as unknown as typeof fetch)
+    expect(r.ok).toBe(false)
+  })
+
+  it('geçersiz/boş e-posta → ok:false', async () => {
+    const fakeFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ emailAddress: 'gecersiz' }), { status: 200 }))
+    const r = await fetchVerifiedEmail('at-1', fakeFetch as unknown as typeof fetch)
+    expect(r.ok).toBe(false)
+  })
+
+  it('ağ hatası → ok:false', async () => {
+    const failFetch = vi.fn().mockRejectedValue(new TypeError('fetch failed'))
+    const r = await fetchVerifiedEmail('at-1', failFetch as unknown as typeof fetch)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.error).toContain('erişilemedi')
   })
 })

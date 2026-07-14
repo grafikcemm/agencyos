@@ -4,6 +4,7 @@
 import { NextResponse } from 'next/server'
 import { requireApiUser } from '@/lib/auth'
 import { buildConsentUrl, createOAuthState, createPkcePair, resolveOAuthEnv } from '@/lib/gmail/oauth'
+import { recordOAuthState } from '@/lib/gmail/tokenVault'
 
 export async function GET(req: Request) {
   const auth = await requireApiUser(req)
@@ -14,9 +15,17 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: false, error: env.error }, { status: 503 })
   }
 
-  const state = createOAuthState()
+  const oauthState = createOAuthState()
+  // Tek-kullanımlık state kaydı — callback ATOMİK tüketir (replay reddi).
+  const recorded = await recordOAuthState(oauthState.nonce, oauthState.expMs)
+  if (!recorded.ok) {
+    return NextResponse.json(
+      { success: false, error: `OAuth state kaydedilemedi: ${recorded.error}` },
+      { status: 503 },
+    )
+  }
   const pkce = createPkcePair()
-  const url = buildConsentUrl(env.env, state, pkce.challenge)
+  const url = buildConsentUrl(env.env, oauthState.state, pkce.challenge)
 
   const res = NextResponse.redirect(url, 302)
   // PKCE verifier YALNIZ httpOnly cookie'de — client script okuyamaz.
