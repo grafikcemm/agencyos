@@ -53,6 +53,20 @@ export interface VoiceRuleSet {
   negative: string[]
 }
 
+/**
+ * FINALIZATION Faz 2 — TEK Voice DNA prompt bloğu: cold email, follow-up,
+ * teklif ve Telegram taslak üreticileri AYNI bloğu enjekte eder (kopya kural
+ * yok). Yalnız OPERATÖR ONAYLI kurallar girer; otomatik öğrenilen adaylar ASLA.
+ * (Saf fonksiyon — client-safe modülde durur; server bağımlılığı yok.)
+ */
+export function buildVoicePromptBlock(voiceRules?: VoiceRuleSet | null): string[] {
+  if (!voiceRules || (voiceRules.positive.length === 0 && voiceRules.negative.length === 0)) return []
+  const lines = ['', 'KULLANICININ ONAYLI SES/STİL KURALLARI:']
+  for (const r of voiceRules.positive) lines.push(`- UYGULA: ${r}`)
+  for (const r of voiceRules.negative) lines.push(`- KAÇIN: ${r}`)
+  return lines
+}
+
 export function buildColdEmailSystemPrompt(voiceRules?: VoiceRuleSet): string {
   const lines = [
     "Sen Ali Cem Bozma'sın (Grafikcem) — İstanbul'da çalışan freelance grafik ve web tasarımcısı.",
@@ -82,13 +96,10 @@ export function buildColdEmailSystemPrompt(voiceRules?: VoiceRuleSet): string {
     '- Kullandığın her iddiayı "claims" dizisinde, dayandığı kanıtın id\'siyle listele.',
   ]
 
-  // Sprint-3 Faz 3.7: ONAYLI Voice DNA kuralları üretime enjekte edilir.
-  // (Yalnız operatör onaylı kurallar — otomatik öğrenilen adaylar ASLA.)
-  if (voiceRules && (voiceRules.positive.length > 0 || voiceRules.negative.length > 0)) {
-    lines.push('', 'KULLANICININ ONAYLI SES/STİL KURALLARI:')
-    for (const r of voiceRules.positive) lines.push(`- UYGULA: ${r}`)
-    for (const r of voiceRules.negative) lines.push(`- KAÇIN: ${r}`)
-  }
+  // Sprint-3 Faz 3.7 → FINALIZATION Faz 2: ONAYLI Voice DNA kuralları TEK
+  // paylaşılan bloktan enjekte edilir (buildVoicePromptBlock — follow-up/teklif/
+  // Telegram üreticileri de aynısını kullanır; kopya kural yok).
+  lines.push(...buildVoicePromptBlock(voiceRules))
 
   lines.push(
     '',

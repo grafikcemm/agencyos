@@ -48,3 +48,35 @@ kurala (lint/persuasionEval) dönüştürülür.
 
 Otomatik öğrenme YALNIZ öneri üretir (candidate) — profile geçiş yalnız
 operatör onayıyla (`approveStyleRule`/`approveBannedPhrase`).
+
+---
+
+## FINALIZATION Faz 2 güncellemesi (2026-07-14)
+
+### 90-kombinasyon matrisi (GERÇEK çapraz matris)
+`src/lib/outreach/persuasionMatrix.ts`: 5 sektör × 6 rol × 3 aşama = 90
+kombinasyon; her birinde deterministik GOOD (tüm kriterleri geçen sınır örneği)
++ BAD (6 başarısızlık sınıfından biri: kanıtsız iddia · sahte aciliyet ·
+manipülasyon · klişe · aşırı uzunluk · rol uyumsuzluğu) = 180 örnek, hepsi
+CI'da her koşuda değerlendirilir (persuasionMatrix.test.ts).
+
+Yeni deterministik kriterler: `rol_uyumu` (rol-işaret kelimeleri),
+`manipulasyon_yok` (sahte kıtlık/baskı/suçlama kalıpları), `uzunluk_uygun`.
+
+### Judge CI eval runner
+`persuasionJudge.ts`: buildJudgePrompt artık ölü değil — her CI koşusunda
+runner prompt'u gerçekten kurar ve provider'dan karar alır.
+- CI: KAYITLI DETERMİNİSTİK FIXTURE (judgeFixtures.ts, 12 temsilci case —
+  6 başarısızlık sınıfının tamamı).
+- Canlı model: `PERSUASION_JUDGE_LIVE=1` + OPENROUTER_API_KEY (operatör/batch).
+
+### DÜRÜST DURUM — pending human calibration
+- Judge FIXTURE kayıtları beklenen sınır davranışının kaydıdır; canlı judge +
+  insan kalibrasyonu YAPILMADI. "İnsan onaylı" DEĞİLDİR.
+- El yazımı 10 örnek + 180 matris örneği deterministik katmanda doğrulanır;
+  akıcılık/ton-sıcaklığı gibi model-judge boyutları canlı koşu bekler.
+
+### Voice DNA yayılımı
+`buildVoicePromptBlock` (coldEmail.ts, saf) = TEK ortak blok; cold email
+kullanıyor, follow-up (Faz 3) / teklif (Faz 4) / Telegram (Faz 5) aynı bloğu
+alacak. `getVoiceContext()` (voiceDna.ts) üreticiler için tek okuma noktası.

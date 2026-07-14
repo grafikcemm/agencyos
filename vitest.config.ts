@@ -41,6 +41,11 @@ export default defineConfig({
         'src/lib/outreach/claimEvidence.ts': { lines: 90, branches: 85 },
         'src/lib/outreach/qualityLint.ts': { lines: 90, branches: 85 },
         'src/lib/coldEmail.ts': { lines: 90, branches: 85 },
+        // FINALIZATION Faz 2 — Voice DNA + persuasion çekirdeği:
+        'src/lib/outreach/voiceDna.ts': { lines: 90, branches: 85 },
+        'src/lib/outreach/persuasionEval.ts': { lines: 90, branches: 85 },
+        'src/lib/outreach/persuasionJudge.ts': { lines: 85, branches: 80 },
+        'src/lib/outreach/persuasionMatrix.ts': { lines: 90, branches: 85 },
       },
     },
   },

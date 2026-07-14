@@ -1,13 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// settings key/value mock deposu
+// settings key/value mock deposu (+ kontrollü hata enjeksiyonu)
 const store = new Map<string, string>()
+let readError: string | null = null
+let writeError: string | null = null
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
     from: () => ({
       select: () => ({
         eq: (_c: string, key: string) => ({
           maybeSingle: async () => {
+            if (readError) return { data: null, error: { message: readError } }
             const v = store.get(key)
             return { data: v != null ? { value: v, id: `id-${key}` } : null, error: null }
           },
@@ -15,11 +18,13 @@ vi.mock('@/lib/supabase', () => ({
       }),
       update: (patch: { value: string }) => ({
         eq: async (_c: string, id: string) => {
+          if (writeError) return { error: { message: writeError } }
           store.set(id.replace('id-', ''), patch.value)
           return { error: null }
         },
       }),
       insert: async (row: { key: string; value: string }) => {
+        if (writeError) return { error: { message: writeError } }
         store.set(row.key, row.value)
         return { error: null }
       },
@@ -33,11 +38,17 @@ import {
   getBannedPhrases,
   getPhraseCandidates,
   approveBannedPhrase,
+  approveStyleRule,
+  getApprovedStyleRules,
+  getStyleCandidates,
+  getVoiceContext,
+  getVoiceProfile,
+  recordStyleDelta,
   PROMOTE_THRESHOLD,
 } from './voiceDna'
 
 describe('Voice DNA v0 (Faz D1)', () => {
-  beforeEach(() => store.clear())
+  beforeEach(() => { store.clear(); readError = null; writeError = null })
 
   it('extractRemovedPhrases: operatörün SİLDİĞİ cümleler yakalanır, kalanlar yakalanmaz', () => {
     const original =
@@ -117,5 +128,128 @@ describe('analyzeStyleDelta (Faz 4.1 — yapısal profil, saf)', () => {
     const d = analyzeStyleDelta(body, body)
     expect(d.formalityDelta).toBe(0)
     expect(d.sentenceLen).toBe('same')
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FINALIZATION Faz 2 — voiceDna kritik eşiğe alındı (≥90L/85B): fail-closed
+// hata yolları + yapısal gözlem/aday/profil/context zinciri.
+// ─────────────────────────────────────────────────────────────────────────────
+describe('fail-closed hata yolları (Faz 3.5/3.6)', () => {
+  beforeEach(() => { store.clear(); readError = null; writeError = null })
+
+  it('getBannedPhrases: okuma hatası THROW (fail-open yok)', async () => {
+    readError = 'db down'
+    await expect(getBannedPhrases()).rejects.toThrow(/okunamadı/)
+  })
+
+  it('getBannedPhrases: bozuk JSON THROW; dizi-dışı değer boş liste', async () => {
+    store.set('voice_banned_phrases', '{bozuk')
+    await expect(getBannedPhrases()).rejects.toThrow()
+    store.set('voice_banned_phrases', '{"a":1}')
+    expect(await getBannedPhrases()).toEqual([])
+    store.set('voice_banned_phrases', '["x", 3, "y"]' as string)
+    expect(await getBannedPhrases()).toEqual(['x', 'y'])
+  })
+
+  it('getApprovedStyleRules: kayıt yok → boş; okuma hatası → throw', async () => {
+    expect(await getApprovedStyleRules()).toEqual({ positive: [], negative: [] })
+    readError = 'down'
+    await expect(getApprovedStyleRules()).rejects.toThrow(/okunamadı/)
+  })
+
+  it('approveStyleRule: kural tek yönlü eklenir; duplicate eklemez', async () => {
+    await approveStyleRule('kısa cümleler', 'positive')
+    await approveStyleRule('kısa cümleler', 'positive')
+    await approveStyleRule('emoji kullanma', 'negative')
+    expect(await getApprovedStyleRules()).toEqual({ positive: ['kısa cümleler'], negative: ['emoji kullanma'] })
+  })
+
+  it('approveBannedPhrase: yazma hatası THROW (sessiz kayıp yok)', async () => {
+    writeError = 'disk dolu'
+    await expect(approveBannedPhrase('kötü kalıp')).rejects.toThrow(/yazılamadı/)
+  })
+
+  it('recordVoiceDelta: yazma hatası akışı DÜŞÜRMEZ, 0 döner (görünür log)', async () => {
+    readError = 'down'
+    const n = await recordVoiceDelta('Silinecek uzun bir cümle burada.', 'Tamamen farklı içerik.')
+    expect(n).toBe(0)
+  })
+
+  it('bozuk/eksik aday alanları: count/lastSeen fallback dallari (0, boş, trim sırası)', async () => {
+    store.set('voice_phrase_candidates', JSON.stringify({ 'alansiz aday ifade': {}, 'sayili aday ifade': { count: 2, lastSeen: 't' } }))
+    const c = await getPhraseCandidates()
+    expect(c.find((x) => x.phrase === 'alansiz aday ifade')).toMatchObject({ count: 0, lastSeen: '', readyForReview: false })
+    // recordVoiceDelta mevcut alansız girdinin üstüne sayaç ekler (prev?.count ?? 0 dalı).
+    const n = await recordVoiceDelta('alansiz aday ifade burada duruyor.', 'Tamamen başka içerik.')
+    expect(n).toBe(1)
+    const after = await getPhraseCandidates()
+    expect(after.find((x) => x.phrase.startsWith('alansiz aday ifade'))!.count).toBeGreaterThanOrEqual(1)
+  })
+
+  it('getPhraseCandidates: okuma hatası throw; kayıt yok → boş liste', async () => {
+    expect(await getPhraseCandidates()).toEqual([])
+    readError = 'down'
+    await expect(getPhraseCandidates()).rejects.toThrow(/okunamadı/)
+  })
+})
+
+describe('yapısal gözlem → aday → profil zinciri (Faz 4.1)', () => {
+  beforeEach(() => { store.clear(); readError = null; writeError = null })
+
+  const ORIG = 'Selam, sen bunu yapmalısın çünkü rakiplerin çok ilerde ve senin siten eski kaldı artık.'
+  const FINAL = 'Merhaba, sitenizi inceledim. Sizinle kısa bir görüşme yapmak isterim. 15 dakika uygun musunuz?'
+
+  it('recordStyleDelta: gözlem sayaçları birikir (sektör varyantı dahil)', async () => {
+    await recordStyleDelta(ORIG, FINAL, 'klinik')
+    await recordStyleDelta(ORIG, FINAL, 'klinik')
+    await recordStyleDelta(ORIG, FINAL)
+    const candidates = await getStyleCandidates()
+    expect(candidates.length).toBeGreaterThan(0)
+    const formal = candidates.find((c) => c.rule.includes('resmi'))
+    expect(formal?.count).toBe(3)
+    expect(formal?.readyForReview).toBe(true)
+    const opening = candidates.find((c) => c.rule.startsWith('Açılış biçimi'))
+    expect(opening).toBeTruthy()
+    const cta = candidates.find((c) => c.rule.startsWith('CTA biçimi'))
+    expect(cta).toBeTruthy()
+    const evid = candidates.find((c) => c.rule.includes('kanıt'))
+    expect(evid?.count).toBe(3)
+  })
+
+  it('recordStyleDelta: yazma hatası akışı düşürmez (best-effort)', async () => {
+    writeError = 'down'
+    await expect(recordStyleDelta(ORIG, FINAL)).resolves.toBeUndefined()
+  })
+
+  it('getVoiceProfile: sıfır veri = baseline; onaylı kural gelince baseline düşer', async () => {
+    const p0 = await getVoiceProfile()
+    expect(p0.baseline).toBe(true)
+    expect(p0.observationCount).toBe(0)
+    await approveStyleRule('kısa cümleler', 'positive')
+    await recordStyleDelta(ORIG, FINAL)
+    const p1 = await getVoiceProfile()
+    expect(p1.baseline).toBe(false)
+    expect(p1.observationCount).toBe(1)
+    expect(p1.approved.positive).toEqual(['kısa cümleler'])
+  })
+
+  it('getVoiceContext: kurallar + yasaklılar tek noktadan; okuma hatası THROW', async () => {
+    await approveStyleRule('kısa cümleler', 'positive')
+    store.set('voice_banned_phrases', JSON.stringify(['sinerji']))
+    const ctx = await getVoiceContext()
+    expect(ctx.rules.positive).toEqual(['kısa cümleler'])
+    expect(ctx.banned).toEqual(['sinerji'])
+    readError = 'down'
+    await expect(getVoiceContext()).rejects.toThrow()
+  })
+
+  it('getStyleCandidates: daha uzun cümle + samimi ton yönleri de aday üretir', async () => {
+    const orig = 'Merhaba, sizinle kısa bir bilgi paylaşmak isterim. Rica etsem bakar mısınız?'
+    const fin = 'Selam, sen bence şu siteye bir bak çünkü orada senin işine yarayacak epey uzun ve detaylı anlatılmış pek çok şey var kanka.'
+    await recordStyleDelta(orig, fin)
+    const candidates = await getStyleCandidates()
+    expect(candidates.find((c) => c.rule.includes('samimi'))?.count).toBe(1)
+    expect(candidates.find((c) => c.rule.includes('uzun'))?.count).toBe(1)
   })
 })

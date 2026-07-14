@@ -347,6 +347,17 @@ export async function approveStyleRule(rule: string, polarity: 'positive' | 'neg
   }
 }
 
+/** Üretici tarafının tek-noktadan Voice bağlamı: onaylı kurallar + yasaklı
+ *  ifadeler. Okuma hatası FIRLATILIR (çağıran degraded bayrağıyla görünür kılar
+ *  ya da fail-closed davranır) — sessizce kuralsız üretim YOK. */
+export async function getVoiceContext(): Promise<{
+  rules: { positive: string[]; negative: string[] }
+  banned: string[]
+}> {
+  const [rules, banned] = await Promise.all([getApprovedStyleRules(), getBannedPhrases()])
+  return { rules, banned }
+}
+
 /** Üretim tarafının kullanacağı profil — sıfır veri = dürüst baseline. */
 export async function getVoiceProfile(): Promise<VoiceProfile> {
   const [rules, banned, obs] = await Promise.all([

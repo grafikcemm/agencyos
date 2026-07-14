@@ -45,9 +45,42 @@ export interface PersuasionCriterion {
     | 'tek_dusuk_surtunme_cta'
     | 'itiraz_karsilama'
     | 'tekrar_dusuk'
+    // FINALIZATION Faz 2 — deterministik ek kriterler:
+    | 'rol_uyumu'
+    | 'manipulasyon_yok'
+    | 'uzunluk_uygun'
   pass: boolean
   detail: string | null
 }
+
+/** Rol-uyumu işaretleri (FINALIZATION Faz 2): mesaj, alıcı rolünün diliyle
+ *  çerçevelenmiş olmalı. 'other' rolünde zorunluluk yok. Prefix eşleşmesi
+ *  (altyap→altyapınızı) için kök biçimler. */
+const ROLE_MARKERS: Record<PersuasionRole, RegExp | null> = {
+  owner: /(müşteri|musteri|randevu|gelir|sipariş|siparis)/i,
+  cto: /(altyap|teknik|güvenlik|guvenlik|performans|entegrasyon)/i,
+  cfo: /(maliyet|geri dönüş|geri donus|tasarruf|bütçe|butce|öngörülebilir|ongorulebilir)/i,
+  marketing: /(dönüşüm|donusum|marka|görünürlük|gorunurluk|kampanya)/i,
+  operations: /(manuel|otomatik|süreç|surec|akış|akis|zaman)/i,
+  other: null,
+}
+
+/** Manipülasyon kalıpları — sahte kıtlık, baskı, suçlama, korku dili. */
+const MANIPULATION_PATTERNS = [
+  /kontenjan kald/i,
+  /son \d+ (kontenjan|yer|kişi|kisi)/i,
+  /bugün karar vermezseniz/i,
+  /bugun karar vermezseniz/i,
+  /sadece bugün/i,
+  /sadece bugun/i,
+  /yerinizi kaybed/i,
+  /pişman ol/i,
+  /pisman ol/i,
+  /görmezden geld/i,
+  /gormezden geld/i,
+  /rakipleriniz çoktan/i,
+  /rakipleriniz coktan/i,
+]
 
 export interface PersuasionScore {
   pass: boolean
@@ -154,6 +187,28 @@ export function evaluatePersuasion(
         detail: ratio >= 0.3 ? `önceki metinlerle %${Math.round(ratio * 100)} cümle tekrarı` : null,
       }
     })(),
+    (() => {
+      const marker = ROLE_MARKERS[ctx.role]
+      const pass = marker === null || marker.test(text.body)
+      return {
+        key: 'rol_uyumu' as const,
+        pass,
+        detail: pass ? null : `mesaj '${ctx.role}' rolünün diliyle çerçevelenmemiş (rol işareti yok)`,
+      }
+    })(),
+    (() => {
+      const hit = MANIPULATION_PATTERNS.find((p) => p.test(text.body))
+      return {
+        key: 'manipulasyon_yok' as const,
+        pass: !hit,
+        detail: hit ? `manipülatif kalıp: ${hit.source}` : null,
+      }
+    })(),
+    {
+      key: 'uzunluk_uygun',
+      pass: !has('BODY_TOO_LONG'),
+      detail: has('BODY_TOO_LONG') ? 'gövde 1800 karakteri aşıyor' : null,
+    },
   ]
 
   return { pass: criteria.every((c) => c.pass), criteria }
@@ -256,7 +311,7 @@ export const PERSUASION_GOLDEN_SET: GoldenCase[] = [
     ctx: ctx({ sector: 'hukuk', role: 'cfo', funnelStage: 'follow_up', businessName: 'Lex Hukuk' }),
     sample: {
       subject: 'Lex Hukuk — kısa takip',
-      body: `Merhaba,\n\nGeçen hafta Lex Hukuk'un sitenizdeki iletişim akışına dair yazmıştım. Genelde bu noktada "şu an önceliğimiz değil" cevabı gelir — gayet anlaşılır.\n\nÖnerim zaten büyük bir taahhüt değil; mevcut akışınızı bozmayan küçük bir başlangıç. Yanlış zamansa tek kelime "sonra" yazmanız yeterli.\n\n${OPT_OUT}`,
+      body: `Merhaba,\n\nGeçen hafta Lex Hukuk'un sitenizdeki iletişim akışına dair yazmıştım. Genelde bu noktada "şu an önceliğimiz değil" cevabı gelir — gayet anlaşılır.\n\nÖnerim zaten büyük bir taahhüt değil; maliyeti öngörülebilir, mevcut akışınızı bozmayan küçük bir başlangıç. Yanlış zamansa tek kelime "sonra" yazmanız yeterli.\n\n${OPT_OUT}`,
     },
     expectPass: true,
   },
