@@ -64,6 +64,13 @@ export default defineConfig({
       // KAPALI; suite gerçek RPC yolunu kullandığını yapısal kanıtlar
       // (RPC yoksa fail-closed olur ve testler düşer).
       LEAD_ACTION_RPC_REQUIRED: 'true',
+      // FINALIZATION Faz 7: inbound ingest E2E'si — fake transport (dış çağrı
+      // yapısal imkânsız: GOOGLE_* BİLEREK boş; fake yalnız OAuth env boşken çalışır).
+      GMAIL_INGEST_ENABLED: 'true',
+      GMAIL_INGEST_FAKE: 'body',
+      GOOGLE_CLIENT_ID: '',
+      GOOGLE_CLIENT_SECRET: '',
+      GMAIL_OAUTH_REDIRECT_URI: '',
       TELEGRAM_CHAT_ID: E2E_TELEGRAM_CHAT_ID,
       TELEGRAM_USER_ID: E2E_TELEGRAM_USER_ID,
       // Bot token BILEREK bos - E2E'de dis Telegram cagrisi yapisal imkansiz.

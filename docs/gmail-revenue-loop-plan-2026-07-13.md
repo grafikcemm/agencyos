@@ -69,3 +69,41 @@ proposal(proposals/versions) → won(projects + convert audit)`
 3. Bağımsız güvenlik incelemesi → bulgular kapanır.
 4. Kullanıcı açık onayı → GMAIL_SEND_ENABLED=true (pilot, günlük limitli).
 5. Reply ingest cron aktif → FSM gölgede 1 hafta → FOLLOWUP_FSM ayrı onayla.
+
+---
+
+## FINALIZATION Faz 7 GÜNCELLEMESİ (2026-07-14) — plan → ÇALIŞAN KOD
+
+Aşağıdakiler artık plan değil, KOD (provider sınırına kadar; gerçek Google
+çağrısı yalnız kullanıcı consent/config sonrası yaşanır):
+
+| Bileşen | Dosya | Durum |
+|---|---|---|
+| OAuth start (state HMAC+TTL, PKCE S256, min. scope) | src/app/api/gmail/oauth/start | kod + unit |
+| OAuth callback (state+PKCE doğrulama, scope allowlist FAIL-CLOSED, vault'a yazım) | src/app/api/gmail/oauth/callback | kod + unit |
+| Token Vault (Supabase Vault; düz metin tablo/log YOK; rotation + revoke) | src/lib/gmail/tokenVault.ts + mig 064 | kod + unit + DB roundtrip kanıtı (test DB) |
+| Gmail send transport | src/lib/outreach/gmail.ts (mevcut) + access token tokenVault'tan | kod |
+| Inbound ingest (güvenli polling; watch/history pilot maddesi) | src/lib/gmail/replyIngest.ts | kod + unit + fake-provider E2E |
+| Reply classification FSM (opt-out/auto-reply/objection/not-now/positive) | src/lib/gmail/replyFsm.ts | kod + unit |
+| Cevapta follow-up İPTALİ | ingest → stopSequencesForLead | kod + unit + E2E |
+| Opt-out → suppression + do_not_contact + sonraki onay isteği 422 | ingest + auditCompliance | kod + E2E |
+| Thread attribution (In-Reply-To/References ↔ rfc_message_id) | replyIngest | kod + unit + E2E |
+| Reconcile görünürlüğü | /reconcile (Telegram) + kokpit sorunlar paneli | kod (Faz 5) |
+| Shadow mode | GMAIL_INGEST_ENABLED default kapalı | kod + E2E guard |
+
+### KULLANICI AKSİYONLARI (kod bunlarsız gerçek provider'a ÇIKAMAZ — dürüst liste)
+1. Google Cloud OAuth client (web) + redirect URI; Vercel env:
+   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GMAIL_OAUTH_REDIRECT_URI.
+2. /api/gmail/oauth/start akışını tarayıcıdan tamamla (consent).
+3. DNS: SPF + DKIM + DMARC kayıtları (deliverability ön şartı).
+4. KVKK/İYS: ticari ileti envanteri + ret kanalı beyanı (metinler hazır;
+   hukuki teyit kullanıcıda).
+5. Bağımsız güvenlik incelemesi (OAuth/vault/ingest yüzeyi) — pilot ÖN ŞARTI.
+6. Ayrı açık onaylar: GMAIL_INGEST_ENABLED=true (ingest) ve
+   GMAIL_SEND_ENABLED=true (gönderim; mesaj-başı HITL korunur).
+
+### Bilinen sınırlar (gizlenmedi)
+- id_token e-postası JWKS ile ayrıca doğrulanmıyor (TLS+code-exchange kanalı;
+  pilot güvenlik incelemesi maddesi).
+- Ingest polling'tir (3 gün penceresi, 25 mesaj/sayfa); watch/history pilotta.
+- 'GERÇEK provider ile kanıtlı' etiketi HÂLÂ YOK — tüm E2E fake transport.

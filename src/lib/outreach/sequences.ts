@@ -220,6 +220,12 @@ async function releaseStep(id: string): Promise<boolean> {
   return !error && (data ?? []).length === 1
 }
 
+/** FINALIZATION Faz 7: inbound cevap/opt-out geldiğinde ingest bu fonksiyonla
+ *  sequence'i durdurur — cron'daki stop kuralıyla AYNI yazım yolu. */
+export async function stopSequencesForLead(leadId: string): Promise<number> {
+  return cancelOpenSteps(leadId)
+}
+
 /** Reply/opt-out: lead'in TÜM açık adımları iptal (done=true) — sequence durur. */
 async function cancelOpenSteps(leadId: string): Promise<number> {
   const { data, error } = await supabaseAdmin
