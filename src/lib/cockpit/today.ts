@@ -9,6 +9,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { findSendApprovalsBatch } from '@/lib/outreach/gmail'
 import { extractDomain, getSuppressedSet } from '@/lib/outreach/auditCompliance'
 import { resolveCanonicalRecipients } from '@/lib/contacts/contactService'
+import type { BudgetAction } from './timeBudget'
 
 // Paylaşılan tipler + saf yardımcılar client-safe modülde (shared.ts) — build:
 // 'use client' paneller server-only olan bu dosyadan DEĞER import edemez.
@@ -80,6 +81,8 @@ export interface TodayCockpit {
   opsMetrics: { data: OpsMetrics | null; error: string | null }
   /** Faz 4: gece enrichment son-koşu özeti (hata/limit/maliyet görünürlüğü). */
   enrichment: { data: EnrichmentStatus | null; error: string | null }
+  /** Faz 7: 30dk zaman-bütçesi için hazır aksiyonlar (UI değer/süre sıralar). */
+  budgetActions: BudgetAction[]
 }
 
 export interface EnrichmentStatus {
@@ -534,6 +537,13 @@ export async function getTodayCockpit(nowMs: number = Date.now()): Promise<Today
         (err: unknown) => ({ data: null, error: err instanceof Error ? err.message : 'hata' })
       ),
     ])
+  // Faz 7: panelleri zaman-bütçesi aksiyonlarına çevir (UI değer/süre sıralar).
+  const budgetActions: BudgetAction[] = [
+    ...callResult.items.map((l) => ({ id: `call:${l.id}`, kind: 'call' as const, label: `Ara: ${l.businessName}` })),
+    ...pendingSends.items.map((d) => ({ id: `send:${d.draftId}`, kind: 'approve_send' as const, label: `Onayla/gönder: ${d.businessName}` })),
+    ...overdueFollowups.items.map((f) => ({ id: `fu:${f.id}`, kind: 'followup' as const, label: `Takip: ${f.businessName}` })),
+  ]
+
   return {
     leadsToCall: { items: callResult.items, error: callResult.error },
     callDuplicates: callResult.duplicates,
@@ -545,5 +555,6 @@ export async function getTodayCockpit(nowMs: number = Date.now()): Promise<Today
     revenue,
     opsMetrics,
     enrichment,
+    budgetActions,
   }
 }

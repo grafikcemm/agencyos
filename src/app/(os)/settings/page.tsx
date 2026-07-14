@@ -10,11 +10,13 @@ import { TelegramDiagnostics } from '@/components/settings/TelegramDiagnostics'
 import { VoiceDnaPanel } from '@/components/settings/VoiceDnaPanel'
 import { GmailConnectionPanel } from '@/components/settings/GmailConnectionPanel'
 
+interface ReadinessCheck { key: string; label: string; ok: boolean; required: boolean; detail: string }
 interface ConfigHealth {
   success: boolean
   healthy: boolean
   missingRequired: string[]
   checks: Array<{ key: string; label: string; configured: boolean; required: boolean }>
+  pilotReadiness: { healthy: boolean; checks: ReadinessCheck[]; failedRequired: string[] } | null
 }
 
 const AGENCY_NAME_KEY = 'agency_name'
@@ -177,6 +179,40 @@ export default function SettingsPage() {
               : 'bg-[var(--danger)]/10 border-[var(--danger)]/30 text-[var(--danger)]'
           }`}>
             {msg.text}
+          </div>
+        )}
+
+        {/* Pilot-readiness sağlık kartı (Faz 7) — healthy YALNIZ gerçekten
+            pilot-ready ise. Gmail/OAuth/scope/hesap/transport/LIFE006/uyum. */}
+        {configHealth?.pilotReadiness && (
+          <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-xl p-5 space-y-3">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border-subtle)]">
+              <div className="flex items-center gap-2">
+                <Activity className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span className="text-xs font-semibold text-[var(--text-primary)] uppercase tracking-wider">Pilot Hazırlığı</span>
+              </div>
+              <Badge variant={configHealth.pilotReadiness.healthy ? 'success' : 'danger'}>
+                {configHealth.pilotReadiness.healthy ? 'PİLOT-READY' : 'HAZIR DEĞİL'}
+              </Badge>
+            </div>
+            <div className="space-y-2">
+              {configHealth.pilotReadiness.checks.map((c) => (
+                <div key={c.key} className="flex justify-between items-start gap-3 py-1 border-b border-[var(--border-subtle)]/40 last:border-0">
+                  <div className="min-w-0">
+                    <span className="text-xs text-[var(--text-secondary)] block">
+                      {c.label}{c.required ? '' : ' (ops.)'}
+                    </span>
+                    {!c.ok && <span className="text-[9px] text-[var(--text-muted)] block">{c.detail}</span>}
+                  </div>
+                  {c.ok ? <Badge variant="success">✓</Badge> : c.required ? <Badge variant="danger">Eksik</Badge> : <Badge variant="muted">—</Badge>}
+                </div>
+              ))}
+            </div>
+            {!configHealth.pilotReadiness.healthy && (
+              <p className="text-[10px] text-[var(--danger)]">
+                ⚠ Gerçek gönderim/pilot için eksik zorunlu adımlar var — yukarıdaki &quot;Eksik&quot; kalemleri tamamlanmalı.
+              </p>
+            )}
           </div>
         )}
 

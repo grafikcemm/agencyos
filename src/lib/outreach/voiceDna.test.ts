@@ -44,6 +44,8 @@ import {
   getVoiceContext,
   getVoiceProfile,
   recordStyleDelta,
+  analyzeVoiceSamples,
+  ingestVoiceSamples,
   PROMOTE_THRESHOLD,
 } from './voiceDna'
 
@@ -251,5 +253,52 @@ describe('yapısal gözlem → aday → profil zinciri (Faz 4.1)', () => {
     const candidates = await getStyleCandidates()
     expect(candidates.find((c) => c.rule.includes('samimi'))?.count).toBe(1)
     expect(candidates.find((c) => c.rule.includes('uzun'))?.count).toBe(1)
+  })
+})
+
+describe('Voice DNA ONBOARDING — örnek yükleme (Faz 7)', () => {
+  beforeEach(() => { store.clear(); readError = null; writeError = null })
+
+  it('analyzeVoiceSamples: resmi ton + kısa cümle + açılış çıkarır (SAF)', () => {
+    const a = analyzeVoiceSamples([
+      'Merhaba, size kısa bir teklifimiz var. Rica ederim değerlendirin. Saygılar.',
+      'Sayın yetkili, sizin için hazırladık. İyi çalışmalar.',
+    ])
+    expect(a.sampleCount).toBe(2)
+    expect(a.formality.formal).toBe(2)
+    expect(a.sentenceLen.shorter).toBeGreaterThan(0)
+    expect(Object.keys(a.openings).length).toBeGreaterThan(0)
+  })
+
+  it('analyzeVoiceSamples: çok kısa metin örnek sayılmaz', () => {
+    const a = analyzeVoiceSamples(['kısa', 'ok'])
+    expect(a.sampleCount).toBe(0)
+  })
+
+  it('analyzeVoiceSamples: samimi ton tespiti', () => {
+    const a = analyzeVoiceSamples(['Selam kanka, sana bir fikrim var. Hey, bak ne buldum.'])
+    expect(a.formality.informal).toBe(1)
+  })
+
+  it('ingestVoiceSamples: gözlem havuzuna EKLER ama ONAYSIZ AKTİF ETMEZ', async () => {
+    const n = await ingestVoiceSamples([
+      'Merhaba, size kısa bir teklifimiz var. Rica ederim değerlendirin. Saygılar.',
+      'Sayın yetkili, sizin için özel hazırladık. İyi çalışmalar dilerim.',
+    ])
+    expect(n).toBe(2)
+    // Aday olarak yüzeye çıkar...
+    const candidates = await getStyleCandidates()
+    expect(candidates.length).toBeGreaterThan(0)
+    // ...ama AKTİF profil hâlâ BOŞ (onay yapılmadı).
+    const active = await getApprovedStyleRules()
+    expect(active.positive).toHaveLength(0)
+    expect(active.negative).toHaveLength(0)
+  })
+
+  it('ingestVoiceSamples: örnek yoksa 0 (sahte iddia yok, yazım yok)', async () => {
+    const n = await ingestVoiceSamples(['x', ''])
+    expect(n).toBe(0)
+    const active = await getApprovedStyleRules()
+    expect(active.positive).toHaveLength(0)
   })
 })

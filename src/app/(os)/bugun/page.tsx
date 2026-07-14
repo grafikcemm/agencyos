@@ -11,6 +11,7 @@ import { PendingSendsPanel } from '@/components/cockpit/PendingSendsPanel'
 import { CallListPanel } from '@/components/cockpit/CallListPanel'
 import { SendIssuesPanel } from '@/components/cockpit/SendIssuesPanel'
 import { OpsMetricsBar } from '@/components/cockpit/OpsMetricsBar'
+import { TimeBudgetPlanner } from '@/components/cockpit/TimeBudgetPlanner'
 
 export const dynamic = 'force-dynamic'
 
@@ -102,6 +103,9 @@ export default async function BugunPage() {
         ) : null}
       </section>
 
+      {/* Faz 7: 30dk zaman bütçesi — değer/süre sıralı plan + görünür backlog */}
+      <TimeBudgetPlanner actions={c.budgetActions} />
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <CallListPanel initial={c.leadsToCall} duplicates={c.callDuplicates} />
 
@@ -109,7 +113,7 @@ export default async function BugunPage() {
 
         <Panel icon={Inbox} title="Cevaplar" count={c.replies.items.length}
           error={c.replies.error}
-          empty="Henüz gelen cevap yok — reply ingest Sprint 2'de canlıya alınacak." testId="panel-replies">
+          empty="Henüz gelen cevap yok. Reply ingest cron kayıtlı (3 saatte bir); GMAIL_INGEST_ENABLED açılınca gerçek cevaplar buraya düşer." testId="panel-replies">
           <ul className="flex flex-col gap-2">
             {c.replies.items.map((r) => (
               <li key={r.id} className="text-[13px] text-[var(--text-secondary)] truncate">

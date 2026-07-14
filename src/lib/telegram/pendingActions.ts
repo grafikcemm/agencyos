@@ -12,7 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { lifeSupabaseAdmin } from '@/lib/lifeSupabaseAdmin'
-import { createHash } from 'crypto'
+import { createHash, randomInt } from 'crypto'
 
 export const PENDING_ACTION_TTL_MS = 10 * 60_000
 
@@ -38,11 +38,20 @@ interface MemoryEntry extends PendingAction {
   chatKey: string
 }
 
-/** 6 haneli tek-kullanımlık teyit kodu (0-9A-Z, karışık). rng enjekte edilebilir. */
-export function makeConfirmCode(rng: () => number = Math.random): string {
+/**
+ * 6 haneli tek-kullanımlık teyit kodu (0/O/1/I hariç). Bu kod gönderim/teklif
+ * aksiyonlarını koruyan güvenlik token'ıdır → VARSAYILAN kaynak KRİPTOGRAFİK
+ * güvenli (crypto.randomInt); Math.random KULLANILMAZ (tahmin edilemez olmalı).
+ * `rng` YALNIZ test için enjekte edilir (deterministik); [0,1) üretmeli.
+ */
+export function makeConfirmCode(rng?: () => number): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // benzeşen 0/O/1/I çıkarıldı
+  // Güvenli varsayılan: crypto.randomInt (bias'sız, tahmin edilemez).
+  const pick = rng
+    ? () => alphabet[Math.floor(rng() * alphabet.length)]
+    : () => alphabet[randomInt(alphabet.length)]
   let code = ''
-  for (let i = 0; i < 6; i++) code += alphabet[Math.floor(rng() * alphabet.length)]
+  for (let i = 0; i < 6; i++) code += pick()
   return code
 }
 

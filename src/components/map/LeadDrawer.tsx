@@ -783,25 +783,47 @@ function LeadDrawerInner({ lead: rawLead, onClose }: LeadDrawerProps) {
             </div>
           )}
 
-          {lead.first_message && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h3 className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase">İlk Mesaj (WhatsApp)</h3>
-                <button
-                  onClick={() => copyGated('first_message', lead.first_message || '')}
-                  disabled={!gates['first_message']?.ok}
-                  data-testid="copy-first-message"
-                  className="text-[9px] text-[var(--accent)] hover:text-[var(--accent-hover)] flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+          {lead.first_message && (() => {
+            // FINAL PILOT BLOCKERS Faz 7 (audit #13): gate'i GEÇMEYEN eski
+            // first_message NORMAL satış metni gibi gösterilmez — "LEGACY /
+            // GEÇERSİZ" işaretlenir, kopya kapalı, metin görsel olarak bastırılır.
+            const gate = gates['first_message']
+            const isLegacyInvalid = gate != null && !gate.ok
+            return (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-[10px] text-[var(--text-muted)] font-bold tracking-widest uppercase">
+                    İlk Mesaj (WhatsApp){isLegacyInvalid && ' — LEGACY / GEÇERSİZ'}
+                  </h3>
+                  <button
+                    onClick={() => copyGated('first_message', lead.first_message || '')}
+                    disabled={!gate?.ok}
+                    data-testid="copy-first-message"
+                    className="text-[9px] text-[var(--accent)] hover:text-[var(--accent-hover)] flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Copy className="w-3 h-3" /> Kopyala
+                  </button>
+                </div>
+                {isLegacyInvalid && (
+                  <div className="bg-[var(--danger)]/10 border border-[var(--danger)]/30 rounded-lg px-3 py-2 text-[10px] text-[var(--danger)] leading-relaxed">
+                    ⚠ Bu eski metin güncel kalite kapısını GEÇMİYOR — satış metni olarak kullanmayın.
+                    Yeni üretim aşağıdaki &quot;Soğuk E-posta&quot; ile yapılır. (Canlı yeniden-üretim ayrı veri onayı ister.)
+                  </div>
+                )}
+                <GateNote gate={gate} />
+                <div
+                  data-testid="first-message-body"
+                  className={`border rounded-lg p-3 text-[11px] leading-relaxed whitespace-pre-wrap ${
+                    isLegacyInvalid
+                      ? 'bg-[var(--bg-base)]/40 border-[var(--danger)]/20 text-[var(--text-muted)] italic line-through decoration-[var(--danger)]/40'
+                      : 'bg-[var(--bg-base)] border-[var(--border-subtle)] text-[var(--text-secondary)]'
+                  }`}
                 >
-                  <Copy className="w-3 h-3" /> Kopyala
-                </button>
+                  {lead.first_message}
+                </div>
               </div>
-              <GateNote gate={gates['first_message']} />
-              <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg p-3 text-[11px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-wrap">
-                {lead.first_message}
-              </div>
-            </div>
-          )}
+            )
+          })()}
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">

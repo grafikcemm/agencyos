@@ -3,6 +3,7 @@
 
 import { NextResponse } from 'next/server'
 import { requireApiAccess } from '@/lib/auth'
+import { getPilotReadiness } from '@/lib/health/pilotReadiness'
 
 interface ConfigCheck {
   key: string
@@ -35,10 +36,23 @@ export async function GET(req: Request) {
 
   const missingRequired = checks.filter(c => c.required && !c.configured).map(c => c.key)
 
+  // FINAL PILOT BLOCKERS Faz 7: healthy YALNIZ GERÇEK pilot-ready ise true —
+  // env-varlığı YETMEZ; Gmail/OAuth/scope/hesap/transport/ingest/LIFE006/uyum da
+  // gerekir (audit bulgu #12). Env eksikse ya da pilot-readiness başarısızsa false.
+  let readiness: Awaited<ReturnType<typeof getPilotReadiness>> | null = null
+  try {
+    readiness = await getPilotReadiness()
+  } catch (err) {
+    readiness = null
+    console.error('[health] pilot-readiness hesaplanamadı:', err instanceof Error ? err.message : 'unknown')
+  }
+  const healthy = missingRequired.length === 0 && readiness !== null && readiness.healthy
+
   return NextResponse.json({
     success: true,
-    healthy: missingRequired.length === 0,
+    healthy,
     missingRequired,
     checks,
+    pilotReadiness: readiness,
   })
 }

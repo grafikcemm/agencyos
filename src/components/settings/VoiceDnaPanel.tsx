@@ -19,12 +19,37 @@ export function VoiceDnaPanel() {
   const [data, setData] = useState<{ phraseCandidates: PhraseCandidate[]; styleCandidates: StyleCandidate[]; profile: Profile } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [samples, setSamples] = useState('')
+  const [sampleMsg, setSampleMsg] = useState<string | null>(null)
+  const [ingesting, setIngesting] = useState(false)
 
   const load = () =>
     fetch('/api/voice-dna')
       .then((r) => r.json())
       .then((d) => (d.profile ? setData(d) : setError(d.error ?? 'yüklenemedi')))
       .catch(() => setError('bağlantı hatası'))
+
+  async function submitSamples() {
+    // Örnekleri "---" ile ayır (her biri ayrı e-posta/teklif).
+    const list = samples.split(/\n-{3,}\n/).map((s) => s.trim()).filter(Boolean)
+    if (list.length === 0) { setSampleMsg('En az bir örnek yapıştırın (aralara --- koyun).'); return }
+    setIngesting(true)
+    setSampleMsg(null)
+    try {
+      const res = await fetch('/api/voice/samples', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ samples: list }),
+      })
+      const json = await res.json()
+      setSampleMsg(json.message ?? (json.success ? 'İşlendi.' : json.error ?? 'hata'))
+      if (json.success) { setSamples(''); await load() }
+    } catch {
+      setSampleMsg('bağlantı hatası')
+    } finally {
+      setIngesting(false)
+    }
+  }
 
   useEffect(() => {
     load()
@@ -53,6 +78,29 @@ export function VoiceDnaPanel() {
 
       {error && <p className="text-[12px] text-red-400">{error}</p>}
       {!data && !error && <p className="text-[12px] text-[var(--text-muted)]">Yükleniyor…</p>}
+
+      {/* Faz 7 — onboarding: eski profesyonel örnekleri yapıştır → aday kurallar
+          (ONAYSIZ AKTİF OLMAZ; aşağıdaki adaylardan onaylanır). */}
+      <div className="mb-3 space-y-1.5" data-testid="voice-onboarding">
+        <label className="text-[11px] text-[var(--text-muted)]">
+          Eski profesyonel e-posta/teklif örnekleri (5–10). Her örneği <code>---</code> satırıyla ayır. Çıkarılan kurallar onaylanana kadar aktif olmaz.
+        </label>
+        <textarea
+          value={samples}
+          onChange={(e) => setSamples(e.target.value)}
+          rows={4}
+          placeholder={'Merhaba, ...\n---\nSayın yetkili, ...'}
+          className="w-full bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-lg text-[12px] p-2 text-[var(--text-primary)] outline-none focus:border-[var(--border-highlight)]"
+        />
+        <button
+          onClick={submitSamples}
+          disabled={ingesting}
+          className="px-3 py-1.5 bg-[var(--accent)] text-white text-[11px] font-semibold rounded-lg disabled:opacity-50"
+        >
+          {ingesting ? 'İşleniyor…' : 'Örneklerden aday kural çıkar'}
+        </button>
+        {sampleMsg && <p className="text-[11px] text-[var(--text-secondary)]">{sampleMsg}</p>}
+      </div>
 
       {data && (
         <div className="space-y-3 text-[12px]">

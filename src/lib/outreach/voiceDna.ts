@@ -294,6 +294,77 @@ export async function recordStyleDelta(
   }
 }
 
+// ── Voice DNA ONBOARDING (Faz 7): eski profesyonel örneklerden aday kural ─────
+// Kullanıcı 5-10 eski e-posta/teklif metni yapıştırır → gözlem çıkarılır →
+// EXISTING aday havuzuna eklenir. ÇIKARILAN kurallar ONAYSIZ AKTİF OLMAZ
+// (aktivasyon yalnız approveStyleRule ile). Sahte "öğrenildi" iddiası yok.
+
+export interface VoiceSampleAnalysis {
+  openings: Record<string, number>
+  formality: { formal: number; informal: number }
+  sentenceLen: { shorter: number; longer: number }
+  sampleCount: number
+}
+
+/** Kısa cümle eşiği (kelime) — altı "kısa", üstü "uzun" stil sinyali. */
+const SHORT_SENTENCE_WORDS = 12
+
+/** SAF: örnek metinlerden stil gözlemi çıkarır (I/O yok). */
+export function analyzeVoiceSamples(samples: string[]): VoiceSampleAnalysis {
+  const result: VoiceSampleAnalysis = {
+    openings: {}, formality: { formal: 0, informal: 0 }, sentenceLen: { shorter: 0, longer: 0 }, sampleCount: 0,
+  }
+  for (const raw of samples) {
+    const text = raw.trim()
+    if (text.length < 20) continue // çok kısa → örnek sayılmaz
+    result.sampleCount += 1
+
+    // Açılış: ilk cümle/satır (PII'siz, kısa).
+    const firstLine = text.split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 0) ?? ''
+    const opening = firstLine.split(/[.!?]/)[0]?.slice(0, 60).trim()
+    if (opening && !containsPii(opening)) {
+      const key = fold(opening)
+      result.openings[key] = (result.openings[key] ?? 0) + 1
+    }
+
+    // Formality: "siz" dili işaretleri vs "sen" dili.
+    const formalHits = (text.match(/\b(siz|sizin|sizler|rica ederim|saygılar|iyi çalışmalar)\b/gi) ?? []).length
+    const informalHits = (text.match(/\b(sen|senin|selam|kanka|hey)\b/gi) ?? []).length
+    if (formalHits > informalHits) result.formality.formal += 1
+    else if (informalHits > formalHits) result.formality.informal += 1
+
+    // Cümle uzunluğu: ortalama kelime sayısı.
+    const sentences = text.split(/[.!?]+/).map((s) => s.trim()).filter((s) => s.length > 0)
+    if (sentences.length > 0) {
+      const avgWords = sentences.reduce((sum, s) => sum + s.split(/\s+/).length, 0) / sentences.length
+      if (avgWords <= SHORT_SENTENCE_WORDS) result.sentenceLen.shorter += 1
+      else result.sentenceLen.longer += 1
+    }
+  }
+  return result
+}
+
+/**
+ * Örnek analizini EXISTING gözlem havuzuna ekler → getStyleCandidates aday
+ * olarak yüzeye çıkarır. AKTİF DEĞİL (onay yalnız approveStyleRule). Örnek
+ * yoksa 0 döner (sahte iddia yok). Dönen: eklenen örnek sayısı.
+ */
+export async function ingestVoiceSamples(samples: string[]): Promise<number> {
+  const analysis = analyzeVoiceSamples(samples)
+  if (analysis.sampleCount === 0) return 0
+  const obs = await readObservations()
+  obs.total += analysis.sampleCount
+  for (const [opening, count] of Object.entries(analysis.openings)) {
+    obs.openings[opening] = (obs.openings[opening] ?? 0) + count
+  }
+  obs.formality.formal += analysis.formality.formal
+  obs.formality.informal += analysis.formality.informal
+  obs.sentenceLen.shorter += analysis.sentenceLen.shorter
+  obs.sentenceLen.longer += analysis.sentenceLen.longer
+  await writeSetting('voice_style_observations', JSON.stringify(obs))
+  return analysis.sampleCount
+}
+
 export interface StyleRuleCandidate {
   rule: string
   polarity: 'positive' | 'negative'
