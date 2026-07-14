@@ -13,11 +13,11 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAccessToken } from '@/lib/gmail/tokenVault'
 import {
-  createGmailInboundTransport,
   ingestInboundReplies,
   type InboundMessage,
   type InboundTransport,
 } from '@/lib/gmail/replyIngest'
+import { createGmailInboundTransport } from '@/lib/gmail/gmailInboundTransport'
 
 export const maxDuration = 120
 
@@ -71,13 +71,17 @@ async function handle(req: Request) {
       return NextResponse.json({ success: false, error: 'fake gövde şeması geçersiz' }, { status: 400 })
     }
     const messages: InboundMessage[] = parsed.fakeMessages
-    transport = { kind: 'fake', listInbound: async () => messages }
+    // Fake: cursor ilerletmez (nextHistoryId null); advanceCursor yok.
+    transport = { kind: 'fake', listInbound: async () => ({ messages, nextHistoryId: null }) }
   } else {
     const token = await getAccessToken()
     if (!token.ok) {
       return NextResponse.json({ success: false, error: token.error }, { status: 503 })
     }
-    transport = createGmailInboundTransport(token.accessToken)
+    transport = createGmailInboundTransport(
+      { id: token.account.id, lastHistoryId: token.account.last_history_id },
+      token.accessToken,
+    )
   }
 
   const counters = await ingestInboundReplies(transport)

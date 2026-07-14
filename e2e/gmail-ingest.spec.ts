@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { E2E_CRON_SECRET } from '../playwright.config'
-import { seedDraft, cleanupE2E, requestSend, approve, sendGmail, supabaseAdmin } from './helpers'
+import { seedDraft, cleanupE2E, requestSend, approve, sendGmail, supabaseAdmin, E2E_MARK } from './helpers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // FINALIZATION Faz 7 — inbound cevap ingest'i, GERÇEK route + GERÇEK şema
@@ -160,6 +160,56 @@ test('OPT-OUT zinciri: "ret" cevabı → suppression + do_not_contact + SONRAKİ
   const rq2 = await requestSend(request, draft2!.id as string)
   expect(rq2.status).toBe(422)
   expect(JSON.stringify(rq2.body.blockedReasons ?? rq2.body)).toMatch(/suppress|do_not_contact/i)
+})
+
+test('GÖNDEREN UYUŞMAZLIĞI: bilinen In-Reply-To ama farklı From → karantina, lead DOKUNULMAZ', async ({ request }) => {
+  const db = supabaseAdmin()
+  const seeded = await seedDraft('gmail-mismatch')
+  const rq = await requestSend(request, seeded.draftId)
+  expect(rq.status).toBe(200)
+  const ap = await approve(request, rq.body.data.approvalId as string)
+  expect(ap.status).toBe(200)
+  const send = await sendGmail(request, seeded.draftId, rq.body.data.approvalId as string)
+  expect(send.status).toBe(200)
+  const { data: attempt } = await db
+    .from('outreach_send_attempts')
+    .select('rfc_message_id')
+    .eq('outreach_message_id', seeded.draftId)
+    .single()
+
+  // Alakasız gönderen (yabancı adres) ama GEÇERLİ In-Reply-To taşıyor.
+  const t = await tick(request, [
+    {
+      gmailMessageId: `e2e-mismatch-${Date.now()}`,
+      threadId: null,
+      fromAddress: `yabanci-${E2E_MARK}@baska-alan.example`,
+      subject: `Re: teklif ${E2E_MARK}`,
+      bodyText: 'Ret. Bir daha mail atmayın.',
+      inReplyTo: attempt!.rfc_message_id as string,
+      references: null,
+      internalDateMs: Date.now(),
+    },
+  ])
+  expect(t.status).toBe(200)
+  expect(t.body.counters.senderMismatch).toBe(1)
+  expect(t.body.counters.quarantined).toBe(1)
+  expect(t.body.counters.optOuts).toBe(0)
+  expect(t.body.counters.responded).toBe(0)
+
+  // Lead DEĞİŞMEDİ: ne responded ne suppressed.
+  const { data: lead } = await db.from('leads').select('status, do_not_contact').eq('id', seeded.leadId).single()
+  expect(lead!.status).not.toBe('responded')
+  expect(lead!.do_not_contact).toBe(false)
+  // Karantina kaydı görünür.
+  const { data: quar } = await db
+    .from('gmail_inbound_quarantine')
+    .select('reason')
+    .eq('reason', 'sender_mismatch')
+    .ilike('subject', `%${E2E_MARK}%`)
+  expect((quar ?? []).length).toBeGreaterThanOrEqual(1)
+  // Yabancı adres suppression'a EKLENMEDİ.
+  const { data: sup } = await db.from('suppression_list').select('address').ilike('address', `%yabanci-${E2E_MARK}%`)
+  expect(sup ?? []).toHaveLength(0)
 })
 
 test('SHADOW mode + fake-guard: bayrak kapalıyken mutasyon yok; yanlış secret 401', async ({ request }) => {

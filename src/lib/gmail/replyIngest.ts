@@ -32,10 +32,19 @@ export interface InboundMessage {
   internalDateMs: number | null
 }
 
+export interface InboundBatch {
+  messages: InboundMessage[]
+  /** İşlem güvenli tamamlanınca ilerletilecek history cursor (null → ilerleme
+   *  yok; ör. full-sync fallback ya da fake transport). */
+  nextHistoryId: string | null
+}
+
 export interface InboundTransport {
   kind: 'gmail' | 'fake'
-  /** Son ingest'ten beri gelen inbound adayları (provider-sayfalı). */
-  listInbound(): Promise<InboundMessage[]>
+  /** Son ingest'ten beri gelen inbound adayları + yeni cursor. */
+  listInbound(): Promise<InboundBatch>
+  /** Cursor'ı kalıcılaştır (yalnız tüm batch güvenli işlenince çağrılır). */
+  advanceCursor?(nextHistoryId: string): Promise<void>
 }
 
 export interface IngestCounters {
@@ -43,11 +52,23 @@ export interface IngestCounters {
   ingested: number
   deduped: number
   unmatched: number
+  /** Gönderen ↔ alıcı uyuşmazlığı: lead'e DOKUNULMAZ, karantinaya alınır. */
+  senderMismatch: number
+  quarantined: number
   optOuts: number
   responded: number
   autoReplies: number
   failed: number
+  cursorAdvanced: boolean
   classes: Partial<Record<ReplyClass, number>>
+}
+
+/** E-posta adresini karşılaştırma için normalize eder (köşeli parantez/boşluk/
+ *  büyük-küçük harf). */
+export function normalizeEmail(addr: string | null): string {
+  if (!addr) return ''
+  const angle = addr.match(/<([^>]+)>/)?.[1] ?? addr
+  return angle.trim().toLowerCase()
 }
 
 /** RFC id'lerinden outreach mesajını çöz: In-Reply-To + References taranır. */
@@ -57,7 +78,7 @@ function extractRfcIds(msg: InboundMessage): string[] {
 }
 
 async function resolveAttribution(msg: InboundMessage): Promise<
-  | { matched: true; outreachMessageId: string; leadId: string | null; threadRowId: string | null }
+  | { matched: true; outreachMessageId: string; leadId: string | null; leadEmail: string | null; threadRowId: string | null }
   | { matched: false }
 > {
   const rfcIds = extractRfcIds(msg)
@@ -78,6 +99,18 @@ async function resolveAttribution(msg: InboundMessage): Promise<
     .maybeSingle()
   if (omErr) throw new Error(`outreach mesajı okunamadı: ${omErr.message}`)
 
+  // Alıcı e-postasını çöz — inbound gönderenin DOĞRULAMASI için (aşağıda).
+  let leadEmail: string | null = null
+  if (om?.lead_id) {
+    const { data: lead, error: leadErr } = await supabaseAdmin
+      .from('leads')
+      .select('email')
+      .eq('id', om.lead_id)
+      .maybeSingle()
+    if (leadErr) throw new Error(`lead e-postası okunamadı: ${leadErr.message}`)
+    leadEmail = (lead?.email as string) ?? null
+  }
+
   let threadRowId: string | null = null
   if (om?.gmail_thread_id) {
     const { data: thread, error: thErr } = await supabaseAdmin
@@ -92,30 +125,65 @@ async function resolveAttribution(msg: InboundMessage): Promise<
     matched: true,
     outreachMessageId: attempt.outreach_message_id as string,
     leadId: (om?.lead_id as string) ?? null,
+    leadEmail,
     threadRowId,
   }
 }
 
-async function applyOptOut(leadId: string | null, fromAddress: string | null): Promise<void> {
-  if (fromAddress) {
-    const { error } = await supabaseAdmin.from('suppression_list').insert({
-      address: fromAddress.toLowerCase(),
-      scope: 'email',
-      reason: 'inbound opt-out (İYS/KVKK — "ret")',
-      source: 'gmail_ingest',
-    })
-    // duplicate suppression zararsız (23505) — diğer hatalar fail-closed.
-    if (error && error.code !== '23505') {
-      throw new Error(`suppression yazılamadı: ${error.message}`)
-    }
+/** Karantina: attribution edilemeyen VEYA gönderen-alıcı uyuşmayan mesaj —
+ *  görünür audit + tekrar-tarama engeli (full-sync fallback'te yeniden
+ *  işlenmez). Upsert: aynı mesaj yeniden görülürse seen_count artar. */
+async function quarantine(
+  msg: InboundMessage,
+  reason: 'unmatched' | 'sender_mismatch',
+): Promise<void> {
+  const { error } = await supabaseAdmin.rpc('gmail_quarantine_inbound', {
+    p_gmail_message_id: msg.gmailMessageId,
+    p_reason: reason,
+    p_from_address: msg.fromAddress,
+    p_subject: msg.subject,
+    p_rfc_refs: `${msg.inReplyTo ?? ''} ${msg.references ?? ''}`.trim() || null,
+  })
+  if (error) throw new Error(`karantina yazılamadı: ${error.message}`)
+}
+
+/** Bu gmail mesajı daha önce işlendi mi (email_messages) YA DA karantinada mı?
+ *  Full-sync fallback'te yeniden-işlemeyi engeller. */
+async function alreadySeen(gmailMessageId: string): Promise<boolean> {
+  const { data: existing, error: exErr } = await supabaseAdmin
+    .from('email_messages')
+    .select('id')
+    .eq('gmail_message_id', gmailMessageId)
+    .maybeSingle()
+  if (exErr) throw new Error(`dedupe sorgusu başarısız: ${exErr.message}`)
+  if (existing) return true
+  const { data: quar, error: qErr } = await supabaseAdmin
+    .from('gmail_inbound_quarantine')
+    .select('gmail_message_id')
+    .eq('gmail_message_id', gmailMessageId)
+    .maybeSingle()
+  if (qErr) throw new Error(`karantina sorgusu başarısız: ${qErr.message}`)
+  return Boolean(quar)
+}
+
+// leadId + fromAddress GARANTİ non-null (senderOk kapısı: eşleşen alıcı e-postası
+// hem leadId hem gönderen adresinin varlığını zorunlu kılar).
+async function applyOptOut(leadId: string, fromAddress: string): Promise<void> {
+  const { error: supErr } = await supabaseAdmin.from('suppression_list').insert({
+    address: fromAddress.toLowerCase(),
+    scope: 'email',
+    reason: 'inbound opt-out (İYS/KVKK — "ret")',
+    source: 'gmail_ingest',
+  })
+  // duplicate suppression zararsız (23505) — diğer hatalar fail-closed.
+  if (supErr && supErr.code !== '23505') {
+    throw new Error(`suppression yazılamadı: ${supErr.message}`)
   }
-  if (leadId) {
-    const { error } = await supabaseAdmin
-      .from('leads')
-      .update({ do_not_contact: true, updated_at: new Date().toISOString() })
-      .eq('id', leadId)
-    if (error) throw new Error(`do_not_contact yazılamadı: ${error.message}`)
-  }
+  const { error: leadErr } = await supabaseAdmin
+    .from('leads')
+    .update({ do_not_contact: true, updated_at: new Date().toISOString() })
+    .eq('id', leadId)
+  if (leadErr) throw new Error(`do_not_contact yazılamadı: ${leadErr.message}`)
 }
 
 async function markResponded(leadId: string): Promise<void> {
@@ -129,43 +197,64 @@ async function markResponded(leadId: string): Promise<void> {
 }
 
 /** Tek ingest turu — cron çağırır. Shadow/enable kararı ROUTE'ta (bu fonksiyon
- *  transport'u parametre alır; testlerde fake, üretimde gerçek Gmail). */
+ *  transport'u parametre alır; testlerde fake, üretimde gerçek Gmail).
+ *
+ *  Cursor disiplini: transport bir sonraki history cursor'ını verir; cursor
+ *  YALNIZ tüm batch güvenli (failed=0) işlendiğinde ilerletilir → hata anında
+ *  aynı pencere sonraki turda yeniden taranır (dedupe/karantina tekrarı engeller). */
 export async function ingestInboundReplies(transport: InboundTransport): Promise<IngestCounters> {
   const counters: IngestCounters = {
     scanned: 0,
     ingested: 0,
     deduped: 0,
     unmatched: 0,
+    senderMismatch: 0,
+    quarantined: 0,
     optOuts: 0,
     responded: 0,
     autoReplies: 0,
     failed: 0,
+    cursorAdvanced: false,
     classes: {},
   }
 
-  const messages = await transport.listInbound()
-  for (const msg of messages) {
+  const batch = await transport.listInbound()
+  for (const msg of batch.messages) {
     counters.scanned += 1
     try {
-      // Dedupe: aynı gmail mesajı iki kez işlenmez (retry/overlap güvenli).
-      const { data: existing, error: exErr } = await supabaseAdmin
-        .from('email_messages')
-        .select('id')
-        .eq('gmail_message_id', msg.gmailMessageId)
-        .maybeSingle()
-      if (exErr) throw new Error(`dedupe sorgusu başarısız: ${exErr.message}`)
-      if (existing) {
+      // Dedupe: işlenmiş (email_messages) YA DA karantinadaki mesaj atlanır.
+      if (await alreadySeen(msg.gmailMessageId)) {
         counters.deduped += 1
         continue
       }
 
       const attribution = await resolveAttribution(msg)
       if (!attribution.matched) {
-        // Sessizce bir lead'e YAPIŞTIRILMAZ — görünür sayaç + log.
+        // Sessizce bir lead'e YAPIŞTIRILMAZ — görünür karantina + audit.
+        await quarantine(msg, 'unmatched')
         counters.unmatched += 1
-        console.warn('[gmail-ingest] attribution edilemedi (rfc id eşleşmedi):', msg.gmailMessageId)
+        counters.quarantined += 1
         continue
       }
+
+      // GÖNDEREN DOĞRULAMASI: inbound 'From', gönderdiğimiz alıcıyla eşleşmeli.
+      // Alakasız/forward edilmiş bir mesaj bilinen In-Reply-To taşısa bile
+      // lead'i responded/suppressed YAPAMAZ (audit bulgu #7). leadId/leadEmail/
+      // fromAddress ÜÇÜ de non-null olmalı (lead'siz outreach → uyuşmazlık).
+      const senderOk =
+        attribution.leadId != null &&
+        attribution.leadEmail != null &&
+        msg.fromAddress != null &&
+        normalizeEmail(msg.fromAddress) === normalizeEmail(attribution.leadEmail)
+      if (!senderOk) {
+        await quarantine(msg, 'sender_mismatch')
+        counters.senderMismatch += 1
+        counters.quarantined += 1
+        console.warn('[gmail-ingest] gönderen alıcıyla uyuşmuyor — karantina:', msg.gmailMessageId)
+        continue
+      }
+      const leadId = attribution.leadId as string
+      const fromAddress = msg.fromAddress as string
 
       const cls = classifyReply(msg.bodyText)
       counters.classes[cls] = (counters.classes[cls] ?? 0) + 1
@@ -174,15 +263,15 @@ export async function ingestInboundReplies(transport: InboundTransport): Promise
       // Yan etkiler ÖNCE (fail-closed): suppression/lead yazılamadıysa mesaj
       // kaydedilmez → sonraki tur aynı mesajı yeniden dener (dedupe henüz yok).
       if (effects.suppress) {
-        await applyOptOut(attribution.leadId, msg.fromAddress)
+        await applyOptOut(leadId, fromAddress)
         counters.optOuts += 1
       }
-      if (effects.markResponded && attribution.leadId) {
-        await markResponded(attribution.leadId)
+      if (effects.markResponded) {
+        await markResponded(leadId)
         counters.responded += 1
       }
-      if (effects.cancelFollowups && attribution.leadId) {
-        await stopSequencesForLead(attribution.leadId)
+      if (effects.cancelFollowups) {
+        await stopSequencesForLead(leadId)
       }
       if (cls === 'auto_reply') counters.autoReplies += 1
 
@@ -211,76 +300,12 @@ export async function ingestInboundReplies(transport: InboundTransport): Promise
       console.error('[gmail-ingest] mesaj işlenemedi:', msg.gmailMessageId, err instanceof Error ? err.message : 'unknown')
     }
   }
+
+  // Cursor YALNIZ tüm batch hatasız işlendiyse ilerler. Bir mesaj bile
+  // failed ise cursor SABİT kalır → sonraki tur pencereyi yeniden tarar.
+  if (batch.nextHistoryId && counters.failed === 0 && transport.advanceCursor) {
+    await transport.advanceCursor(batch.nextHistoryId)
+    counters.cursorAdvanced = true
+  }
   return counters
-}
-
-// ── Gerçek Gmail transport (provider sınırı) ─────────────────────────────────
-// Access token tokenVault'tan; çağrı YALNIZ kullanıcı OAuth'u tamamlamış +
-// GMAIL_INGEST_ENABLED=true ise route'tan tetiklenir. Test/CI'da kullanılmaz.
-
-interface GmailListResponse {
-  messages?: Array<{ id: string }>
-}
-interface GmailMessageResponse {
-  id: string
-  threadId?: string
-  internalDate?: string
-  snippet?: string
-  payload?: {
-    headers?: Array<{ name: string; value: string }>
-    parts?: Array<{ mimeType?: string; body?: { data?: string } }>
-    body?: { data?: string }
-  }
-}
-
-function header(msg: GmailMessageResponse, name: string): string | null {
-  const h = msg.payload?.headers?.find((x) => x.name.toLowerCase() === name.toLowerCase())
-  return h?.value ?? null
-}
-
-function decodeBody(msg: GmailMessageResponse): string {
-  const direct = msg.payload?.body?.data
-  const part = msg.payload?.parts?.find((p) => p.mimeType === 'text/plain')?.body?.data
-  const data = part ?? direct
-  if (!data) return msg.snippet ?? ''
-  try {
-    return Buffer.from(data, 'base64url').toString('utf8')
-  } catch {
-    return msg.snippet ?? ''
-  }
-}
-
-export function createGmailInboundTransport(
-  accessToken: string,
-  fetchImpl: typeof fetch = fetch,
-): InboundTransport {
-  const base = 'https://gmail.googleapis.com/gmail/v1/users/me'
-  const auth = { Authorization: `Bearer ${accessToken}` }
-  return {
-    kind: 'gmail',
-    async listInbound() {
-      // Güvenli polling: son 3 günün inbox cevapları (watch/history pilotta).
-      const q = encodeURIComponent('in:inbox newer_than:3d')
-      const listRes = await fetchImpl(`${base}/messages?q=${q}&maxResults=25`, { headers: auth })
-      if (!listRes.ok) throw new Error(`gmail list ${listRes.status}`)
-      const list = (await listRes.json()) as GmailListResponse
-      const out: InboundMessage[] = []
-      for (const m of list.messages ?? []) {
-        const msgRes = await fetchImpl(`${base}/messages/${m.id}?format=full`, { headers: auth })
-        if (!msgRes.ok) throw new Error(`gmail get ${msgRes.status}`)
-        const full = (await msgRes.json()) as GmailMessageResponse
-        out.push({
-          gmailMessageId: full.id,
-          threadId: full.threadId ?? null,
-          fromAddress: (header(full, 'From') ?? '').match(/<([^>]+)>/)?.[1] ?? header(full, 'From'),
-          subject: header(full, 'Subject'),
-          bodyText: decodeBody(full),
-          inReplyTo: header(full, 'In-Reply-To'),
-          references: header(full, 'References'),
-          internalDateMs: full.internalDate ? Number(full.internalDate) : null,
-        })
-      }
-      return out
-    },
-  }
 }

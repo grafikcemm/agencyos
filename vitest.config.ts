@@ -29,6 +29,10 @@ export default defineConfig({
         'src/lib/gmail/tokenVault.ts': { lines: 90, branches: 85 },
         'src/lib/gmail/status.ts': { lines: 90, branches: 85 },
         'src/lib/outreach/gmailScopes.ts': { lines: 90, branches: 85 },
+        // FINAL PILOT BLOCKERS Faz 3 — inbound ingest + history-cursor transport:
+        'src/lib/gmail/replyIngest.ts': { lines: 90, branches: 85 },
+        'src/lib/gmail/gmailInboundTransport.ts': { lines: 90, branches: 85 },
+        'src/lib/cron/manifest.ts': { lines: 90, branches: 85 },
         'src/lib/outreach/sendMachine.ts': { statements: 90, lines: 90, branches: 80 },
         'src/lib/outreach/auditCompliance.ts': { statements: 90, lines: 90, branches: 85 },
         'src/lib/models/**/*.ts': { statements: 90, branches: 80 },

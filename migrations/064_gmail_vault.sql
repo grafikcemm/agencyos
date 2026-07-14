@@ -155,8 +155,50 @@ begin
 end
 $$;
 
+-- ── Inbound karantina (attribution edilemeyen / gönderen uyuşmayan) ──────────
+-- Görünür audit + full-sync fallback'te tekrar-işleme engeli (dedupe kaynağı).
+create table if not exists public.gmail_inbound_quarantine (
+  gmail_message_id text primary key,
+  reason           text not null check (reason in ('unmatched', 'sender_mismatch')),
+  from_address     text,
+  subject          text,
+  rfc_refs         text,
+  seen_count       integer not null default 1,
+  first_seen_at    timestamptz not null default now(),
+  last_seen_at     timestamptz not null default now()
+);
+alter table public.gmail_inbound_quarantine enable row level security;
+revoke all on public.gmail_inbound_quarantine from anon, authenticated;
+grant select, insert, update, delete on public.gmail_inbound_quarantine to service_role;
+
+-- Upsert: aynı mesaj yeniden görülürse seen_count artar (görünür tekrar sayısı).
+create or replace function public.gmail_quarantine_inbound(
+  p_gmail_message_id text,
+  p_reason text,
+  p_from_address text,
+  p_subject text,
+  p_rfc_refs text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.gmail_inbound_quarantine
+    (gmail_message_id, reason, from_address, subject, rfc_refs)
+  values (p_gmail_message_id, p_reason, p_from_address, p_subject, p_rfc_refs)
+  on conflict (gmail_message_id) do update
+    set seen_count   = public.gmail_inbound_quarantine.seen_count + 1,
+        last_seen_at = now(),
+        reason       = excluded.reason;
+end
+$$;
+
 -- ── Grants ───────────────────────────────────────────────────────────────────
 revoke all on function public.gmail_vault_read(uuid) from public, anon, authenticated;
+revoke all on function public.gmail_quarantine_inbound(text, text, text, text, text) from public, anon, authenticated;
+grant execute on function public.gmail_quarantine_inbound(text, text, text, text, text) to service_role;
 revoke all on function public.gmail_connect_account(text, text, text[]) from public, anon, authenticated;
 revoke all on function public.gmail_disconnect_account(uuid) from public, anon, authenticated;
 revoke all on function public.gmail_consume_oauth_state(text) from public, anon, authenticated;

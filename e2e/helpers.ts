@@ -92,6 +92,8 @@ export async function cleanupE2E(): Promise<void> {
     if (draftIds.length > 0) {
       await db.from('email_messages').delete().in('outreach_message_id', draftIds)
       await db.from('outreach_send_attempts').delete().in('outreach_message_id', draftIds)
+      // FINAL PILOT BLOCKERS Faz 3: inbound karantina izleri (unmatched/mismatch).
+      await db.from('gmail_inbound_quarantine').delete().ilike('subject', `%${E2E_MARK}%`)
       for (const id of draftIds) {
         await db.from('email_threads').delete().eq('gmail_thread_id', `dryrun-thread-${id}`)
       }
