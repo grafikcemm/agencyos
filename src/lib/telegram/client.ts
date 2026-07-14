@@ -127,6 +127,11 @@ export async function sendTelegramMessage(
   if (process.env.TELEGRAM_FAKE_TRANSPORT === 'success') {
     if (process.env.TELEGRAM_BOT_TOKEN) {
       console.error('[telegram] CRITICAL: TELEGRAM_FAKE_TRANSPORT set ama bot token dolu — fake YOK SAYILDI')
+    } else if (text.includes('[e2e-ambiguous]')) {
+      // FINALIZATION Faz 5 E2E: metin işaretliyse BELİRSİZ provider sonucu
+      // simüle edilir (timeout benzeri) — ledger'ın unknown + no-auto-resend
+      // davranışı gerçek route üzerinden kanıtlanır. Dış çağrı YOK.
+      return { ok: false, status: 0, error: 'fake-ambiguous (e2e)', retryable: true, ambiguous: true }
     } else {
       fakeMessageSeq += 1
       return { ok: true, status: 200, messageId: 900_000_000 + fakeMessageSeq }

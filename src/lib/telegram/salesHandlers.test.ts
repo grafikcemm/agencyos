@@ -26,9 +26,11 @@ vi.mock('@/lib/cockpit/leadActions', () => ({
 }))
 
 let leadRows: Array<Record<string, unknown>> = []
+let leadRowsError: { message: string } | null = null
 let leadDetail: Record<string, unknown> | null = null
-let draftInsertError: { message: string } | null = null
-const draftInserts: Array<Record<string, unknown>> = []
+/** Tablo-bazli maybeSingle/list sonuclari (FINALIZATION Faz 5 komutlari icin). */
+let tableSingle: Record<string, { data: Record<string, unknown> | null; error: { message: string; code?: string } | null }> = {}
+let tableList: Record<string, { data: Array<Record<string, unknown>> | null; error: { message: string; code?: string } | null }> = {}
 
 vi.mock('@/lib/supabase', () => ({
   supabaseAdmin: {
@@ -38,24 +40,77 @@ vi.mock('@/lib/supabase', () => ({
         select: () => api,
         ilike: () => api,
         eq: () => api,
-        limit: async () =>
-          table === 'leads' ? { data: leadRows, error: null } : { data: [], error: null },
-        maybeSingle: async () => ({ data: leadDetail, error: null }),
-        insert: (row: Record<string, unknown>) => {
-          draftInserts.push(row)
-          return {
-            select: () => ({
-              single: async () =>
-                draftInsertError
-                  ? { data: null, error: draftInsertError }
-                  : { data: { id: 'draft-uuid-12345678' }, error: null },
-            }),
+        order: () => api,
+        limit: (() => {
+          const fn = async () => {
+            if (table === 'leads') return { data: leadRowsError ? null : leadRows, error: leadRowsError }
+            return tableList[table] ?? { data: [], error: null }
           }
+          // limit hem awaited hem chain (maybeSingle oncesi) kullanilir.
+          const chain = () => api
+          return Object.assign(chain, { then: (r: (v: unknown) => unknown) => fn().then(r) })
+        })(),
+        maybeSingle: async () => tableSingle[table] ?? { data: leadDetail, error: null },
+        then: (resolve: (v: unknown) => unknown) => {
+          const out = table === 'leads'
+            ? { data: leadRowsError ? null : leadRows, error: leadRowsError }
+            : (tableList[table] ?? { data: [], error: null })
+          return Promise.resolve(out).then(resolve)
         },
       })
       return api
     },
   },
+}))
+
+// LIFE ledger (reconcile gorunumu)
+let lifeList: { data: Array<Record<string, unknown>> | null; error: { message: string; code?: string } | null } = { data: [], error: null }
+vi.mock('@/lib/lifeSupabaseAdmin', () => ({
+  lifeSupabaseAdmin: {
+    from: () => {
+      const api: Record<string, unknown> = {}
+      Object.assign(api, {
+        select: () => api,
+        in: () => api,
+        order: () => api,
+        limit: () => api,
+        then: (resolve: (v: unknown) => unknown) => Promise.resolve(lifeList).then(resolve),
+      })
+      return api
+    },
+  },
+}))
+
+// Canonical cold-email servisi (web ile parity kaniti: AYNI fonksiyon cagrilir).
+const generateMock = vi.fn()
+vi.mock('@/lib/outreach/coldEmailService', () => ({
+  generateColdEmailDraft: (...a: unknown[]) => generateMock(...a),
+}))
+
+const requestApprovalMock = vi.fn()
+const findApprovalMock = vi.fn()
+vi.mock('@/lib/outreach/gmail', () => ({
+  requestSendApproval: (...a: unknown[]) => requestApprovalMock(...a),
+  findSendApproval: (...a: unknown[]) => findApprovalMock(...a),
+}))
+
+const createProposalMock = vi.fn()
+const listProposalsMock = vi.fn()
+vi.mock('@/lib/proposals/proposalService', () => ({
+  createProposalDraft: (...a: unknown[]) => createProposalMock(...a),
+  listProposalsForLead: (...a: unknown[]) => listProposalsMock(...a),
+}))
+
+let recipientMock: { email: string | null; contactId: string | null; contactName: string | null; source: string } = {
+  email: 'a@b.co', contactId: null, contactName: null, source: 'lead_email',
+}
+vi.mock('@/lib/contacts/contactService', () => ({
+  resolveCanonicalRecipient: async () => recipientMock,
+}))
+
+let suppressedSet = new Set<string>()
+vi.mock('@/lib/outreach/auditCompliance', () => ({
+  getSuppressedSet: async () => suppressedSet,
 }))
 
 let pendingAction: { type: string; payload: Record<string, unknown> } | null = null
@@ -77,9 +132,24 @@ beforeEach(() => {
   cockpit = emptyCockpit()
   applyMock.mockReset().mockResolvedValue({ ok: true, audit: 'ok', after: { next_follow_up_at: null } })
   leadRows = []
+  leadRowsError = null
   leadDetail = null
-  draftInsertError = null
-  draftInserts.length = 0
+  tableSingle = {}
+  tableList = {}
+  lifeList = { data: [], error: null }
+  generateMock.mockReset().mockResolvedValue({
+    ok: true,
+    draft: { id: 'draft-uuid-12345678', subject: 'K', body: 'B', created_at: null },
+    quality: { ok: true, violations: [] },
+    claims: [{ text: 'baktım', evidenceId: 'ev-1' }],
+    claimPersisted: true,
+  })
+  requestApprovalMock.mockReset().mockResolvedValue({ ok: true, approvalId: 'ap-1', status: 'pending' })
+  findApprovalMock.mockReset().mockResolvedValue(null)
+  createProposalMock.mockReset().mockResolvedValue({ ok: true, proposalId: 'p-1', version: 1, atomic: true })
+  listProposalsMock.mockReset().mockResolvedValue({ ok: true, proposals: [] })
+  recipientMock = { email: 'a@b.co', contactId: null, contactName: null, source: 'lead_email' }
+  suppressedSet = new Set()
   pendingAction = null
 })
 
@@ -233,48 +303,65 @@ describe('lead_action — isim çözümleme + applyLeadAction köprüsü', () =>
   })
 })
 
-describe('prepare_draft — gerçek draft kaydı, asla "gönderilebilir" izlenimi yok', () => {
-  it('isimsiz → taslak oluşturulmaz', async () => {
+describe('prepare_draft — CANONICAL cold-email servisi (web ile parity)', () => {
+  it('isimsiz → üretim çağrılmaz', async () => {
     const msg = await run({ type: 'prepare_draft', kind: 'cold_email' } as SalesCommand)
     expect(msg).toContain('Hangi işletme')
-    expect(draftInserts).toHaveLength(0)
+    expect(generateMock).not.toHaveBeenCalled()
   })
 
-  it('bulunamadı / çoklu eşleşme → taslak oluşturulmaz', async () => {
+  it('bulunamadı / çoklu eşleşme → üretim çağrılmaz', async () => {
     expect(await run({ type: 'prepare_draft', kind: 'cold_email', leadName: 'Yok' } as SalesCommand)).toContain('bulamadım')
     leadRows = [
       { id: '1', business_name: 'A' },
       { id: '2', business_name: 'B' },
     ]
     expect(await run({ type: 'prepare_draft', kind: 'cold_email', leadName: 'X' } as SalesCommand)).toContain('Birden çok eşleşme')
-    expect(draftInserts).toHaveLength(0)
+    expect(generateMock).not.toHaveBeenCalled()
   })
 
-  it('hazır mesaj verisi yoksa UYDURMAZ', async () => {
-    leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
-    leadDetail = { id: 'l1', first_message: null, pitch_draft: null }
+  it('LEAD SORGUSU HATASI "bulunamadı" DEĞİL — açık hata döner', async () => {
+    leadRowsError = { message: 'connection reset' }
     const msg = await run({ type: 'prepare_draft', kind: 'cold_email', leadName: 'A' } as SalesCommand)
-    expect(msg).toContain('Uydurma içerik yazmam')
-    expect(draftInserts).toHaveLength(0)
+    expect(msg).toContain('HATA verdi')
+    expect(msg).not.toContain('bulamadım')
+    expect(generateMock).not.toHaveBeenCalled()
   })
 
-  it('başarı: draft status=draft + gönderilebilir DEĞİL mesajı; follow_up sequence_step=1', async () => {
+  it('başarı: generateColdEmailDraft (web ile AYNI servis) çağrılır; gate + iddia izi raporlanır', async () => {
     leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
-    leadDetail = { id: 'l1', first_message: 'Merhaba, kanıtlı öneri.', pitch_draft: null }
     const msg = await run({ type: 'prepare_draft', kind: 'cold_email', leadName: 'A' } as SalesCommand)
-    expect(draftInserts[0]).toMatchObject({ status: 'draft', channel: 'email', created_by: 'telegram', sequence_step: 0 })
+    expect(generateMock).toHaveBeenCalledWith('l1')
+    expect(msg).toContain('Canonical taslak üretildi')
+    expect(msg).toContain('Kalite kapısı: geçti')
+    expect(msg).toContain('Kanıtlı iddia: 1')
     expect(msg).toContain('gönderilebilir DEĞİL')
-
-    const msg2 = await run({ type: 'prepare_draft', kind: 'follow_up', leadName: 'A' } as SalesCommand)
-    expect(draftInserts[1]).toMatchObject({ sequence_step: 1 })
-    expect(msg2).toContain('Taslak oluşturuldu')
   })
 
-  it('insert hatası görünür', async () => {
+  it('gate ihlalli üretim: ihlaller GÖRÜNÜR; iz yazılamadıysa mig 062 uyarısı', async () => {
     leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
-    leadDetail = { id: 'l1', first_message: 'x', pitch_draft: null }
-    draftInsertError = { message: 'kolon yok' }
-    expect(await run({ type: 'prepare_draft', kind: 'cold_email', leadName: 'A' } as SalesCommand)).toContain('Taslak kaydedilemedi')
+    generateMock.mockResolvedValue({
+      ok: true,
+      draft: { id: 'draft-2', subject: 'K', body: 'B', created_at: null },
+      quality: { ok: false, violations: [{ code: 'CLAIM_WITHOUT_EVIDENCE', detail: 'x', fix: 'y' }] },
+      claims: [{ text: 'iddia', evidenceId: 'ev-9' }],
+      claimPersisted: false,
+      voiceDegraded: true,
+    })
+    const msg = await run({ type: 'prepare_draft', kind: 'cold_email', leadName: 'A' } as SalesCommand)
+    expect(msg).toContain('CLAIM_WITHOUT_EVIDENCE')
+    expect(msg).toContain('mig 062 bekliyor')
+    expect(msg).toContain('Voice DNA kuralları okunamadı')
+  })
+
+  it('üretim hatası görünür; follow_up sequence motoruna yönlendirir (legacy metin YOK)', async () => {
+    leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
+    generateMock.mockResolvedValue({ ok: false, error: 'model down', modelFailed: true })
+    expect(await run({ type: 'prepare_draft', kind: 'cold_email', leadName: 'A' } as SalesCommand)).toContain('Taslak üretilemedi')
+
+    const fu = await run({ type: 'prepare_draft', kind: 'follow_up', leadName: 'A' } as SalesCommand)
+    expect(fu).toContain('sequence motorundan')
+    expect(generateMock).toHaveBeenCalledTimes(1) // follow_up icin cagrilmadi
   })
 })
 
@@ -290,8 +377,254 @@ describe('generic_approve — Telegram üzerinden gönderim onayı YAPISAL kapal
   })
 })
 
-describe('show_proposals', () => {
-  it('teklif motoru canlı değil bilgisi', async () => {
-    expect(await run({ type: 'show_proposals' } as SalesCommand)).toContain('teklif motoru')
+describe('FINALIZATION Faz 5 — parity komutları', () => {
+  it('show_proposals (global): şema yoksa açık bilgi; dolu liste formatlanır', async () => {
+    tableList['proposals'] = { data: null, error: { message: 'yok', code: '42P01' } }
+    expect(await run({ type: 'show_proposals', leadName: null } as SalesCommand)).toContain('mig 061')
+
+    tableList['proposals'] = {
+      data: [{ id: 'p1', status: 'review', current_version: 2, leads: { business_name: 'A Ltd' } }],
+      error: null,
+    }
+    const msg = await run({ type: 'show_proposals', leadName: null } as SalesCommand)
+    expect(msg).toContain('A Ltd')
+    expect(msg).toContain('v2 review')
+  })
+
+  it('show_proposals (lead): application service (listProposalsForLead) kullanılır', async () => {
+    leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
+    listProposalsMock.mockResolvedValue({
+      ok: true,
+      proposals: [{ id: 'p1', leadId: 'l1', status: 'review', currentVersion: 1, updatedAt: null, pendingApprovalVersion: 1 }],
+    })
+    const msg = await run({ type: 'show_proposals', leadName: 'A' } as SalesCommand)
+    expect(listProposalsMock).toHaveBeenCalledWith('l1')
+    expect(msg).toContain('onay bekliyor: v1')
+  })
+
+  it('create_proposal: önerilmiş hizmet yoksa yönlendirme; varsa createProposalDraft (web ile AYNI)', async () => {
+    leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
+    tableSingle['leads'] = { data: { recommended_offers: [] }, error: null }
+    expect(await run({ type: 'create_proposal', leadName: 'A' } as SalesCommand)).toContain('önerilmiş hizmet yok')
+
+    tableSingle['leads'] = { data: { recommended_offers: [{ offerId: 'ai_lead_response' }] }, error: null }
+    const msg = await run({ type: 'create_proposal', leadName: 'A' } as SalesCommand)
+    expect(createProposalMock).toHaveBeenCalledWith({ leadId: 'l1', offerIds: ['ai_lead_response'] })
+    expect(msg).toContain('Kalıcı teklif')
+    expect(msg).toContain('Gönderim yolu YOK')
+  })
+
+  it('create_proposal: kalite bloğu ve schemaMissing görünür', async () => {
+    leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
+    tableSingle['leads'] = { data: { recommended_offers: [{ offerId: 'x' }] }, error: null }
+    createProposalMock.mockResolvedValue({ ok: false, quality: { ok: false, violations: [{ code: 'NO_CTA', detail: 'd', fix: 'f' }] } })
+    expect(await run({ type: 'create_proposal', leadName: 'A' } as SalesCommand)).toContain('NO_CTA')
+    createProposalMock.mockResolvedValue({ ok: false, schemaMissing: true })
+    expect(await run({ type: 'create_proposal', leadName: 'A' } as SalesCommand)).toContain('mig 061')
+  })
+
+  it('draft_status: web ile AYNI sınıflandırıcı — approval_pending + sonraki adım', async () => {
+    leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
+    tableSingle['outreach_messages'] = { data: { id: 'd1', status: 'draft', subject: 'K' }, error: null }
+    tableSingle['outreach_send_attempts'] = { data: null, error: null }
+    findApprovalMock.mockResolvedValue({ id: 'ap', status: 'pending', expires_at: 'x' })
+    const msg = await run({ type: 'draft_status', leadName: 'A' } as SalesCommand)
+    expect(msg).toContain('approval_pending')
+    expect(msg).toContain('Onayı bekle')
+  })
+
+  it('draft_status: taslak yoksa yönlendirme; sorgu hatası görünür', async () => {
+    leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
+    tableSingle['outreach_messages'] = { data: null, error: null }
+    expect(await run({ type: 'draft_status', leadName: 'A' } as SalesCommand)).toContain('taslağı yok')
+    tableSingle['outreach_messages'] = { data: null, error: { message: 'db down' } }
+    expect(await run({ type: 'draft_status', leadName: 'A' } as SalesCommand)).toContain('hata verdi')
+  })
+
+  it('request_send_approval: GERÇEK HITL onay isteği (send DEĞİL); bloklar görünür', async () => {
+    leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
+    tableSingle['outreach_messages'] = { data: { id: 'd1' }, error: null }
+    const ok = await run({ type: 'request_send_approval', leadName: 'A' } as SalesCommand)
+    expect(requestApprovalMock).toHaveBeenCalledWith('d1')
+    expect(ok).toContain('Onay isteği oluşturuldu')
+    expect(ok).toContain('Gönderim YAPILMADI')
+
+    requestApprovalMock.mockResolvedValue({ ok: false, blockedReasons: ['CLAIM_WITHOUT_EVIDENCE'] })
+    expect(await run({ type: 'request_send_approval', leadName: 'A' } as SalesCommand)).toContain('bloklandı')
+  })
+
+  it('show_reconcile: Gmail sorunları + Telegram unknown/pending birlikte; şema yoksa açık bilgi', async () => {
+    cockpit.sendIssues = { items: [{ outreachMessageId: 'abcdefgh1234', state: 'unknown', finalized: false }], error: null } as never
+    lifeList = { data: [{ delivery_key: 'update:1:reply:1', status: 'unknown', attempt_count: 1 }], error: null }
+    const msg = await run({ type: 'show_reconcile' } as SalesCommand)
+    expect(msg).toContain('Gmail')
+    expect(msg).toContain('update:1:reply:1')
+    expect(msg).toContain('otomatik resend YOK')
+
+    lifeList = { data: null, error: { message: 'yok', code: '42P01' } }
+    expect(await run({ type: 'show_reconcile' } as SalesCommand)).toContain('LIFE 006')
+  })
+})
+
+describe('show_proposals eski davranış kaldırıldı (regresyon)', () => {
+  it('artık "motor canlı değil" sabit mesajı dönmez — gerçek sorgu/servis konuşur', async () => {
+    tableList['proposals'] = { data: [], error: null }
+    const msg = await run({ type: 'show_proposals', leadName: null } as SalesCommand)
+    expect(msg).not.toContain('henüz canlı değil')
+    expect(msg).toContain('Kalıcı teklif yok')
+  })
+})
+
+// ── Dal kapsamı: her yeni handler'ın error/none/many/boş yolları ─────────────
+describe('parity komutları — hata/sınır dalları', () => {
+  it('draft_status: isimsiz / lead-hata / bulunamadı / çoklu', async () => {
+    expect(await run({ type: 'draft_status', leadName: null } as SalesCommand)).toContain('Hangi işletme')
+    leadRowsError = { message: 'down' }
+    expect(await run({ type: 'draft_status', leadName: 'A' } as SalesCommand)).toContain('HATA verdi')
+    leadRowsError = null
+    expect(await run({ type: 'draft_status', leadName: 'Yok' } as SalesCommand)).toContain('bulamadım')
+    leadRows = [
+      { id: '1', business_name: 'A' },
+      { id: '2', business_name: 'B' },
+    ]
+    expect(await run({ type: 'draft_status', leadName: 'X' } as SalesCommand)).toContain('Birden çok eşleşme')
+  })
+
+  it('draft_status: attempt hatası + onay okuma hatası + suppressed + alıcı yok dalları', async () => {
+    leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
+    tableSingle['outreach_messages'] = { data: { id: 'd1', status: 'draft', subject: null }, error: null }
+    tableSingle['outreach_send_attempts'] = { data: null, error: { message: 'osa down' } }
+    expect(await run({ type: 'draft_status', leadName: 'A' } as SalesCommand)).toContain('Gönderim durumu okunamadı')
+
+    tableSingle['outreach_send_attempts'] = { data: null, error: null }
+    findApprovalMock.mockRejectedValue(new Error('appr down'))
+    expect(await run({ type: 'draft_status', leadName: 'A' } as SalesCommand)).toContain('Onay durumu okunamadı')
+
+    findApprovalMock.mockResolvedValue(null)
+    suppressedSet = new Set(['a@b.co'])
+    const sup = await run({ type: 'draft_status', leadName: 'A' } as SalesCommand)
+    expect(sup).toContain('compliance_blocked')
+    expect(sup).toContain('(yok)') // subject null fallback
+
+    suppressedSet = new Set()
+    recipientMock = { email: null, contactId: null, contactName: null, source: 'none' }
+    expect(await run({ type: 'draft_status', leadName: 'A' } as SalesCommand)).toContain('recipient_missing')
+  })
+
+  it('draft_status: attempt sent+finalized → sent dalı', async () => {
+    leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
+    tableSingle['outreach_messages'] = { data: { id: 'd1', status: 'sent', subject: 'K' }, error: null }
+    tableSingle['outreach_send_attempts'] = { data: { state: 'sent', finalized: true }, error: null }
+    expect(await run({ type: 'draft_status', leadName: 'A' } as SalesCommand)).toContain('sent')
+  })
+
+  it('request_send_approval: isimsiz / lead-hata / bulunamadı / çoklu / taslak sorgu hatası / generic hata', async () => {
+    expect(await run({ type: 'request_send_approval', leadName: '' } as SalesCommand)).toContain('Hangi işletme')
+    leadRowsError = { message: 'down' }
+    expect(await run({ type: 'request_send_approval', leadName: 'A' } as SalesCommand)).toContain('HATA verdi')
+    leadRowsError = null
+    expect(await run({ type: 'request_send_approval', leadName: 'Yok' } as SalesCommand)).toContain('bulamadım')
+    leadRows = [
+      { id: '1', business_name: 'A' },
+      { id: '2', business_name: 'B' },
+    ]
+    expect(await run({ type: 'request_send_approval', leadName: 'X' } as SalesCommand)).toContain('Birden çok eşleşme')
+
+    leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
+    tableSingle['outreach_messages'] = { data: null, error: { message: 'om down' } }
+    expect(await run({ type: 'request_send_approval', leadName: 'A' } as SalesCommand)).toContain('hata verdi')
+    tableSingle['outreach_messages'] = { data: null, error: null }
+    expect(await run({ type: 'request_send_approval', leadName: 'A' } as SalesCommand)).toContain('açık taslak yok')
+    tableSingle['outreach_messages'] = { data: { id: 'd1' }, error: null }
+    requestApprovalMock.mockResolvedValue({ ok: false, error: 'zaten gönderilmiş' })
+    expect(await run({ type: 'request_send_approval', leadName: 'A' } as SalesCommand)).toContain('oluşturulamadı')
+  })
+
+  it('show_proposals (lead): hata/none/çoklu/generic-hata/schemaMissing/boş', async () => {
+    leadRowsError = { message: 'down' }
+    expect(await run({ type: 'show_proposals', leadName: 'A' } as SalesCommand)).toContain('HATA verdi')
+    leadRowsError = null
+    expect(await run({ type: 'show_proposals', leadName: 'Yok' } as SalesCommand)).toContain('bulamadım')
+    leadRows = [
+      { id: '1', business_name: 'A' },
+      { id: '2', business_name: 'B' },
+    ]
+    expect(await run({ type: 'show_proposals', leadName: 'X' } as SalesCommand)).toContain('Birden çok eşleşme')
+
+    leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
+    listProposalsMock.mockResolvedValue({ ok: false, error: 'okunamadı' })
+    expect(await run({ type: 'show_proposals', leadName: 'A' } as SalesCommand)).toContain('okunamadı')
+    listProposalsMock.mockResolvedValue({ ok: false, schemaMissing: true })
+    expect(await run({ type: 'show_proposals', leadName: 'A' } as SalesCommand)).toContain('mig 061')
+    listProposalsMock.mockResolvedValue({ ok: true, proposals: [] })
+    expect(await run({ type: 'show_proposals', leadName: 'A' } as SalesCommand)).toContain('kalıcı teklif yok')
+    listProposalsMock.mockResolvedValue({
+      ok: true,
+      proposals: [{ id: 'p1', leadId: 'l1', status: 'draft', currentVersion: 1, updatedAt: null, pendingApprovalVersion: null }],
+    })
+    expect(await run({ type: 'show_proposals', leadName: 'A' } as SalesCommand)).not.toContain('onay bekliyor')
+  })
+
+  it('show_proposals (global): generic hata + boş + isimsiz lead join fallback', async () => {
+    tableList['proposals'] = { data: null, error: { message: 'db down', code: 'XX000' } }
+    expect(await run({ type: 'show_proposals', leadName: null } as SalesCommand)).toContain('okunamadı')
+    tableList['proposals'] = { data: [{ id: 'p1', status: 'draft', current_version: 1 }], error: null }
+    expect(await run({ type: 'show_proposals', leadName: null } as SalesCommand)).toContain('—')
+  })
+
+  it('create_proposal: isimsiz / lead-hata / none / çoklu / lead okunamadı / generic hata / legacy etiketi', async () => {
+    expect(await run({ type: 'create_proposal', leadName: '' } as SalesCommand)).toContain('Hangi işletme')
+    leadRowsError = { message: 'down' }
+    expect(await run({ type: 'create_proposal', leadName: 'A' } as SalesCommand)).toContain('HATA verdi')
+    leadRowsError = null
+    expect(await run({ type: 'create_proposal', leadName: 'Yok' } as SalesCommand)).toContain('bulamadım')
+    leadRows = [
+      { id: '1', business_name: 'A' },
+      { id: '2', business_name: 'B' },
+    ]
+    expect(await run({ type: 'create_proposal', leadName: 'X' } as SalesCommand)).toContain('Birden çok eşleşme')
+
+    leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
+    tableSingle['leads'] = { data: null, error: { message: 'lead down' } }
+    expect(await run({ type: 'create_proposal', leadName: 'A' } as SalesCommand)).toContain('Lead okunamadı')
+    tableSingle['leads'] = { data: { recommended_offers: [{ offerId: 'x' }, { bozuk: true }] }, error: null }
+    createProposalMock.mockResolvedValue({ ok: false, error: 'tx reddetti' })
+    expect(await run({ type: 'create_proposal', leadName: 'A' } as SalesCommand)).toContain('oluşturulamadı')
+    createProposalMock.mockResolvedValue({ ok: true, proposalId: 'p', version: 2, atomic: false })
+    expect(await run({ type: 'create_proposal', leadName: 'A' } as SalesCommand)).toContain('legacy yol')
+  })
+
+  it('reconcile: gmail hata + boş gmail + life generic hata + attempt_count null', async () => {
+    cockpit.sendIssues = { items: [], error: 'si down' } as never
+    lifeList = { data: null, error: { message: 'life down', code: 'XX000' } }
+    const msg = await run({ type: 'show_reconcile' } as SalesCommand)
+    expect(msg).toContain('Gmail sorunları okunamadı')
+    expect(msg).toContain('Telegram teslimatları okunamadı')
+
+    cockpit.sendIssues = { items: [], error: null } as never
+    lifeList = { data: [{ delivery_key: 'k', status: 'pending', attempt_count: null }], error: null }
+    const msg2 = await run({ type: 'show_reconcile' } as SalesCommand)
+    expect(msg2).toContain('bekleyen sorun yok')
+    expect(msg2).toContain('deneme 1')
+  })
+
+  it('prepare_draft: claims boş dalı + quality nullish fallback', async () => {
+    leadRows = [{ id: 'l1', business_name: 'A Ltd' }]
+    generateMock.mockResolvedValue({
+      ok: true,
+      draft: { id: 'draft-3', subject: 'K', body: 'B', created_at: null },
+      quality: { ok: true, violations: [] },
+      claims: [],
+      claimPersisted: false,
+    })
+    const msg = await run({ type: 'prepare_draft', kind: 'cold_email', leadName: 'A' } as SalesCommand)
+    expect(msg).toContain('Somut iddia yok')
+  })
+
+  it('lead_action: lead sorgu hatası açık hata (bulunamadı değil)', async () => {
+    leadRowsError = { message: 'conn reset' }
+    const msg = await run({ type: 'lead_action', leadName: 'Klinik', action: 'called' } as SalesCommand)
+    expect(msg).toContain('HATA verdi')
+    expect(applyMock).not.toHaveBeenCalled()
   })
 })

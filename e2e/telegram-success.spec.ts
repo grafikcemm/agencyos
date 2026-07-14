@@ -43,6 +43,8 @@ test.afterAll(async () => {
   await db.from('telegram_update_claims').delete().gte('update_id', 910_000_000)
   await db.from('telegram_conversations').delete().ilike('message', '%e2e-tg%')
   await db.from('telegram_conversations').delete().eq('intent', 'sales:bugun')
+  await db.from('telegram_conversations').delete().eq('intent', 'sales_show_reconcile')
+  await db.from('telegram_conversations').delete().ilike('message', '%[e2e-ambiguous]%')
   await db.from('telegram_pending_actions').delete().eq('chat_key', E2E_TELEGRAM_CHAT_ID)
   await db.from('active_tasks').delete().ilike('title', '%e2e-tg görev%')
   await cleanupE2E()
@@ -158,4 +160,69 @@ test('pending add-task: "görev ekle" → durable pending → "1" → active_tas
     .eq('chat_key', E2E_TELEGRAM_CHAT_ID)
     .maybeSingle()
   expect(consumed).toBeNull()
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FINALIZATION Faz 5 — belirsiz provider sonucu (fake ambiguous) + parity komutu.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('AMBIGUOUS provider: ledger unknown + route 500; retry OTOMATİK RESEND YAPMAZ (tek satır, attempt=1)', async ({ request }) => {
+  const db = supabaseAdmin()
+  const seeded = await seedDraft('tg-ambig')
+  // İşletme adına E2E marker gömülür → fake transport bu CEVABI belirsiz düşürür.
+  await db
+    .from('leads')
+    .update({ business_name: 'Ambig [e2e-ambiguous] İşletmesi (e2e-sprint-p0)', status: 'new', phone: '+90 555 111 22 33' })
+    .eq('id', seeded.leadId)
+
+  const id = BASE_ID + 6
+  const text = 'Ambig [e2e-ambiguous] İşletmesi arandı'
+
+  // 1) İlk webhook: mutasyon çalışır, cevap teslimi BELİRSİZ → claim fail + 500
+  //    (Telegram retry etsin; ledger duplicate'i yapısal engeller).
+  const r1 = await request.post(WEBHOOK, { headers: tgHeaders(), data: update(id, text) })
+  expect(r1.status()).toBe(500)
+
+  const { data: d1 } = await db
+    .from('telegram_outbound_deliveries')
+    .select('delivery_key, status, attempt_count')
+    .eq('update_id', id)
+  expect(d1).toHaveLength(1)
+  expect(d1![0].status).toBe('unknown')
+  expect(d1![0].attempt_count).toBe(1)
+
+  // 2) Telegram retry (aynı update): unknown satır provider'ı BİR DAHA ÇAĞIRTMAZ —
+  //    satır sayısı ve attempt_count DEĞİŞMEZ; yanıt yine 500 (manuel reconcile).
+  const r2 = await request.post(WEBHOOK, { headers: tgHeaders(), data: update(id, text) })
+  expect(r2.status()).toBe(500)
+
+  const { data: d2 } = await db
+    .from('telegram_outbound_deliveries')
+    .select('delivery_key, status, attempt_count')
+    .eq('update_id', id)
+  expect(d2).toHaveLength(1) // İKİNCİ provider çağrısı/satırı YOK
+  expect(d2![0].status).toBe('unknown')
+  expect(d2![0].attempt_count).toBe(1)
+
+  // 3) Mutation-once: lead aksiyonu retry'da ÇOĞALMADI (tek audit satırı).
+  const { data: audit } = await db.from('lead_action_audit').select('id').eq('lead_id', seeded.leadId)
+  expect(audit).toHaveLength(1)
+})
+
+test('parity: /reconcile komutu unknown teslimatı GÖSTERİR (web ile aynı görünürlük)', async ({ request }) => {
+  const id = BASE_ID + 7
+  const res = await request.post(WEBHOOK, { headers: tgHeaders(), data: update(id, '/reconcile') })
+  expect(res.status()).toBe(200)
+
+  const db = supabaseAdmin()
+  // Cevap teslim edildi (fake success) ve içerik unknown key'i içeriyor —
+  // conversation log'dan doğrula.
+  const { data: convo } = await db
+    .from('telegram_conversations')
+    .select('message')
+    .eq('intent', 'sales_show_reconcile')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  expect(String(convo?.message ?? '')).toContain(`update:${BASE_ID + 6}:reply:1`)
 })

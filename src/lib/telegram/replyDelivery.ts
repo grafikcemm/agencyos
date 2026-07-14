@@ -58,7 +58,14 @@ export interface ReplyDeliveryResult {
   error: string | null
 }
 
-const TABLE_MISSING = new Set(['42P01', 'PGRST205'])
+// FINALIZATION Faz 5: tablo YA DA 006 kolonları (attempt_count/claimed_at/
+// 'pending') eksikse aynı fail-closed sınıfındadır — üretimde provider ASLA
+// çağrılmaz (unledgered üretim fallback'i KALDIRILDI).
+const TABLE_MISSING = new Set(['42P01', 'PGRST205', 'PGRST204', '42703'])
+const LEDGER_MISSING_DIAGNOSTIC =
+  'telegram_outbound_deliveries şeması eksik (LIFE mig 006 v3 uygulanmadı) — ' +
+  'provider ÇAĞRILMADI (duplicate riski alınmaz). Çözüm: LIFE 006 v3 migration + ' +
+  '/api/telegram/diagnostics readiness kontrolü; onaysız canlı migration yapılmaz.'
 /** 'sending' satırın taze sayıldığı süre — webhook işleme + provider timeout payı. */
 export const SENDING_LEASE_MS = 30_000
 
@@ -183,8 +190,14 @@ export async function sendReplyOnce(opts: {
         if (!decision.proceed) return decision.result
         attempt = decision.attempt
       } else if (TABLE_MISSING.has(error.code ?? '')) {
+        // FINALIZATION Faz 5: ÜRETİMDE unledgered gönderim YOK — şema eksikse
+        // provider çağrılmaz (fail-closed) + eyleme dönük teşhis döner.
+        if (process.env.NODE_ENV === 'production') {
+          console.error('[replyDelivery] FAIL-CLOSED: ledger şeması eksik — provider çağrılmadı', key, error.code)
+          return result('ledger_unavailable', 0, LEDGER_MISSING_DIAGNOSTIC)
+        }
         unledgered = true
-        console.warn('[replyDelivery] ledger tablosu yok (006 bekliyor) — unledgered gönderim', key)
+        console.warn('[replyDelivery] ledger şeması yok (006 bekliyor) — unledgered gönderim (YALNIZ dev)', key)
       } else if (process.env.NODE_ENV === 'production') {
         console.error('[replyDelivery] claim yazılamadı — provider çağrılmadı', error.code ?? error.message)
         return result('ledger_unavailable', 0, 'delivery ledger unavailable')
@@ -205,7 +218,12 @@ export async function sendReplyOnce(opts: {
 
   if (unledgered) {
     if (send.ok) return result('unledgered_sent', send.status)
-    // Ledger yokken belirsiz sonuç da başarı SAYILMAZ (durable taklit yok).
+    // FINALIZATION Faz 5: ledger'sız (yalnız dev) BELİRSİZ sonuç 'unknown'
+    // sınıfındadır — replyGuaranteed dahil HİÇBİR yol yeni seq ile ikinci
+    // provider çağrısı yapamaz (duplicate riski). KESİN hata → unledgered_failed.
+    if (send.ambiguous) {
+      return result('unknown', send.status, `ledger'sız belirsiz sonuç — otomatik resend yapılmaz: ${send.error ?? ''}`)
+    }
     return result('unledgered_failed', send.status, send.error)
   }
 

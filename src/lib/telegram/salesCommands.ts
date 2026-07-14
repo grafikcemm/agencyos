@@ -18,7 +18,12 @@ export type SalesCommand =
   | { type: 'sales_pipeline' }
   | { type: 'lead_action'; action: 'called' | 'no_answer' | 'meeting' | 'later' | 'note'; leadName: string; note?: string; timeHint?: string }
   | { type: 'prepare_draft'; kind: 'cold_email' | 'follow_up'; leadName: string | null }
-  | { type: 'show_proposals' }
+  | { type: 'show_proposals'; leadName: string | null }
+  // FINALIZATION Faz 5 — web kokpitiyle parity komutları:
+  | { type: 'draft_status'; leadName: string | null }
+  | { type: 'request_send_approval'; leadName: string }
+  | { type: 'create_proposal'; leadName: string }
+  | { type: 'show_reconcile' }
   | { type: 'generic_approve'; raw: string }
 
 function normalise(s: string): string {
@@ -36,6 +41,8 @@ const SLASH_COMMANDS: Record<string, SalesCommand> = {
   '/takipler': { type: 'sales_followups' },
   '/sorunlar': { type: 'sales_issues' },
   '/pipeline': { type: 'sales_pipeline' },
+  '/teklifler': { type: 'show_proposals', leadName: null },
+  '/reconcile': { type: 'show_reconcile' },
 }
 
 // "Klinik X arandı" / "arandı Klinik X" — işletme adı + eylem.
@@ -47,7 +54,11 @@ const NOTE_RE = /^(.{2,60}?)\s+not[:\s]+(.+)$/
 
 const PREPARE_COLD_RE = /(cold\s*email|soguk\s*e?-?posta|soguk\s*mail)\s*(hazirla|yaz|olustur|taslagi)/
 const PREPARE_FOLLOWUP_RE = /(follow[\s-]?up|takip\s*maili?)\s*(hazirla|yaz|olustur)/
-const SHOW_PROPOSALS_RE = /teklif(ler)?i?\s*(goster|listele|neler)/
+const SHOW_PROPOSALS_RE = /teklif(ler)?i?n?i?\s*(goster|listele|neler)/
+const CREATE_PROPOSAL_RE = /teklif\s*(hazirla|olustur)/
+const DRAFT_STATUS_RE = /taslak\s*durum(u|unu)?(\s*goster)?/
+const REQUEST_APPROVAL_RE = /onaya\s*al/
+const RECONCILE_RE = /^(reconcile|belirsizler|bekleyen sorunlar)$/
 const WHO_TO_CALL_RE = /(bugun\s+)?kimi\s+aray[a-z]*|aranacaklar(i)?\s*(kim|goster|listele)?$/
 const GENERIC_APPROVE_RE = /^(onayla|onay|gonder|evet gonder|send)$/
 
@@ -71,7 +82,30 @@ export function parseSalesCommand(text: string): SalesCommand | null {
   if (GENERIC_APPROVE_RE.test(norm)) return { type: 'generic_approve', raw }
 
   if (WHO_TO_CALL_RE.test(norm)) return { type: 'sales_calls' }
-  if (SHOW_PROPOSALS_RE.test(norm)) return { type: 'show_proposals' }
+  if (RECONCILE_RE.test(norm)) return { type: 'show_reconcile' }
+
+  // FINALIZATION Faz 5 — sıralama önemli: 'X için teklif hazırla' göster'den önce.
+  if (CREATE_PROPOSAL_RE.test(norm)) {
+    const m = raw.match(/^(.{2,60}?)\s+i[cç]in\s+/i)
+    const name = cleanLeadName(m?.[1])
+    if (name) return { type: 'create_proposal', leadName: name }
+    return { type: 'create_proposal', leadName: '' }
+  }
+  if (SHOW_PROPOSALS_RE.test(norm)) {
+    // 'X tekliflerini göster' → lead adı; yalnız 'teklifleri göster' → global.
+    const m = norm.match(/^(.{2,60}?)\s+teklif/)
+    return { type: 'show_proposals', leadName: m ? extractOriginal(raw, m[1]) : null }
+  }
+  if (DRAFT_STATUS_RE.test(norm)) {
+    const m = norm.match(/^(.{2,60}?)\s+taslak/)
+    return { type: 'draft_status', leadName: m ? extractOriginal(raw, m[1]) : null }
+  }
+  if (REQUEST_APPROVAL_RE.test(norm)) {
+    const m = norm.match(/^(.{2,60}?)\s+onaya\s*al/)
+    const name = m ? extractOriginal(raw, m[1]) : ''
+    if (name) return { type: 'request_send_approval', leadName: name }
+    return { type: 'request_send_approval', leadName: '' }
+  }
 
   if (PREPARE_COLD_RE.test(norm)) {
     // "X için cold email hazırla" → lead adını "için"den önce al.

@@ -84,3 +84,30 @@ describe('parseSalesCommand (Faz B5/B6)', () => {
     expect(parseSalesCommand('görev ekle: fatura kes')).toBeNull()
   })
 })
+
+// FINALIZATION Faz 5 — parity komutları parser'ı.
+describe('parity komutları (Faz 5)', () => {
+  it('teklif hazırla / teklifleri göster (global + lead)', () => {
+    expect(parseSalesCommand('Denta için teklif hazırla')).toEqual({ type: 'create_proposal', leadName: 'Denta' })
+    expect(parseSalesCommand('teklif hazırla')).toEqual({ type: 'create_proposal', leadName: '' })
+    expect(parseSalesCommand('teklifleri göster')).toEqual({ type: 'show_proposals', leadName: null })
+    expect(parseSalesCommand('/teklifler')).toEqual({ type: 'show_proposals', leadName: null })
+    expect(parseSalesCommand('Denta tekliflerini göster')).toEqual({ type: 'show_proposals', leadName: 'Denta' })
+  })
+
+  it('taslak durumu + onaya al + reconcile', () => {
+    expect(parseSalesCommand('Denta taslak durumu')).toEqual({ type: 'draft_status', leadName: 'Denta' })
+    expect(parseSalesCommand('taslak durumu')).toEqual({ type: 'draft_status', leadName: null })
+    expect(parseSalesCommand('Denta onaya al')).toEqual({ type: 'request_send_approval', leadName: 'Denta' })
+    expect(parseSalesCommand('onaya al')).toEqual({ type: 'request_send_approval', leadName: '' })
+    expect(parseSalesCommand('/reconcile')).toEqual({ type: 'show_reconcile' })
+    expect(parseSalesCommand('reconcile')).toEqual({ type: 'show_reconcile' })
+  })
+
+  it('Türkçe karakterli lead adı korunur', () => {
+    expect(parseSalesCommand('Güler Kliniği için teklif hazırla')).toEqual({
+      type: 'create_proposal',
+      leadName: 'Güler Kliniği',
+    })
+  })
+})

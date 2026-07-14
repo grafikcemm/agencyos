@@ -209,9 +209,28 @@ describe('sendReplyOnce v2 — durable outbox durum makinesi (Sprint-3 Faz 1)', 
     const ok = await sendReplyOnce({ updateId: 19, seq: 1, text: 'x' })
     expect(ok).toMatchObject({ kind: 'unledgered_sent', delivered: true, countsAsDelivered: true })
 
+    // FINALIZATION Faz 5: ledger'sız BELİRSİZ sonuç 'unknown' sınıfıdır —
+    // replyGuaranteed dahil hiçbir yol yeni seq ile resend YAPAMAZ.
     sendMock.mockResolvedValue({ ok: false, status: 0, error: 'timeout', retryable: true, ambiguous: true })
     const amb = await sendReplyOnce({ updateId: 19, seq: 2, text: 'x' })
-    expect(amb).toMatchObject({ kind: 'unledgered_failed', delivered: false, countsAsDelivered: false })
+    expect(amb).toMatchObject({ kind: 'unknown', delivered: false, countsAsDelivered: false })
+
+    // KESİN hata ise unledgered_failed kalır (kontrollü retry güvenli).
+    sendMock.mockResolvedValue({ ok: false, status: 400, error: 'bad req', retryable: false, ambiguous: false })
+    const def = await sendReplyOnce({ updateId: 19, seq: 3, text: 'x' })
+    expect(def).toMatchObject({ kind: 'unledgered_failed', delivered: false, countsAsDelivered: false })
+  })
+
+  it('PROD + tablo/kolon eksik (42P01/PGRST204) → provider HİÇ çağrılmaz + eyleme dönük teşhis', async () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    for (const code of ['42P01', 'PGRST204']) {
+      sendMock.mockClear()
+      insertErrorOverride = { code }
+      const r = await sendReplyOnce({ updateId: 190, seq: 1, text: 'x' })
+      expect(r).toMatchObject({ kind: 'ledger_unavailable', delivered: false, countsAsDelivered: false })
+      expect(String(r.error)).toContain('LIFE mig 006')
+      expect(sendMock).not.toHaveBeenCalled()
+    }
   })
 
   it('PROD + ledger claim yazılamıyor → provider HİÇ çağrılmaz (fail-closed)', async () => {
