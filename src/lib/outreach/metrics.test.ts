@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeOutreachMetrics, countsFromEmailLedger } from './metrics'
+import { buildOutcomeRows, computeOutreachMetrics, countsFromEmailLedger } from './metrics'
 
 const counts = (over: Partial<Parameters<typeof computeOutreachMetrics>[0]> = {}) => ({
   draft: 0, approved: 0, sent: 0, replied: 0, positiveReplied: 0, failed: 0, ...over,
@@ -46,5 +46,54 @@ describe('computeOutreachMetrics', () => {
       { direction: 'inbound', outreach_message_id: 'o4', gmail_message_id: 'in-4', body: 'ret' },
     ], { failedOutreachIds: ['f1', 'f1', 'f2'] })
     expect(c).toMatchObject({ sent: 1, replied: 1, positiveReplied: 1, failed: 2 })
+  })
+})
+
+describe('buildOutcomeRows — niş/segment gelir deneyi', () => {
+  it('ilk mesaj + follow-up aynı lead için tek örnektir; gerçek reply ve funnel sonucu bağlanır', () => {
+    const rows = buildOutcomeRows(
+      [
+        { direction: 'outbound', outreach_message_id: 'o1', gmail_message_id: 'provider-1', body: null },
+        { direction: 'outbound', outreach_message_id: 'o2', gmail_message_id: 'provider-2', body: null },
+        { direction: 'outbound', outreach_message_id: 'o3', gmail_message_id: 'dryrun-o3', body: null },
+        { direction: 'inbound', outreach_message_id: 'o2', gmail_message_id: 'in-1', body: 'Fiyat ve detay alabilir miyim?' },
+        { direction: 'inbound', outreach_message_id: 'o3', gmail_message_id: 'in-dry', body: 'Görüşelim' },
+      ],
+      [
+        { id: 'o1', lead_id: 'lead-a' },
+        { id: 'o2', lead_id: 'lead-a' },
+        { id: 'o3', lead_id: 'lead-b' },
+      ],
+      [
+        { id: 'lead-a', status: 'meeting', sector: 'klinik', normalized_sector: 'Sağlık Kliniği' },
+        { id: 'lead-b', status: 'new', sector: 'kafe', normalized_sector: null },
+      ],
+      ['lead-a'],
+    )
+
+    expect(rows).toEqual([
+      {
+        sector: 'Sağlık Kliniği',
+        sent: true,
+        replied: true,
+        positive: true,
+        meeting: true,
+        proposal: true,
+        won: false,
+      },
+    ])
+  })
+
+  it('auto-reply insan cevabı değildir; converted gerçek won sinyalidir', () => {
+    const rows = buildOutcomeRows(
+      [
+        { direction: 'outbound', outreach_message_id: 'o1', gmail_message_id: 'provider-1', body: null },
+        { direction: 'inbound', outreach_message_id: 'o1', gmail_message_id: 'in-1', body: 'Out of office' },
+      ],
+      [{ id: 'o1', lead_id: 'lead-a' }],
+      [{ id: 'lead-a', status: 'converted', sector: null, normalized_sector: null }],
+    )
+
+    expect(rows[0]).toMatchObject({ sector: null, replied: false, positive: false, meeting: true, proposal: true, won: true })
   })
 })

@@ -127,6 +127,31 @@ interface OutreachMetrics {
   benchmark: "insufficient" | "below" | "ok" | "good"
 }
 
+interface SegmentTelemetry {
+  segment: string
+  counts: {
+    sent: number
+    replied: number
+    positiveReplied: number
+    meeting: number
+    proposal: number
+    won: number
+  }
+  positiveRate: number | null
+  meetingRate: number | null
+  wonRate: number | null
+  insufficientData: boolean
+}
+
+interface OutreachMetricsPayload {
+  metrics: OutreachMetrics
+  outcomeReport: {
+    overall: SegmentTelemetry
+    bySector: SegmentTelemetry[]
+    hasSignal: boolean
+  }
+}
+
 const BENCHMARK_META: Record<OutreachMetrics["benchmark"], { label: string; color: string }> = {
   insufficient: { label: "VERİ BEKLİYOR", color: "var(--text-secondary)" },
   below: { label: "DÜŞÜK", color: "var(--danger)" },
@@ -135,7 +160,7 @@ const BENCHMARK_META: Record<OutreachMetrics["benchmark"], { label: string; colo
 }
 
 export function OutreachKpi() {
-  const [metrics, setMetrics] = useState<OutreachMetrics | null>(null)
+  const [payload, setPayload] = useState<OutreachMetricsPayload | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -146,7 +171,7 @@ export function OutreachKpi() {
         return res.json()
       })
       .then((data) => {
-        if (alive && data?.metrics) setMetrics(data.metrics)
+        if (alive && data?.metrics && data?.outcomeReport) setPayload(data)
       })
       .catch((e: unknown) => {
         if (alive) setError(e instanceof Error ? e.message : "Metrikler yüklenemedi")
@@ -156,10 +181,13 @@ export function OutreachKpi() {
     }
   }, [])
 
-  if (error || !metrics) return null
+  if (error || !payload) return null
 
+  const metrics = payload.metrics
   const pct = (n: number) => `%${(n * 100).toFixed(1)}`
   const bm = BENCHMARK_META[metrics.benchmark]
+  const topSegments = payload.outcomeReport.bySector.filter((s) => s.counts.sent > 0).slice(0, 3)
+  const hasNicheSignal = topSegments.some((segment) => !segment.insufficientData)
 
   return (
     <section className="space-y-4">
@@ -190,6 +218,61 @@ export function OutreachKpi() {
             <div className="text-[9px] text-[var(--text-muted)] mt-1">En az 20 gerçek gönderim gerekir</div>
           )}
         </div>
+      </div>
+
+      <div className="bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-5 space-y-4">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-[10px] font-black tracking-[0.15em] text-[var(--accent)] uppercase">3 Niş Deneyi</div>
+            <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+              Gerçek gönderim → pozitif yanıt → görüşme → satış. Follow-up&apos;lar aynı lead&apos;i ikinci kez saymaz.
+            </p>
+          </div>
+          <span className="text-[9px] font-bold text-[var(--text-muted)] uppercase tracking-wider">
+            {hasNicheSignal ? "Niş kararı için sinyal var" : "Niş başına en az 20 gerçek lead"}
+          </span>
+        </div>
+
+        {topSegments.length === 0 ? (
+          <p className="py-3 text-center text-xs italic text-[var(--text-muted)]">
+            Gerçek Gmail gönderimi başladığında sektör deneyleri burada oluşacak.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+            {topSegments.map((segment) => (
+              <div key={segment.segment} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-base)] p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-[var(--text-primary)]">{segment.segment}</h3>
+                    <p className="mt-1 text-[10px] text-[var(--text-muted)]">{segment.counts.sent} benzersiz lead</p>
+                  </div>
+                  <span className={`text-[9px] font-black uppercase tracking-wider ${segment.insufficientData ? "text-[var(--warning)]" : "text-[var(--success)]"}`}>
+                    {segment.insufficientData ? "Test sürüyor" : "Sinyal var"}
+                  </span>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <div className="num text-lg font-bold text-[var(--text-primary)]">{segment.counts.positiveReplied}</div>
+                    <div className="text-[9px] text-[var(--text-muted)]">Pozitif</div>
+                  </div>
+                  <div>
+                    <div className="num text-lg font-bold text-[var(--text-primary)]">{segment.counts.meeting}</div>
+                    <div className="text-[9px] text-[var(--text-muted)]">Görüşme</div>
+                  </div>
+                  <div>
+                    <div className="num text-lg font-bold text-[var(--text-primary)]">{segment.counts.won}</div>
+                    <div className="text-[9px] text-[var(--text-muted)]">Satış</div>
+                  </div>
+                </div>
+                <p className="mt-3 text-center text-[9px] text-[var(--text-muted)]">
+                  {segment.insufficientData
+                    ? `${Math.max(0, 20 - segment.counts.sent)} lead daha test et`
+                    : `Pozitif ${pct(segment.positiveRate ?? 0)} · Görüşme ${pct(segment.meetingRate ?? 0)} · Satış ${pct(segment.wonRate ?? 0)}`}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   )

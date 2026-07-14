@@ -44,13 +44,24 @@ describe('runQualityEngine — A-tier eligibility (TRAN-ITEM-2.2 regresyonu)', (
     expect(result.next_action_priority).not.toBe('call_now')
   })
 
-  it('disqualifies leads without a phone', () => {
+  it('telefon yok ama e-posta varsa lead elenmez; otomasyon kanalı e-postadır', () => {
     const result = runQualityEngine({
-      lead: { ...strongDentalLead, phone: undefined },
+      lead: { ...strongDentalLead, phone: undefined, email: 'karar.verici@example.com' },
+      evidence: painfulEvidence,
+    })
+    expect(result.lead_tier).toBe('A')
+    expect(result.disqualification_reason).toBeNull()
+    expect(result.best_channel).toBe('email')
+    expect(result.next_action_priority).toBe('send_audit')
+  })
+
+  it('telefon/e-posta/WhatsApp ve zenginleştirilebilir web yoksa lead elenir', () => {
+    const result = runQualityEngine({
+      lead: { ...strongDentalLead, phone: undefined, email: undefined },
       evidence: painfulEvidence,
     })
     expect(result.lead_tier).toBe('D')
-    expect(result.disqualification_reason).toBeTruthy()
+    expect(result.disqualification_reason).toContain('iletişim kanalı')
     expect(result.next_action_priority).toBe('discard')
   })
 
@@ -78,6 +89,7 @@ describe('runQualityEngine — pitch reframe (AI varsayılan değil)', () => {
     expect(result.conversion_angle).not.toContain('AI')
     expect(result.why_this_will_convert).not.toContain('AI entegrasyonu')
     expect(result.recommended_offer_id).toBe('website')
+    expect(result.why_this_will_convert).not.toMatch(/%\d|garanti|doğrudan ciro|ciro artışı sağlanacaktır/i)
   })
 
   it('otomasyon_fit lead: conversion_angle AI İÇERİR (esnaf + kanal yok)', () => {

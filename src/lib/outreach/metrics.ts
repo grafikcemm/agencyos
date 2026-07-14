@@ -3,6 +3,7 @@
 // outbound ledger'ı + inbound reply FSM sonucu kullanılır; dry-run sayılmaz.
 
 import { MIN_SAMPLES_FOR_SIGNAL } from '@/lib/persuasion/outcomeTelemetry'
+import type { OutcomeInputRow } from '@/lib/persuasion/outcomeTelemetry'
 import { classifyReply } from '@/lib/gmail/replyFsm'
 
 export interface OutreachCounts {
@@ -66,6 +67,79 @@ export interface EmailLedgerMetricRow {
   outreach_message_id: string | null
   gmail_message_id: string | null
   body: string | null
+}
+
+export interface OutreachOutcomeLinkRow {
+  id: string
+  lead_id: string | null
+}
+
+export interface LeadOutcomeLinkRow {
+  id: string
+  status: string
+  sector: string | null
+  normalized_sector: string | null
+}
+
+/** Gerçek email ledger'ını lead bazında tekilleştirerek sektör deney satırlarına
+ * çevirir. Bir lead'e ilk mesaj + follow-up gönderilmiş olması örnek sayısını
+ * şişiremez. Reply yalnız gerçek outbound ile kesişen inbound kayıttan gelir. */
+export function buildOutcomeRows(
+  ledger: EmailLedgerMetricRow[],
+  outreachLinks: OutreachOutcomeLinkRow[],
+  leads: LeadOutcomeLinkRow[],
+  proposalLeadIds: string[] = [],
+): OutcomeInputRow[] {
+  const sentOutreachIds = new Set<string>()
+  const humanReplyIds = new Set<string>()
+  const positiveReplyIds = new Set<string>()
+
+  for (const row of ledger) {
+    const outreachId = row.outreach_message_id
+    if (!outreachId) continue
+    if (row.direction === 'outbound') {
+      const providerId = String(row.gmail_message_id ?? '').trim()
+      if (providerId && !providerId.startsWith('dryrun-')) sentOutreachIds.add(outreachId)
+      continue
+    }
+    if (row.direction !== 'inbound') continue
+    const cls = classifyReply(row.body ?? '')
+    if (!['auto_reply', 'opt_out'].includes(cls)) humanReplyIds.add(outreachId)
+    if (cls === 'positive_interest') positiveReplyIds.add(outreachId)
+  }
+
+  const linkByOutreach = new Map(outreachLinks.map((row) => [row.id, row.lead_id]))
+  const outreachIdsByLead = new Map<string, Set<string>>()
+  for (const outreachId of sentOutreachIds) {
+    const leadId = linkByOutreach.get(outreachId)
+    if (!leadId) continue
+    const ids = outreachIdsByLead.get(leadId) ?? new Set<string>()
+    ids.add(outreachId)
+    outreachIdsByLead.set(leadId, ids)
+  }
+
+  const leadById = new Map(leads.map((lead) => [lead.id, lead]))
+  const proposalSet = new Set(proposalLeadIds)
+  const rows: OutcomeInputRow[] = []
+
+  for (const [leadId, outreachIds] of [...outreachIdsByLead.entries()].sort(([a], [b]) => a.localeCompare(b))) {
+    const lead = leadById.get(leadId)
+    if (!lead) continue
+    const status = String(lead.status ?? '').toLowerCase()
+    const replied = [...outreachIds].some((id) => humanReplyIds.has(id))
+    const positive = [...outreachIds].some((id) => positiveReplyIds.has(id))
+    rows.push({
+      sector: lead.normalized_sector?.trim() || lead.sector?.trim() || null,
+      sent: true,
+      replied,
+      positive,
+      meeting: ['meeting', 'proposal', 'converted', 'won'].includes(status),
+      proposal: proposalSet.has(leadId) || ['proposal', 'converted', 'won'].includes(status),
+      won: ['converted', 'won'].includes(status),
+    })
+  }
+
+  return rows
 }
 
 /** Ledger satırlarını benzersiz outreach bazında sayar. Bir konuşmadaki çoklu

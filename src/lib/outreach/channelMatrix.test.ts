@@ -49,4 +49,10 @@ describe('CHANNEL_PRIORITY', () => {
       expect(CHANNEL_PRIORITY[type].length).toBeGreaterThan(0)
     }
   })
+
+  it('ölçülebilir ve otomasyona bağlı e-posta tüm segmentlerde ilk kanaldır', () => {
+    for (const type of ['ecommerce', 'local', 'agency_b2b', 'founder'] as const) {
+      expect(CHANNEL_PRIORITY[type][0]).toBe('email')
+    }
+  })
 })

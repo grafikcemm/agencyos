@@ -8,10 +8,10 @@ export type CustomerType = 'ecommerce' | 'local' | 'agency_b2b' | 'founder'
 
 // Müşteri tipi → kanal öncelik sırası (en etkili kanal başta).
 export const CHANNEL_PRIORITY: Record<CustomerType, OutreachChannel[]> = {
-  ecommerce: ['instagram', 'email', 'whatsapp', 'linkedin'],
-  local: ['phone', 'whatsapp', 'instagram', 'email'],
-  agency_b2b: ['linkedin', 'email', 'phone', 'whatsapp'],
-  founder: ['linkedin', 'x', 'email'],
+  ecommerce: ['email', 'instagram', 'linkedin', 'whatsapp'],
+  local: ['email', 'whatsapp', 'phone', 'instagram'],
+  agency_b2b: ['email', 'linkedin', 'phone', 'whatsapp'],
+  founder: ['email', 'linkedin', 'x'],
 }
 
 // Kanal başına başlangıç ayarı (referans — operatör uygular). Hacim muhafazakâr.

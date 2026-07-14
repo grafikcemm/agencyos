@@ -83,8 +83,9 @@ export function runQualityEngine({ lead, evidence }: QualityInput): QualityResul
   let disqualReason: string | null = null
 
   // Disqualification
-  if (!lead.phone) {
-    disqualReason = 'Telefon yok — outbound iletişim imkânsız'
+  const hasDirectChannel = Boolean(lead.email || lead.phone || evidence.has_whatsapp)
+  if (!hasDirectChannel && !evidence.has_real_website) {
+    disqualReason = 'Doğrudan iletişim kanalı veya zenginleştirilebilir web sitesi yok'
   } else if (DISQUALIFY_KEYWORDS.some(kw => nameLower.includes(kw))) {
     disqualReason = 'Kamu/zincir/franchise işletme — satış zorluğu yüksek'
   } else if (profile.id === 'other' && profile.wave === 3) {
@@ -93,10 +94,12 @@ export function runQualityEngine({ lead, evidence }: QualityInput): QualityResul
 
   // Contactability
   let contact = 0
-  if (lead.phone) { contact += 50; qualReasons.push('Telefon mevcut') }
-  if (evidence.has_whatsapp) { contact += 25; qualReasons.push('WhatsApp var') }
+  // E-posta otomasyona, karar verici eşleşmesine ve ölçülebilir reply ledger'ına
+  // bağlanan birincil kanaldır. Telefon/WhatsApp destek teması olarak kalır.
+  if (lead.email) { contact += 40; qualReasons.push('E-posta mevcut') }
+  if (lead.phone) { contact += 25; qualReasons.push('Telefon mevcut') }
+  if (evidence.has_whatsapp) { contact += 20; qualReasons.push('WhatsApp var') }
   if (evidence.has_real_website) contact += 15
-  if (lead.email) contact += 10
   const contactability_score = clamp(contact)
 
   // Pain intensity
@@ -155,7 +158,7 @@ export function runQualityEngine({ lead, evidence }: QualityInput): QualityResul
 
   // Conversion probability
   let conv = quality_score
-  if (!lead.phone) conv = 0
+  if (!hasDirectChannel) conv = 0
   if (disqualReason) conv = Math.min(conv, 10)
   if (evidence.has_whatsapp) conv = clamp(conv + 8)
   if (profile.wave === 1) conv = clamp(conv + 5)
@@ -171,7 +174,7 @@ export function runQualityEngine({ lead, evidence }: QualityInput): QualityResul
     (!!evidence.has_ads_signal)
 
   const isATierEligible =
-    !!lead.phone &&
+    hasDirectChannel &&
     !!lead.google_place_id &&
     !disqualReason &&
     profile.wave <= 2 &&
@@ -198,10 +201,12 @@ export function runQualityEngine({ lead, evidence }: QualityInput): QualityResul
   let next_action_priority: NextActionPriority
   if (disqualReason) {
     next_action_priority = 'discard'
+  } else if ((lead_tier === 'A' || lead_tier === 'B') && lead.email) {
+    next_action_priority = 'send_audit'
   } else if (lead_tier === 'A' && lead.phone) {
     next_action_priority = 'call_now'
   } else if (lead_tier === 'B') {
-    next_action_priority = 'send_audit'
+    next_action_priority = 'warm_up'
   } else if (quality_score >= 40) {
     next_action_priority = 'warm_up'
   } else {
@@ -209,7 +214,13 @@ export function runQualityEngine({ lead, evidence }: QualityInput): QualityResul
   }
 
   // Best channel
-  const best_channel: BestChannel = evidence.has_whatsapp ? 'whatsapp' : lead.phone ? 'phone' : 'unknown'
+  const best_channel: BestChannel = lead.email
+    ? 'email'
+    : evidence.has_whatsapp
+      ? 'whatsapp'
+      : lead.phone
+        ? 'phone'
+        : 'unknown'
 
   // Offer values
   const offerRef = SECTOR_OFFER_VALUES[profile.id] ?? { setup: 7000, monthly: 9000 }
@@ -244,33 +255,33 @@ export function runQualityEngine({ lead, evidence }: QualityInput): QualityResul
 
   // AI yerine kategoriye uygun TASARIM hizmeti ile çerçevele.
   const angleSuffix = isAutomation
-    ? 'AI satış asistanı ile hızlı kazanım'
-    : `${category.recommended_service_name} ile hızlı kazanım`
+    ? 'AI satış asistanı için ölçülebilir pilot'
+    : `${category.recommended_service_name} için ölçülebilir pilot`
   const conversion_angle = `${profile.displayName} için ${mainPain} — ${angleSuffix}`
 
   const topReasons = qualReasons.slice(0, 3).join(', ')
 
   let roiConnection = ""
   if (!evidence.has_real_website || evidence.instagram_as_site) {
-    roiConnection = "Web sitesi olmaması, Google aramalarından gelen yüksek değerli müşterileri doğrudan rakiplere kaybettiriyor ve markanın dijital güvenini sarsıyor."
+    roiConnection = "Web sitesi olmaması, Google aramalarında bulunabilirliği ve ilk temas anındaki dijital güveni zayıflatabilir."
   } else if (!evidence.has_online_booking && ['health_clinic', 'beauty'].includes(profile.id)) {
-    roiConnection = "Online randevu sisteminin bulunmaması, mesai saatleri dışındaki (tüm randevuların %35'i) yüksek bütçeli müşteri rezervasyonlarının kaçırılmasına yol açıyor."
+    roiConnection = "Online randevu sisteminin bulunmaması, mesai saatleri dışındaki talebi yakalamayı ve randevu sürecini ölçmeyi zorlaştırabilir."
   } else if (!evidence.has_whatsapp) {
-    roiConnection = "WhatsApp hızlı iletişim hattının bulunmaması, mobil ziyaretçilerin anlık sorularını siparişe dönüştürmesini engelleyerek satış dönüşümünü %40 düşürüyor."
+    roiConnection = "WhatsApp hızlı iletişim hattının bulunmaması, mobil ziyaretçinin soru sormasına ek sürtünme koyabilir."
   } else if (evidence.has_ads_signal) {
-    roiConnection = "Aktif reklam harcaması yapılmasına rağmen dönüşüm altyapısının zayıf olması, bütçenin boşa harcanmasına ve müşteri edinim maliyetinin (CAC) çok yüksek kalmasına neden oluyor."
+    roiConnection = "Aktif reklam sinyali, reklam sonrası dönüşüm noktalarının ayrıca ölçülmesini gerekli kılar; veri olmadan bütçe verimliliği varsayılmaz."
   } else if ((lead.rating ?? 5) < 4.2) {
-    roiConnection = "Google puanının 4.2'nin altında olması, potansiyel müşterilerin güvenini sarsarak dönüşüm oranlarını %50'ye varan oranda düşürüyor."
+    roiConnection = "Google puanının 4.2'nin altında olması, potansiyel müşterinin karşılaştırma aşamasındaki güvenini zayıflatabilir."
   } else if ((lead.review_count ?? 0) < 15) {
-    roiConnection = "Sosyal kanıt (Google yorumları) eksikliği, yeni müşterilerin güvenini kazanmayı zorlaştırıyor ve marka itibarını kısıtlıyor."
+    roiConnection = "Google yorumlarının az olması, potansiyel müşterinin karşılaştırma aşamasında daha az sosyal kanıt görmesi demektir."
   } else {
-    roiConnection = "Müşteri edinme potansiyeli yüksek bir sektörel yapıda olmasına rağmen dijital dönüşüm altyapısının geliştirilmesi gerekiyor."
+    roiConnection = "Mevcut dijital temas noktaları ölçülebilir bir pilot için ayrıca incelenebilir."
   }
 
   // Kapanış cümlesi: AI yerine kategoriye uygun tasarım hizmeti (otomasyon hariç).
   const closeLine = isAutomation
-    ? 'AI satış asistanı ile bu eksikler giderildiğinde, kaçan müşteri doğrudan ciroya döner.'
-    : `${category.recommended_service_name} ile bu eksikler giderildiğinde, doğrudan ciro artışı sağlanacaktır.`
+    ? 'AI satış asistanı için küçük bir pilotla yanıt süresi ve talep yakalama etkisi ölçülebilir.'
+    : `${category.recommended_service_name} için küçük bir pilotla görünürlük ve talep yakalama etkisi ölçülebilir.`
   const why_this_will_convert = topReasons
     ? `${lead.business_name ?? 'Bu işletme'}, ${topReasons} nedeniyle yüksek potansiyel taşıyor. ${roiConnection} ${closeLine}`
     : `${profile.displayName} sektöründe ajans hizmetine açık bir işletme.`
