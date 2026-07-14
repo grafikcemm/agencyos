@@ -81,18 +81,18 @@ function buildFirstMessage(offer: Offer, lead: Partial<Lead>): string {
 
   switch (offer.id) {
     case 'ai_lead_response':
-      return `Merhaba ${name}, reklamdan veya WhatsApp'tan gelen müşteri adaylarınız 5-10 dakika içinde dönüş alamazsa rakibe kayabiliyor. Mevcut akışınızı 5 dakikalık küçük bir analiz ile çıkarıp net bir iyileştirme önerisi verebiliriz.`
+      return `Merhaba ${name}, reklam ve WhatsApp'tan gelen müşteri adaylarının ilk yanıt ve takip akışını birlikte inceleyebiliriz. Mevcut süreci 5 dakikada çıkarıp ölçülebilir bir iyileştirme önerisi paylaşayım mı?`
     case 'old_patient_reactivation':
     case 'old_customer_reactivation':
-      return `${name}, geçmiş ${sectorProfile.id === 'health_clinic' ? 'hasta' : 'müşteri'} listenizdeki kişiler doğru zamanlama ve doğru teklifle ciddi gelir üretebiliyor. 30 günlük bir canlandırma kampanyasıyla nasıl çalıştığını gösterebilirim.`
+      return `${name}, geçmiş ${sectorProfile.id === 'health_clinic' ? 'hasta' : 'müşteri'} listeniz için izin ve tercihleri gözeten bir yeniden iletişim akışı kurulabilir. Küçük bir segmentte nasıl ölçebileceğimizi göstereyim mi?`
     case 'review_engine':
-      return `${name}, Google yorumları ${sectorProfile.id === 'health_clinic' ? 'klinikler' : 'işletmeler'} için ciddi güven ve dönüşüm farkı yaratıyor. Otomatik bir yorum toplama sistemi ile 90 günde yorum sayınızı 3 katına çıkarmak mümkün — kısa bir örnek paylaşayım mı?`
+      return `${name}, Google yorum sürecinizi düzenli takip eden ve uygun müşteriden doğru zamanda geri bildirim isteyen bir akış kurulabilir. Mevcut profiliniz üzerinden kısa bir örnek paylaşayım mı?`
     case 'ai_creative_lab':
       return `${name}, reklam bütçesi harcanıyor ama kazanan kreatifleri sistematik takip etmek zor oluyor. AI destekli kreatif test ve kazanan raporu ile bunu ölçülebilir hale getirebiliriz.`
     case 'renewal_engine':
-      return `${name}, poliçe yenileme tarihleri yaklaştığında müşterinin unutulması ciddi gelir kaybı yaratabiliyor. Yenileme + hatırlatma + çapraz satışı otomatikleştiren bir sistemle yenileme oranınızı %20-30 yukarı çekebiliriz.`
+      return `${name}, poliçe yenileme tarihlerini tek yerde izleyen, zamanında hatırlatma üreten ve sonucu ölçen bir akış kuruyoruz. Mevcut yenileme süreciniz için kısa bir taslak paylaşayım mı?`
     case 'appointment_recovery':
-      return `${name}, randevuya gelmeyen müşteri/hasta hem zaman hem gelir kaybı. Otomatik hatırlatma + yeniden randevulandırma akışı ile no-show oranınızı yarıya indirebiliriz.`
+      return `${name}, gelmeyen randevular için hatırlatma ve yeniden randevulandırma adımlarını otomatikleştirip sonucu ölçebiliriz. Mevcut akışınıza nasıl uyacağını kısaca göstereyim mi?`
     case 'document_automation':
       return `${name}, belge işleme operasyonel yükünüzü ciddi kısıyor. Mevcut akışınız üzerinden 1-2 örnek belge tipiyle pilot yapabiliriz.`
     default:

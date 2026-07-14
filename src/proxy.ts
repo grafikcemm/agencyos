@@ -1,13 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { SESSION_COOKIE_NAME, verifySessionToken } from '@/lib/session'
 
-// Single-operator page gate. OpenNext currently executes the legacy middleware
-// convention on the Edge runtime; API routes still enforce auth independently
-// through requireApiUser/requireApiAccess. Unauthenticated page requests are
-// redirected to /login and /login itself always remains reachable.
+// Single-operator page gate. Proxy performs the optimistic navigation check;
+// API routes still enforce auth independently through
+// requireApiUser/requireApiAccess. Unauthenticated page requests are redirected
+// to /login and /login itself always remains reachable.
 //
-// This is an optimistic navigation check only. The API layer is the actual
-// authorization boundary.
+// The API layer is the actual authorization boundary.
 
 const PUBLIC_PATHS = new Set(['/login'])
 
@@ -17,7 +16,7 @@ function isLocalOperatorBypass(): boolean {
   return process.env.NODE_ENV !== 'production' && process.env.LOCAL_OPERATOR_MODE === 'true'
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   if (PUBLIC_PATHS.has(pathname)) {

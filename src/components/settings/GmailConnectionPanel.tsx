@@ -16,6 +16,7 @@ interface GmailStatus {
   sendEnabled: boolean
   ingestEnabled: boolean
   hasHistoryCursor: boolean
+  technicalCanaryState: 'claimed' | 'unknown' | 'sent' | 'replied' | null
 }
 
 const CALLBACK_MESSAGES: Record<string, { text: string; ok: boolean }> = {
@@ -75,6 +76,33 @@ export function GmailConnectionPanel() {
     }
   }
 
+  const handleTechnicalCanary = async () => {
+    setBusy(true)
+    try {
+      const res = await fetch('/api/gmail/technical-canary', { method: 'POST' })
+      const json = await res.json()
+      if (json.success) {
+        const replied = json.result?.replied === true
+        const deduplicated = json.result?.deduplicated === true
+        setActionBanner({
+          text: replied
+            ? '✓ Gerçek Gmail send + reply canary doğrulandı.'
+            : deduplicated
+            ? '✓ Teknik Gmail canary daha önce gönderilmiş; ikinci gönderim engellendi.'
+            : '✓ Teknik Gmail canary gerçek Gmail hattından gönderildi.',
+          ok: true,
+        })
+        await queryClient.invalidateQueries({ queryKey: ['gmail-status'] })
+      } else {
+        setActionBanner({ text: json.error ?? 'Teknik canary başarısız.', ok: false })
+      }
+    } catch {
+      setActionBanner({ text: 'Teknik canary bağlantı hatası.', ok: false })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const connected = data?.connected ?? false
 
   return (
@@ -109,6 +137,13 @@ export function GmailConnectionPanel() {
           <StatusRow label="Gerçek gönderim transport'u" ok={data.realSendTransportReady} okText="Hazır" noText="Hazır değil" />
           <StatusRow label="Gönderim bayrağı (GMAIL_SEND_ENABLED)" ok={data.sendEnabled} okText="Açık" noText="Kapalı (dry-run)" neutral />
           <StatusRow label="Inbound ingest bayrağı" ok={data.ingestEnabled} okText="Açık" noText="Kapalı" neutral />
+          <StatusRow
+            label="Gerçek send + reply canary"
+            ok={data.technicalCanaryState === 'replied'}
+            okText="Doğrulandı"
+            noText={data.technicalCanaryState === 'sent' ? 'Yanıt bekleniyor' : 'Henüz doğrulanmadı'}
+            neutral
+          />
           {data.grantedScopes.length > 0 && (
             <div className="pt-1">
               <span className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">İzin kümesi</span>
@@ -133,14 +168,24 @@ export function GmailConnectionPanel() {
           {connected ? 'Yeniden Bağla' : 'Gmail Bağla'}
         </a>
         {connected && (
-          <button
-            onClick={handleRevoke}
-            disabled={busy}
-            className="flex items-center gap-2 px-4 py-2 border border-[var(--danger)]/40 text-[var(--danger)] text-xs font-semibold rounded-lg hover:border-[var(--danger)] transition-all disabled:opacity-50"
-          >
-            <Unlink className="w-3.5 h-3.5" />
-            {busy ? 'Kaldırılıyor…' : 'Bağlantıyı Kaldır'}
-          </button>
+          <>
+            <button
+              onClick={handleTechnicalCanary}
+              disabled={busy}
+              className="flex items-center gap-2 px-4 py-2 border border-[var(--accent)]/40 text-[var(--accent)] text-xs font-semibold rounded-lg hover:border-[var(--accent)] transition-all disabled:opacity-50"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Teknik Canary
+            </button>
+            <button
+              onClick={handleRevoke}
+              disabled={busy}
+              className="flex items-center gap-2 px-4 py-2 border border-[var(--danger)]/40 text-[var(--danger)] text-xs font-semibold rounded-lg hover:border-[var(--danger)] transition-all disabled:opacity-50"
+            >
+              <Unlink className="w-3.5 h-3.5" />
+              {busy ? 'İşleniyor…' : 'Bağlantıyı Kaldır'}
+            </button>
+          </>
         )}
       </div>
 

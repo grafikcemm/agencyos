@@ -56,7 +56,7 @@ function fullyReady() {
   webhookInfo.mockResolvedValue({ ok: true, info: { url: 'https://agency.example/api/telegram' } })
   settingsRows.voice_style_rules = JSON.stringify({ positive: ['kısa yaz'], negative: [] })
   settingsRows.ticaret_unvani = 'Ali Cem Bozma'
-  settingsRows.mersis_no = '0000000000000000'
+  settingsRows.mersis_no = '0123456789012345'
   settingsRows.gmail_last_ingest_ok = new Date().toISOString()
   lifeSelectError.value = null
 }
@@ -108,6 +108,14 @@ describe('getPilotReadiness', () => {
   it('uyum bilgisi eksik (MERSİS boş) → healthy:false', async () => {
     fullyReady()
     settingsRows.mersis_no = ''
+    const r = await getPilotReadiness()
+    expect(r.healthy).toBe(false)
+    expect(r.failedRequired).toContain('compliance')
+  })
+
+  it('placeholder MERSİS pilot kapısını açamaz', async () => {
+    fullyReady()
+    settingsRows.mersis_no = '0000000000000000'
     const r = await getPilotReadiness()
     expect(r.healthy).toBe(false)
     expect(r.failedRequired).toContain('compliance')

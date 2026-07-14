@@ -316,7 +316,7 @@ function buildPitch(
   if (!evidence.has_real_website || evidence.instagram_as_site)
     return `${name}, merhaba — dijital varlığınız henüz çok sınırlı, sadece Instagram var. Biz ${sectorName} için web sitesi ve müşteri hattı kuruyoruz. 5 dakikanız var mı?`
   if (evidence.website_quality_band === 'poor')
-    return `${name}, merhaba — web siteniz var ama tasarımı güncel değil; ilk izlenimde müşteri kaybettiriyor. ${sectorName} için modern, mobil uyumlu bir yenileme yapıyoruz. 5 dakikanız var mı?`
+    return `${name}, merhaba — web sitenizde mobil deneyim ve güncellik açısından iyileştirme alanları gördüm. ${sectorName} için öncelikli üç noktayı kısa bir değerlendirmeyle paylaşayım mı?`
   // Sprint-3 Faz 3: kanıtsız iddialar ("1 haftada çözüyoruz", "müşteriler mesaj
   // atıp dönüş alamıyor", "rakibe geçiyor") şablonlardan çıkarıldı — yalnız
   // DOĞRULANABİLİR gözlem + iddiasız değer önerisi kaldı (audit T1/T3 kökü).
@@ -326,7 +326,7 @@ function buildPitch(
     return `${name}, merhaba — online randevu sisteminiz görünmüyor. ${sectorName} için telefon trafiğini azaltan randevu otomasyonu kuruyoruz. Değerlendirme yapabilir miyim?`
   if ((lead.rating ?? 5) < 4.0)
     return `${name}, merhaba — Google puanınız ${lead.rating}. Bu müşterileri doğrudan etkiliyor. Yorum yönetimi sistemleri kuruyoruz. 5 dakika var mı?`
-  return `${name}, merhaba — ${mainPain} konusunda çözümümüz var. ${sectorName} sektörüne özel, hızlı uygulama. Görüşebilir miyiz?`
+  return `${name}, merhaba — ${mainPain} başlığındaki mevcut akışınızı ölçüp ${sectorName} sektörüne uygun küçük bir pilot önerebiliriz. Kısa bir değerlendirme uygun olur mu?`
 }
 
 function buildObjectionRisks(

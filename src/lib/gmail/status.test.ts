@@ -20,6 +20,9 @@ vi.mock('@/lib/supabase', () => ({
     },
   },
 }))
+vi.mock('@/lib/gmail/technicalCanary', () => ({
+  getTechnicalCanaryState: vi.fn(async () => 'replied'),
+}))
 
 import { getGmailStatus, isOAuthConfigured } from './status'
 import { ALLOWED_GMAIL_SCOPES } from '@/lib/outreach/gmailScopes'
@@ -45,6 +48,7 @@ describe('getGmailStatus', () => {
     expect(s.verifiedEmail).toBeNull()
     expect(s.realSendTransportReady).toBe(false)
     expect(s.requiredScopesOk).toBe(false)
+    expect(s.technicalCanaryState).toBe('replied')
   })
 
   it('bağlı + iki scope + OAuth env → realSendTransportReady:true; secret ALANI YOK', async () => {

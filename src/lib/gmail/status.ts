@@ -8,6 +8,7 @@ import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { REQUIRED_GMAIL_SCOPES } from '@/lib/outreach/gmailScopes'
 import { isGmailSendEnabled } from '@/lib/outreach/flags'
+import { getTechnicalCanaryState, type CanaryLedgerState } from '@/lib/gmail/technicalCanary'
 
 export interface GmailStatus {
   /** Aktif, vault referanslı hesap var mı. */
@@ -29,6 +30,8 @@ export interface GmailStatus {
   ingestEnabled: boolean
   /** last_history_id set edilmiş mi (ilk sync sonrası dolar). */
   hasHistoryCursor: boolean
+  /** Tek seferlik gerçek provider canary durumu; secret/PII içermez. */
+  technicalCanaryState: CanaryLedgerState | null
 }
 
 /** OAuth env üçlüsü tam mı — GERÇEK Google çağrıları yapısal koşulu. */
@@ -45,13 +48,16 @@ function isIngestEnabled(): boolean {
 }
 
 export async function getGmailStatus(): Promise<GmailStatus> {
-  const { data } = await supabaseAdmin
-    .from('gmail_accounts')
-    .select('email_address, scopes, active, vault_secret_id, last_history_id')
-    .eq('active', true)
-    .order('updated_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  const [{ data }, technicalCanaryState] = await Promise.all([
+    supabaseAdmin
+      .from('gmail_accounts')
+      .select('email_address, scopes, active, vault_secret_id, last_history_id')
+      .eq('active', true)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    getTechnicalCanaryState().catch(() => null),
+  ])
 
   const account = (data as {
     email_address?: string
@@ -75,5 +81,6 @@ export async function getGmailStatus(): Promise<GmailStatus> {
     sendEnabled: isGmailSendEnabled(),
     ingestEnabled: isIngestEnabled(),
     hasHistoryCursor: Boolean(account?.last_history_id),
+    technicalCanaryState,
   }
 }

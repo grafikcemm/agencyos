@@ -9,6 +9,7 @@ import { SIGNATURE_SETTING_KEYS, SIGNATURE_DEFAULTS, COMPLIANCE_SETTING_KEYS } f
 import { TelegramDiagnostics } from '@/components/settings/TelegramDiagnostics'
 import { VoiceDnaPanel } from '@/components/settings/VoiceDnaPanel'
 import { GmailConnectionPanel } from '@/components/settings/GmailConnectionPanel'
+import { isPlausibleMersis } from '@/lib/compliance/identity'
 
 interface ReadinessCheck { key: string; label: string; ok: boolean; required: boolean; detail: string }
 interface ConfigHealth {
@@ -41,7 +42,7 @@ const COMPLIANCE_LABELS: Record<string, string> = {
 
 const COMPLIANCE_PLACEHOLDERS: Record<string, string> = {
   ticaret_unvani: 'Ali Cem Bozma',
-  mersis_no: '0000000000000000',
+  mersis_no: 'Tacirseniz resmî 16 haneli MERSİS numaranız',
   compliance_enabled: 'true',
 }
 
@@ -126,6 +127,11 @@ export default function SettingsPage() {
     complianceInputs[key] ?? settings?.find((s) => s.key === key)?.value ?? ''
 
   const handleSaveCompliance = async () => {
+    const mersis = complianceValue('mersis_no').trim()
+    if (mersis && !isPlausibleMersis(mersis)) {
+      showMsg('MERSİS 16 rakam olmalı ve placeholder/uydurma değer olamaz.', false)
+      return
+    }
     setSavingCompliance(true)
     try {
       for (const key of COMPLIANCE_SETTING_KEYS) {
@@ -365,9 +371,10 @@ export default function SettingsPage() {
             <span className="text-xs font-semibold text-[var(--text-primary)] uppercase tracking-wider">İYS / KVKK Uyum Footer</span>
           </div>
           <p className="text-xs text-[var(--text-muted)]">
-            6563 sayılı ETK uyarınca B2B ticari iletide ticaret unvanı, MERSİS no ve kolay ret
-            imkânı zorunludur. Bu bilgiler soğuk e-posta taslaklarının sonuna otomatik eklenir.
-            MERSİS boşsa footer&apos;a eklenmez — eksiksiz uyum için doldurun.
+            Ticari ileti kimliği işletmenin hukuki statüsüne göre değişir: tacir için ticaret unvanı ve
+            MERSİS, esnaf için ad-soyad ve T.C. kimlik numarası gerekir. Bu ekran yalnız tacir/MERSİS
+            akışını otomatikleştirir. Resmî kaydınız yoksa numara uydurmayın; hukuki statü ve İYS kaydı
+            doğrulanana kadar gerçek müşteri gönderimi kapalı kalır.
           </p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {COMPLIANCE_SETTING_KEYS.map((key) => (

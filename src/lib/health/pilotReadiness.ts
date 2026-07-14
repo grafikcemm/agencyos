@@ -13,6 +13,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { getGmailStatus } from '@/lib/gmail/status'
 import { getWebhookInfo } from '@/lib/telegram/client'
 import { CRON_REQUIRES_SUB_DAILY_SCHEDULER } from '@/lib/cron/manifest'
+import { isPlausibleMersis } from '@/lib/compliance/identity'
 
 export interface ReadinessCheck {
   key: string
@@ -119,12 +120,13 @@ async function voiceCalibrated(): Promise<boolean> {
   }
 }
 
-/** İYS/KVKK uyum footer alanları dolu mu (ticaret unvanı + MERSİS). */
+/** Tacir akışı için İYS/KVKK footer kimliği doğrulanabilir mi. Vergi levhası
+ * tek başına MERSİS değildir; sahte/placeholder numara kapıyı açamaz. */
 async function complianceReady(): Promise<boolean> {
   try {
     const { data } = await supabaseAdmin.from('settings').select('key, value').in('key', ['ticaret_unvani', 'mersis_no'])
     const map = new Map((data ?? []).map((r) => [r.key as string, r.value as string]))
-    return Boolean(map.get('ticaret_unvani')?.trim()) && Boolean(map.get('mersis_no')?.trim())
+    return Boolean(map.get('ticaret_unvani')?.trim()) && isPlausibleMersis(map.get('mersis_no'))
   } catch {
     return false
   }
@@ -170,7 +172,7 @@ export async function getPilotReadiness(): Promise<PilotReadiness> {
     { key: 'life006', label: 'LIFE 006 (Telegram imzalı aksiyon + ledger)', ok: life006, required: true, detail: 'LIFE mig 006 (code kolonu) canlı olmalı.' },
     { key: 'telegram_webhook', label: 'Telegram webhook gerçek kaydı', ok: telegram, required: true, detail: 'Token/chat/user/secret/APP_URL tam ve provider webhook URL’i birebir eşleşmeli.' },
     { key: 'voice_dna', label: 'Voice DNA kalibrasyonu', ok: voice, required: true, detail: 'Üst düzey kişiselleştirme için en az bir onaylı stil kuralı gerekli.' },
-    { key: 'compliance', label: 'İYS/KVKK uyum bilgisi', ok: compliance, required: true, detail: 'Ticaret unvanı + MERSİS (yasal footer).' },
+    { key: 'compliance', label: 'İYS/KVKK uyum bilgisi', ok: compliance, required: true, detail: 'Hukuki statü teyidi + tacirseniz gerçek 16 haneli MERSİS + İYS operasyonu.' },
   ]
 
   const failedRequired = checks.filter((c) => c.required && !c.ok).map((c) => c.key)
