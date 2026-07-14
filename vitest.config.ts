@@ -33,6 +33,8 @@ export default defineConfig({
         'src/lib/gmail/replyIngest.ts': { lines: 90, branches: 85 },
         'src/lib/gmail/gmailInboundTransport.ts': { lines: 90, branches: 85 },
         'src/lib/cron/manifest.ts': { lines: 90, branches: 85 },
+        // FINAL PILOT BLOCKERS Faz 4 — enrichment orkestrasyon çekirdeği:
+        'src/lib/enrichment/enrichmentOrchestrator.ts': { lines: 90, branches: 85 },
         'src/lib/outreach/sendMachine.ts': { statements: 90, lines: 90, branches: 80 },
         'src/lib/outreach/auditCompliance.ts': { statements: 90, lines: 90, branches: 85 },
         'src/lib/models/**/*.ts': { statements: 90, branches: 80 },

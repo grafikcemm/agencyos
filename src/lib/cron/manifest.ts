@@ -112,6 +112,14 @@ export const CRON_MANIFEST: CronJob[] = [
     slaCritical: true,
   },
   {
+    path: '/api/cron/enrichment',
+    schedule: '0 1 * * *',
+    name: 'Recipient + Evidence Enrichment',
+    description: 'Gece: yüksek öncelikli, alıcısı/evidence’i eksik leadleri otomatik zenginleştirir (cap’li, HITL eşikli). Bayrak açıksa gerçek, kapalıysa shadow.',
+    cadenceLabel: 'Her gün 04:00 TR',
+    slaCritical: true,
+  },
+  {
     path: '/api/cron/weekly-retro',
     schedule: '0 16 * * 0',
     name: 'Haftalık Retro',

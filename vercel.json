@@ -43,6 +43,10 @@
       "schedule": "0 */3 * * *"
     },
     {
+      "path": "/api/cron/enrichment",
+      "schedule": "0 1 * * *"
+    },
+    {
       "path": "/api/cron/weekly-retro",
       "schedule": "0 16 * * 0"
     },

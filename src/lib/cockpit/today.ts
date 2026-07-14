@@ -78,6 +78,21 @@ export interface TodayCockpit {
   hotLeads: PanelResult<HotLead>
   revenue: { data: RevenueStrip | null; error: string | null }
   opsMetrics: { data: OpsMetrics | null; error: string | null }
+  /** Faz 4: gece enrichment son-koşu özeti (hata/limit/maliyet görünürlüğü). */
+  enrichment: { data: EnrichmentStatus | null; error: string | null }
+}
+
+export interface EnrichmentStatus {
+  at: string | null
+  scanned: number
+  contactsAdded: number
+  evidenceAdded: number
+  primaryAutoSet: number
+  hitlPending: number
+  apolloCalls: number
+  duplicatesSkipped: number
+  cappedOut: number
+  errorCount: number
 }
 
 /** Aşama → kapanma olasılığı katsayısı. [ASSUMPTION] Başlangıç kalibrasyonu —
@@ -458,9 +473,40 @@ async function loadOpsMetrics(nowIso: string): Promise<OpsMetrics> {
   }
 }
 
+/** Faz 4: settings'teki enrichment son-koşu özetini kokpite taşır (görünürlük).
+ *  Kayıt yoksa null (henüz koşmadı) — hata değildir. */
+async function loadEnrichmentStatus(): Promise<EnrichmentStatus | null> {
+  const { data, error } = await supabaseAdmin
+    .from('settings')
+    .select('value')
+    .eq('key', 'enrichment_last_run')
+    .maybeSingle()
+  if (error) throw new Error(`enrichment durumu okunamadı: ${error.message}`)
+  if (!data?.value) return null
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(data.value as string) as Record<string, unknown>
+  } catch {
+    return null
+  }
+  const num = (k: string): number => (typeof parsed[k] === 'number' ? (parsed[k] as number) : 0)
+  return {
+    at: typeof parsed.at === 'string' ? parsed.at : null,
+    scanned: num('scanned'),
+    contactsAdded: num('contactsAdded'),
+    evidenceAdded: num('evidenceAdded'),
+    primaryAutoSet: num('primaryAutoSet'),
+    hitlPending: num('hitlPending'),
+    apolloCalls: num('apolloCalls'),
+    duplicatesSkipped: num('duplicatesSkipped'),
+    cappedOut: num('cappedOut'),
+    errorCount: num('errorCount'),
+  }
+}
+
 export async function getTodayCockpit(nowMs: number = Date.now()): Promise<TodayCockpit> {
   const nowIso = new Date(nowMs).toISOString()
-  const [callResult, pendingSends, replies, overdueFollowups, sendIssues, hotLeads, revenue, opsMetrics] =
+  const [callResult, pendingSends, replies, overdueFollowups, sendIssues, hotLeads, revenue, opsMetrics, enrichment] =
     await Promise.all([
       loadLeadsToCall(nowIso).then(
         (r) => ({ items: r.list, duplicates: r.duplicates, error: null as string | null }),
@@ -483,6 +529,10 @@ export async function getTodayCockpit(nowMs: number = Date.now()): Promise<Today
         (data) => ({ data, error: null as string | null }),
         (err: unknown) => ({ data: null, error: err instanceof Error ? err.message : 'hata' })
       ),
+      loadEnrichmentStatus().then(
+        (data) => ({ data, error: null as string | null }),
+        (err: unknown) => ({ data: null, error: err instanceof Error ? err.message : 'hata' })
+      ),
     ])
   return {
     leadsToCall: { items: callResult.items, error: callResult.error },
@@ -494,5 +544,6 @@ export async function getTodayCockpit(nowMs: number = Date.now()): Promise<Today
     hotLeads,
     revenue,
     opsMetrics,
+    enrichment,
   }
 }

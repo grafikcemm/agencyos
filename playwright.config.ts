@@ -71,6 +71,11 @@ export default defineConfig({
       GOOGLE_CLIENT_ID: '',
       GOOGLE_CLIENT_SECRET: '',
       GMAIL_OAUTH_REDIRECT_URI: '',
+      // FINAL PILOT BLOCKERS Faz 4: enrichment E2E — fake provider (dış web/
+      // Apollo yapısal imkânsız: APOLLO_API_KEY BİLEREK boş; fake yalnız o zaman).
+      ENRICHMENT_ENABLED: 'true',
+      ENRICHMENT_FAKE: 'body',
+      APOLLO_API_KEY: '',
       TELEGRAM_CHAT_ID: E2E_TELEGRAM_CHAT_ID,
       TELEGRAM_USER_ID: E2E_TELEGRAM_USER_ID,
       // Bot token BILEREK bos - E2E'de dis Telegram cagrisi yapisal imkansiz.
