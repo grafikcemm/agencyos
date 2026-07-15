@@ -7,15 +7,22 @@ import {
 } from '@/lib/session'
 import { rateLimit, clientIp } from '@/lib/api/rateLimit'
 
-// Tek paylaşımlı parola modeli → brute-force koruması kritik. IP başına 15 dk'da 8 deneme.
+// Yalnız izole E2E'de açık parola modeli → brute-force koruması yine zorunlu.
+// IP başına 15 dk'da 8 deneme.
 // E2E suite'i tek IP'den ~10+ BAŞARILI login yapar (her spec ayrı oturum) —
 // LOGIN_RATE_LIMIT env'i YALNIZ izole test ortamında yükseltilir
 // (playwright.config webServer env). Varsayılan (prod) 8 KALIR.
 const LOGIN_LIMIT = Math.max(1, Number(process.env.LOGIN_RATE_LIMIT ?? '') || 8)
 const LOGIN_WINDOW_MS = 15 * 60 * 1000
 
-// POST /api/auth/login — single shared password → httpOnly session cookie.
+// POST /api/auth/login — E2E-only password → httpOnly session cookie.
 export async function POST(req: Request) {
+  // Eski paylaşımlı parola yolu üretimde kapalıdır. Yalnızca izole Playwright
+  // ortamı bu flag'i açık verir; gerçek deploy hiçbir koşulda parola kabul etmez.
+  if (process.env.E2E_PASSWORD_AUTH !== 'true') {
+    return NextResponse.json({ error: 'Bulunamadı.' }, { status: 404 })
+  }
+
   const ip = clientIp(req)
   const rl = rateLimit(`login:${ip}`, LOGIN_LIMIT, LOGIN_WINDOW_MS)
   if (!rl.allowed) {

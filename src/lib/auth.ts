@@ -7,7 +7,8 @@ import { SESSION_COOKIE_NAME, verifySessionToken, timingSafeEqual } from '@/lib/
 // Single-operator auth, fail-closed in production.
 //
 // A request is authorized when ONE of these holds:
-//  1. Valid HMAC-signed session cookie (set by /api/auth/login).
+//  1. Valid HMAC-signed session cookie (production'da Google OAuth callback'i,
+//     izole E2E'de /api/auth/login tarafından set edilir).
 //  2. `Authorization: Bearer <OPERATOR_API_TOKEN>` header (only when the env
 //     var is set AND the route passes its Request through) — for scripts/E2E.
 //  3. Explicit local bypass: LOCAL_OPERATOR_MODE=true AND NODE_ENV is NOT

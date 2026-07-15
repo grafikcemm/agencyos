@@ -69,8 +69,8 @@ export async function verifySessionToken(token: string | undefined | null): Prom
   return timingSafeEqual(signature, expected)
 }
 
-// Constant-time password check against APP_PASSWORD. Both sides are hashed to
-// fixed-length HMACs first so the comparison never leaks the password length.
+// Yalnız izole E2E için parola doğrulaması. Production route bu fonksiyona
+// ulaşmadan 404 döner. İki taraf sabit uzunlukta HMAC'e çevrilerek kıyaslanır.
 export async function verifyPassword(input: string): Promise<boolean> {
   const expected = process.env.APP_PASSWORD
   if (!expected) {

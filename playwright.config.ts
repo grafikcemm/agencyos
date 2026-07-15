@@ -56,6 +56,9 @@ export default defineConfig({
     env: {
       ...process.env,
       APP_PASSWORD: E2E_PASSWORD,
+      // Paylaşımlı parola UI/API'si yalnız bu izole production-build E2E'sinde
+      // vardır. Gerçek deploy bu flag olmadan yalnız Google Workspace SSO sunar.
+      E2E_PASSWORD_AUTH: 'true',
       APP_SESSION_SECRET: E2E_SESSION_SECRET,
       OPERATOR_API_TOKEN: E2E_OPERATOR_TOKEN,
       GMAIL_SEND_ENABLED: 'false',

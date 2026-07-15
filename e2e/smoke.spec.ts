@@ -134,7 +134,10 @@ test('full-app smoke: tüm kanonik ekranlar hatasız açılır', async ({ page, 
 })
 
 test('ana giriş ve sidebar yalnız günlük çalışma yüzeylerini gösterir', async ({ page }) => {
-  await login(page)
+  await page.goto('/login')
+  await page.getByRole('textbox').fill(E2E_PASSWORD)
+  await page.getByRole('button').click()
+  await expect(page).toHaveURL(/\/command-center$/)
 
   await page.goto('/')
   await expect(page).toHaveURL(/\/command-center$/)

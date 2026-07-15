@@ -28,6 +28,8 @@ export default defineConfig({
         'src/lib/gmail/oauth.ts': { lines: 90, branches: 85 },
         'src/lib/gmail/tokenVault.ts': { lines: 90, branches: 85 },
         'src/lib/gmail/status.ts': { lines: 90, branches: 85 },
+        // Parolasız tek-operatör Google Workspace giriş çekirdeği:
+        'src/lib/googleAuth.ts': { lines: 90, branches: 85 },
         'src/lib/outreach/gmailScopes.ts': { lines: 90, branches: 85 },
         // FINAL PILOT BLOCKERS Faz 3 — inbound ingest + history-cursor transport:
         'src/lib/gmail/replyIngest.ts': { lines: 90, branches: 85 },

@@ -26,7 +26,8 @@ describe('state (HMAC + TTL + nonce)', () => {
     expect(extractStateNonce(state)).toBe(nonce)
     expect(typeof expMs).toBe('number')
     const [n, e, sig] = state.split('.')
-    expect(verifyOAuthState(`${n}.${e}.${sig.slice(0, -2)}ab`)).toBe(false)
+    const tamperedSig = `${sig[0] === 'a' ? 'b' : 'a'}${sig.slice(1)}`
+    expect(verifyOAuthState(`${n}.${e}.${tamperedSig}`)).toBe(false)
     expect(verifyOAuthState(`kurcalanmis.${e}.${sig}`)).toBe(false)
   })
 

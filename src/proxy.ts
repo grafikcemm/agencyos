@@ -19,10 +19,6 @@ function isLocalOperatorBypass(): boolean {
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  if (PUBLIC_PATHS.has(pathname)) {
-    return NextResponse.next()
-  }
-
   if (isLocalOperatorBypass()) {
     return NextResponse.next()
   }
@@ -35,6 +31,12 @@ export async function proxy(request: NextRequest) {
     // Missing/invalid APP_SESSION_SECRET is fail-closed: direct the operator to
     // /login instead of returning a 500 for every page.
     valid = false
+  }
+
+  if (PUBLIC_PATHS.has(pathname)) {
+    return valid
+      ? NextResponse.redirect(new URL('/command-center', request.url))
+      : NextResponse.next()
   }
 
   if (valid) {
