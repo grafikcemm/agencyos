@@ -3,7 +3,7 @@
 // Sunucu tarafı veri: 3 lead (AgencyOS DB), bugünün rutin/görev özeti + alışkanlık
 // zinciri (FTG DB). İnteraktif parçalar (direktif + motor polling) CommandCenterClient'te.
 import Link from "next/link"
-import { Target, Activity, Flame, AlertTriangle, ArrowRight } from "lucide-react"
+import { Target, Activity, Flame, AlertTriangle, ArrowRight, Sunrise } from "lucide-react"
 import { supabaseAdmin as agencyAdmin } from "@/lib/supabase"
 import { createServerSupabase } from "@/lib/supabaseServer"
 import { loadDailyRoutines } from "@/lib/dailyRoutines"
@@ -14,6 +14,7 @@ import { DailyBriefCard } from "@/components/assistant/DailyBriefCard"
 import { DirectivePanel, EngineStatus, OutreachKpi } from "./CommandCenterClient"
 import { EditorialPageHeader } from "@/components/ui/EditorialPageHeader"
 import { StatBlock } from "@/components/ui/StatBlock"
+import { DailyPrayerCard } from "@/components/cockpit/DailyPrayerCard"
 
 export const dynamic = "force-dynamic"
 
@@ -116,7 +117,22 @@ export default async function CommandCenterPage() {
   return (
     <div className="h-full overflow-y-auto bg-[var(--bg-base)] px-6 py-8 scrollbar-thin">
       <div className="max-w-6xl mx-auto flex flex-col gap-10">
-        <EditorialPageHeader eyebrow={dateLabel} title="Komuta Merkezi" />
+        <DailyPrayerCard />
+
+        <EditorialPageHeader
+          eyebrow={dateLabel}
+          title="Ana Merkez"
+          description="Yaşam, satış ve sistem özetin. Günlük müşteri operasyonunu Bugün ekranında tamamla."
+          actions={(
+            <Link
+              href="/bugun"
+              className="inline-flex items-center gap-2 rounded-lg bg-[var(--accent)] px-4 py-2.5 text-xs font-black uppercase tracking-wider text-white transition-colors hover:bg-[var(--accent-hover)]"
+            >
+              <Sunrise className="h-4 w-4" />
+              Bugünü İşle
+            </Link>
+          )}
+        />
 
         {/* 1 — Asistan brief */}
         <DailyBriefCard energyInput={energyInput} today={todayStr} />

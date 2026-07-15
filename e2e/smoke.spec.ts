@@ -132,3 +132,47 @@ test('full-app smoke: tüm kanonik ekranlar hatasız açılır', async ({ page, 
     .join('\n')
   expect(violations, `Smoke ihlalleri (${violations.length}):\n${report}`).toEqual([])
 })
+
+test('ana giriş ve sidebar yalnız günlük çalışma yüzeylerini gösterir', async ({ page }) => {
+  await login(page)
+
+  await page.goto('/')
+  await expect(page).toHaveURL(/\/command-center$/)
+
+  const visibleLinks = [
+    'Ana Merkez',
+    'Bugün',
+    'Aktif Görevler',
+    'Alışkanlıklar',
+    'Lead Radar',
+    'Fırsatlar',
+    'Pipeline',
+    'Projeler',
+    'Gelişim',
+    'Finans',
+    'Asistan',
+    'Hizmetlerim',
+    'Ayarlar',
+  ]
+  for (const name of visibleLinks) {
+    await expect(page.getByRole('link', { name, exact: true }), `${name} sidebar'da görünmeli`).toHaveCount(1)
+  }
+
+  const backgroundRoutes = [
+    'Ajanlar',
+    'Konsol',
+    'Zamanlanmış İşler',
+    'Bilgi Hazinesi',
+    'Akademi',
+    'Kütüphane',
+    'Kariyer Radarı',
+  ]
+  for (const name of backgroundRoutes) {
+    await expect(page.getByRole('link', { name, exact: true }), `${name} günlük sidebar'da görünmemeli`).toHaveCount(0)
+  }
+
+  await expect(page.getByRole('link', { name: 'Bugünü İşle', exact: true })).toHaveAttribute('href', '/bugun')
+
+  await page.goto('/dashboard')
+  await expect(page).toHaveURL(/\/command-center$/)
+})

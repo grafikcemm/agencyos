@@ -7,7 +7,7 @@ import { Sidebar } from './Sidebar'
 
 const PAGE_TITLES: Record<string, string> = {
   '/bugun': 'Bugün',
-  '/command-center': 'Command Center',
+  '/command-center': 'Ana Merkez',
   '/agents': 'Ajanlar',
   '/tasks': 'Görev Kuyruğu',
   '/schedule': 'Zamanlama',

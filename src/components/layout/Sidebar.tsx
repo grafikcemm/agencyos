@@ -7,73 +7,58 @@ import {
   Map,
   GitMerge,
   Briefcase,
-  BookOpen,
   Settings,
   ChevronLeft,
   ChevronRight,
   Zap,
-  Users,
-  CalendarClock,
   Package,
   Target,
-  Compass,
   TrendingUp,
-  GraduationCap,
   Wallet,
   Flame,
   Sparkles,
-  ShieldCheck,
   ListChecks,
   Sunrise
 } from 'lucide-react'
 
-// Sidebar en tepesindeki sabit yüzeyler (kullanıcının en kritik günlük yüzeyleri):
-// Alışkanlıklar + hemen altında Aktif Görevler.
+// Günlük çalışma sırası: genel durum → gelir işi → görevler → kişisel ritim.
 const TOP_ITEMS = [
-  { label: 'Alışkanlıklar', icon: Flame, href: '/aliskanliklar' },
+  { label: 'Ana Merkez',      icon: LayoutDashboard, href: '/command-center' },
+  { label: 'Bugün',           icon: Sunrise,         href: '/bugun' },
   { label: 'Aktif Görevler', icon: ListChecks, href: '/gorevler' },
+  { label: 'Alışkanlıklar',  icon: Flame,      href: '/aliskanliklar' },
 ]
 
 const NAV_GROUPS = [
   {
+    title: 'MÜŞTERİ',
+    items: [
+      { label: 'Lead Radar',  icon: Map,       href: '/harita' },
+      { label: 'Fırsatlar',   icon: Target,    href: '/firsatlar' },
+      { label: 'Pipeline',    icon: GitMerge,  href: '/pipeline' },
+      { label: 'Projeler',    icon: Briefcase, href: '/projects' },
+    ]
+  },
+  {
     title: 'YAŞAM',
     items: [
-      { label: 'Gelişim',   icon: TrendingUp,    href: '/gelisim' },
-      { label: 'Akademi',   icon: GraduationCap, href: '/akademi' },
-      { label: 'Kütüphane', icon: BookOpen,      href: '/kutuphane' },
-      { label: 'Finans',    icon: Wallet,        href: '/finans' },
+      { label: 'Gelişim', icon: TrendingUp, href: '/gelisim' },
+      { label: 'Finans',  icon: Wallet,     href: '/finans' },
     ]
   },
   {
-    title: 'KOMUTA',
+    title: 'ARAÇLAR',
     items: [
-      { label: 'Command Center', icon: LayoutDashboard, href: '/command-center' },
-      { label: 'Asistan',        icon: Sparkles,        href: '/asistan' },
-      { label: 'Ajanlar',        icon: Users,           href: '/agents' },
-      { label: 'Konsol',         icon: ShieldCheck,     href: '/konsol' },
-    ]
-  },
-  {
-    title: 'PIPELINE',
-    items: [
-      { label: 'Bugün',             icon: Sunrise,   href: '/bugun' },
-      { label: 'Lead Radar',        icon: Map,       href: '/harita' },
-      { label: 'Bugünün Fırsatları', icon: Target,   href: '/firsatlar' },
-      { label: 'Pipeline',          icon: GitMerge,  href: '/pipeline' },
-      { label: 'Projeler',          icon: Briefcase, href: '/projects' },
-      { label: 'Hizmetlerim',       icon: Package,   href: '/services' },
-      // İcraat Fırsatları nav'dan kaldırıldı (Faz C6 — /firsatlar ile mükerrer;
-      // link taraması: gelen link yok). Sayfa deep-link'le hâlâ açılır, silme ayrı karar.
-      { label: 'Kariyer Radarı',    icon: Compass,   href: '/kariyer' },
+      { label: 'Asistan',      icon: Sparkles, href: '/asistan' },
+      { label: 'Hizmetlerim',  icon: Package,  href: '/services' },
     ]
   }
 ]
 
-// Alt SİSTEM bloğu — Ayarlar + taşınan iki sayfa.
+// Ajanlar, konsol, scheduler ve bilgi deposu çalışan arka operasyon yüzeyleri;
+// rotaları korunur ancak günlük kullanıcı navigasyonunu kalabalıklaştırmaz.
 const SYSTEM_ITEMS = [
-  { label: 'Zamanlanmış İşler', icon: CalendarClock, href: '/schedule' },
-  { label: 'Bilgi Hazinesi',    icon: BookOpen,      href: '/bilgi' },
-  { label: 'Ayarlar',           icon: Settings,      href: '/settings' },
+  { label: 'Ayarlar', icon: Settings, href: '/settings' },
 ]
 
 interface SidebarProps {
@@ -118,7 +103,7 @@ export function Sidebar({ isCollapsed, onToggle, onNavigate }: SidebarProps) {
 
       {/* Nav Groups */}
       <nav className="flex-1 flex flex-col gap-5 px-2 overflow-y-auto">
-        {/* EN TEPE: Alışkanlıklar + Aktif Görevler (en kritik günlük yüzeyler) */}
+        {/* EN TEPE: uygulamaya girince izlenecek çalışma sırası */}
         <div className="flex flex-col gap-0.5 pb-1 mb-1 border-b border-[var(--border-subtle)]">
           {TOP_ITEMS.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
