@@ -9,6 +9,7 @@ import { createServerSupabase } from "@/lib/supabaseServer"
 import { loadDailyRoutines } from "@/lib/dailyRoutines"
 import { loadActiveTasks } from "@/lib/activeTasks"
 import { getHabitsOverview } from "@/app/actions/habitActions"
+import { showsLifeUi } from "@/lib/lifeFlags"
 import { getIstanbulDateAndDay } from "@/lib/assistant/timezone"
 import { DailyBriefCard } from "@/components/assistant/DailyBriefCard"
 import { DirectivePanel, EngineStatus, OutreachKpi } from "./CommandCenterClient"
@@ -98,6 +99,7 @@ async function loadHabitSummary(): Promise<{ done: number; due: number; atRisk: 
 }
 
 export default async function CommandCenterPage() {
+  const lifeUi = showsLifeUi()
   const { todayStr } = getIstanbulDateAndDay()
   const [leads, rhythm, habits] = await Promise.all([loadTopLeads(), loadRhythm(), loadHabitSummary()])
 
@@ -178,7 +180,11 @@ export default async function CommandCenterPage() {
           )}
         </section>
 
-        {/* 4 — Ritim + Alışkanlık */}
+        {/* 4 — Ritim + Alışkanlık.
+            SAHIPLIK KAPISI (RT-A2): `LIFE_UI_OWNER=cemos` iken bu blok
+            gizlenir. Iki panelde ayni kisisel sayaci gostermek, hangisinin
+            guncel oldugu sorusunu her gun yeniden dogururdu. */}
+        {lifeUi && (
         <section className="space-y-4">
           <h2 className="label-eyebrow">Bugünün Ritmi</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -221,6 +227,7 @@ export default async function CommandCenterPage() {
             </div>
           </div>
         </section>
+        )}
 
         {/* 5 — Soğuk E-posta KPI */}
         <OutreachKpi />

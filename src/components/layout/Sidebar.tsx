@@ -22,12 +22,25 @@ import {
 } from 'lucide-react'
 
 // Günlük çalışma sırası: genel durum → gelir işi → görevler → kişisel ritim.
-const TOP_ITEMS = [
+//
+// KISISEL BLOKLAR SAHIPLIGE BAGLI (RT-A2). `LIFE_UI_OWNER=cemos` iken kişisel
+// görev/alışkanlık girişleri ana navigasyondan DÜŞER — rotalar çalışmaya devam
+// eder ve taşındı ekranı gösterir. Menüde bırakıp içeride "taşındı" demek,
+// kullanıcıyı her gün ölü bir bağlantıya tıklatmak olurdu.
+const CORE_ITEMS = [
   { label: 'Ana Merkez',      icon: LayoutDashboard, href: '/command-center' },
   { label: 'Bugün',           icon: Sunrise,         href: '/bugun' },
+]
+
+const PERSONAL_ITEMS = [
   { label: 'Aktif Görevler', icon: ListChecks, href: '/gorevler' },
   { label: 'Alışkanlıklar',  icon: Flame,      href: '/aliskanliklar' },
 ]
+
+/** Sunucu bayrağı istemciye prop olarak iner (bkz. `AppShell`). */
+export function topItemsFor(showsLife: boolean) {
+  return showsLife ? [...CORE_ITEMS, ...PERSONAL_ITEMS] : CORE_ITEMS
+}
 
 const NAV_GROUPS = [
   {
@@ -66,10 +79,17 @@ interface SidebarProps {
   onToggle: () => void
   /** Called when a nav link is clicked — used to close the mobile drawer. */
   onNavigate?: () => void
+  /**
+   * Kisisel LIFE girisleri gosterilsin mi (RT-A2). Sunucu tarafinda okunan
+   * `LIFE_UI_OWNER` buraya prop olarak iner; istemci bileseni env okumaz.
+   * Varsayilan `true` — bayrak hic verilmezse bugunku davranis aynen surer.
+   */
+  showsLifeUi?: boolean
 }
 
-export function Sidebar({ isCollapsed, onToggle, onNavigate }: SidebarProps) {
+export function Sidebar({ isCollapsed, onToggle, onNavigate, showsLifeUi = true }: SidebarProps) {
   const pathname = usePathname()
+  const topItems = topItemsFor(showsLifeUi)
 
   return (
     <div className="flex flex-col h-full py-4">
@@ -105,7 +125,7 @@ export function Sidebar({ isCollapsed, onToggle, onNavigate }: SidebarProps) {
       <nav className="flex-1 flex flex-col gap-5 px-2 overflow-y-auto">
         {/* EN TEPE: uygulamaya girince izlenecek çalışma sırası */}
         <div className="flex flex-col gap-0.5 pb-1 mb-1 border-b border-[var(--border-subtle)]">
-          {TOP_ITEMS.map((item) => {
+          {topItems.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
             const Icon = item.icon
             return (

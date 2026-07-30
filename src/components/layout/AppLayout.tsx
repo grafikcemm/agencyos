@@ -32,9 +32,15 @@ const PAGE_TITLES: Record<string, string> = {
 
 interface AppLayoutProps {
   children: React.ReactNode
+  /**
+   * Kisisel LIFE girisleri navigasyonda gorunsun mu (RT-A2). Sunucu bileseni
+   * `LIFE_UI_OWNER`i okuyup buraya verir; istemci tarafi env'e bakmaz.
+   * Varsayilan `true` — bayrak verilmezse bugunku davranis birebir korunur.
+   */
+  showsLifeUi?: boolean
 }
 
-export function AppLayout({ children }: AppLayoutProps) {
+export function AppLayout({ children, showsLifeUi = true }: AppLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const pathname = usePathname()
@@ -47,7 +53,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         className="hidden md:block shrink-0 bg-[var(--bg-sidebar)] border-r border-[var(--border-subtle)] transition-all duration-300"
         style={{ width: sidebarCollapsed ? '64px' : '220px' }}
       >
-        <Sidebar isCollapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(c => !c)} />
+        <Sidebar isCollapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(c => !c)} showsLifeUi={showsLifeUi} />
       </aside>
 
       {/* Mobile off-canvas sidebar */}
@@ -66,7 +72,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             >
               <X className="w-4 h-4" />
             </button>
-            <Sidebar isCollapsed={false} onToggle={() => setMobileNavOpen(false)} onNavigate={() => setMobileNavOpen(false)} />
+            <Sidebar isCollapsed={false} onToggle={() => setMobileNavOpen(false)} onNavigate={() => setMobileNavOpen(false)} showsLifeUi={showsLifeUi} />
           </aside>
         </div>
       )}
