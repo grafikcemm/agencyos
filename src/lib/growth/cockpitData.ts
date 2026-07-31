@@ -50,6 +50,43 @@ interface VariantRow {
 
 const STATUSES = new Set(['draft', 'running', 'paused', 'concluded'])
 
+export interface RecommendationRow {
+  id: string
+  kind: string
+  title: string
+  rationale: string
+  proposed_change: string
+  experiment_key: string | null
+  confidence: string
+  sample_sufficient: boolean
+  status: string
+  created_at: string
+}
+
+/**
+ * GrafikcemOS'un ürettiği öneriler — SALT OKUNUR.
+ *
+ * Kokpit bunları gösterir, uygulamaz. Yalnız `proposed` olanlar öne çıkar;
+ * karara bağlanmış olanlar listede kalır ki "neden bu öneriyi reddettim"
+ * sorusunun cevabı kaybolmasın.
+ */
+export async function loadRecommendations(warnings: string[]): Promise<RecommendationRow[]> {
+  return safe(
+    'cemos_recommendations',
+    async () => {
+      const { data, error } = await supabaseAdmin
+        .from('cemos_recommendations')
+        .select('id,kind,title,rationale,proposed_change,experiment_key,confidence,sample_sufficient,status,created_at')
+        .order('created_at', { ascending: false })
+        .limit(20)
+      if (error) throw error
+      return (data ?? []) as RecommendationRow[]
+    },
+    warnings,
+    [],
+  )
+}
+
 export async function loadCockpitInput() {
   const warnings: string[] = []
   const monthKey = istanbulMonthKey()
@@ -114,8 +151,10 @@ export async function loadCockpitInput() {
   )
 
   const cost: CostInput = { sourceCostUsd: spend.spentUsd ?? 0, burnedUsd: spend.burnedUsd }
+  const recommendations = await loadRecommendations(warnings)
 
   return {
+    recommendations,
     input: {
       experiments,
       spend,

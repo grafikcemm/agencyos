@@ -30,7 +30,7 @@ function Stat({ label, value, hint }: { label: string; value: string; hint?: str
 }
 
 export default async function ExperimentsPage() {
-  const { input, warnings } = await loadCockpitInput()
+  const { input, warnings, recommendations } = await loadCockpitInput()
   const c = buildCockpit(input)
 
   return (
@@ -171,6 +171,42 @@ export default async function ExperimentsPage() {
                   ) : (
                     <>Varyant tanımlı değil</>
                   )}
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* GrafikcemOS önerileri — SALT OKUNUR. Buradan uygulanamaz. */}
+      <section>
+        <h2 className="text-[13px] font-bold text-[var(--text-primary)] mb-2">
+          Öneriler <span className="font-normal text-[var(--text-tertiary)]">· GrafikcemOS · salt okunur</span>
+        </h2>
+        {recommendations.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-[var(--border-subtle)] p-4 text-center text-[12px] text-[var(--text-tertiary)]">
+            Öneri yok.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {recommendations.map((r) => (
+              <article key={r.id} className="rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-card)] p-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <h3 className="text-[13px] font-semibold text-[var(--text-primary)]">{r.title}</h3>
+                  <span className="text-[11px] text-[var(--text-tertiary)] shrink-0">
+                    {r.kind} · {r.status}
+                  </span>
+                </div>
+                <p className="text-[12px] text-[var(--text-secondary)] mt-1">{r.rationale}</p>
+                <p className="text-[12px] text-[var(--text-primary)] mt-1">→ {r.proposed_change}</p>
+                <div className="text-[11px] text-[var(--text-tertiary)] mt-1.5">
+                  güven: {r.confidence}
+                  {!r.sample_sufficient && (
+                    // Örneklem yetersizse bunu SAKLAMAK, zayıf bir öneriyi
+                    // güçlü göstermek olurdu.
+                    <strong className="text-[var(--warning)]"> · örneklem yetersiz</strong>
+                  )}
+                  {r.experiment_key && <> · deney: {r.experiment_key}</>}
                 </div>
               </article>
             ))}
