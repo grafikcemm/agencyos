@@ -4,24 +4,24 @@ import { topItemsFor } from '@/components/layout/Sidebar'
 
 describe('LIFE_UI_OWNER', () => {
   it('varsayılan agencyos — bayrak yoksa bugünkü davranış', () => {
-    expect(lifeUiOwner({} as NodeJS.ProcessEnv)).toBe('agencyos')
-    expect(showsLifeUi({} as NodeJS.ProcessEnv)).toBe(true)
+    expect(lifeUiOwner({})).toBe('agencyos')
+    expect(showsLifeUi({})).toBe(true)
   })
 
   it('yalnız tam olarak "cemos" sahipliği devreder', () => {
-    expect(lifeUiOwner({ LIFE_UI_OWNER: 'cemos' } as NodeJS.ProcessEnv)).toBe('cemos')
-    expect(showsLifeUi({ LIFE_UI_OWNER: 'cemos' } as NodeJS.ProcessEnv)).toBe(false)
+    expect(lifeUiOwner({ LIFE_UI_OWNER: 'cemos' })).toBe('cemos')
+    expect(showsLifeUi({ LIFE_UI_OWNER: 'cemos' })).toBe(false)
   })
 
   it('YAZIM HATASI sessizce taşıma yapmaz', () => {
     // Kullanicinin gunluk yuzeyinin bir yazim hatasiyla kaybolmasi kabul edilemez.
     for (const v of ['CEMOS', 'cemos ', 'cemoss', 'true', '1', '']) {
-      expect(lifeUiOwner({ LIFE_UI_OWNER: v } as NodeJS.ProcessEnv)).toBe('agencyos')
+      expect(lifeUiOwner({ LIFE_UI_OWNER: v })).toBe('agencyos')
     }
   })
 
   it('panel özeti değer değil DURUM taşır', () => {
-    const d = describeLifeFlag({ LIFE_UI_OWNER: 'cemos' } as NodeJS.ProcessEnv)
+    const d = describeLifeFlag({ LIFE_UI_OWNER: 'cemos' })
     expect(d.key).toBe('LIFE_UI_OWNER')
     expect(d.value).toBe('cemos')
     expect(d.description).toMatch(/Hayat Merkezi/)

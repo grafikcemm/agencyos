@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { authErrorResponse, envelope, istanbulDate } from '@/lib/integrations/cemosLifeAuth'
 import { requireGrowthAuth, writeGrowthAudit } from '@/lib/integrations/cemosGrowthAuth'
 import {
-  readBatchSummary, readOutcomes, readSectorSignals, type GrowthWarnings,
+  findForbiddenSnapshotKeys, readBatchSummary, readOutcomes, readSectorSignals, type GrowthWarnings,
 } from '@/lib/integrations/cemosGrowthData'
 
 export const dynamic = 'force-dynamic'
@@ -30,9 +30,13 @@ export async function GET(req: Request) {
       readBatchSummary(monthKey, warnings),
     ])
 
+    const snapshot = { date, monthKey, sectorSignals, outcomes, batches }
+    const forbidden = findForbiddenSnapshotKeys(snapshot)
+    if (forbidden.length) throw new Error('Growth snapshot PII anahtari iceriyor; yanit fail-closed durduruldu.')
+
     const body = envelope(
       'growth',
-      { date, monthKey, sectorSignals, outcomes, batches },
+      snapshot,
       warnings,
       sectorSignals.length || outcomes.length ? 'ok' : 'empty',
     )

@@ -14,21 +14,22 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type LifeUiOwner = 'agencyos' | 'cemos'
+export type LifeFlagEnv = Readonly<Record<string, string | undefined> & { LIFE_UI_OWNER?: string }>
 
 /**
  * Varsayilan `agencyos`. YALNIZ tam olarak `cemos` yazilmasi sahipligi devreder;
  * yazim hatasi ya da bos deger sessizce tasima YAPMAZ — kullanicinin gunluk
  * yuzeyinin bir yazim hatasiyla kaybolmasi kabul edilemez.
  */
-export function lifeUiOwner(env: NodeJS.ProcessEnv = process.env): LifeUiOwner {
+export function lifeUiOwner(env: LifeFlagEnv = process.env): LifeUiOwner {
   return env.LIFE_UI_OWNER === 'cemos' ? 'cemos' : 'agencyos'
 }
 
 /** AgencyOS kisisel LIFE yuzeylerini gosteriyor mu. */
-export const showsLifeUi = (env: NodeJS.ProcessEnv = process.env) => lifeUiOwner(env) === 'agencyos'
+export const showsLifeUi = (env: LifeFlagEnv = process.env) => lifeUiOwner(env) === 'agencyos'
 
 /** Panelde gosterilecek durum ozeti — deger degil, DURUM. */
-export function describeLifeFlag(env: NodeJS.ProcessEnv = process.env) {
+export function describeLifeFlag(env: LifeFlagEnv = process.env) {
   const owner = lifeUiOwner(env)
   return {
     key: 'LIFE_UI_OWNER',

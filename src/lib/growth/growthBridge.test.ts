@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  FORBIDDEN_SNAPSHOT_KEYS, anonId, costBand, mapOutcome,
+  FORBIDDEN_SNAPSHOT_KEYS, anonId, costBand, findForbiddenSnapshotKeys, mapOutcome,
 } from '@/lib/integrations/cemosGrowthData'
 import { RecommendationCreate, detectPii } from '@/lib/integrations/cemosGrowthWrite'
 import { requireGrowthAuth } from '@/lib/integrations/cemosGrowthAuth'
@@ -109,7 +109,7 @@ describe('snapshot — PII taşımaz', () => {
     }
   })
 
-  it('veri modülü hiçbir yerde select(*) kullanmaz ve iletişim sütunu ÇEKMEZ', () => {
+  it('veri modülü select(*) kullanmaz; ham yanıt yalnız sunucu-içi FSM girdisidir', () => {
     const raw = readFileSync(join(ROOT, 'src', 'lib', 'integrations', 'cemosGrowthData.ts'), 'utf8')
     // Yorumlar çıkarılır: bu dosyanın kendi açıklaması `select('*')` ifadesini
     // örnek olarak İÇERİYOR; onu ihlal saymak testi gürültüye boğardı.
@@ -125,6 +125,15 @@ describe('snapshot — PII taşımaz', () => {
     for (const forbidden of ['email', 'phone', 'business_name', 'website', 'address', 'notes', 'raw']) {
       expect(columns, forbidden).not.toContain(forbidden)
     }
+    expect(columns).toContain('body')
+    expect(src).toMatch(/classifyReply/)
+  })
+
+  it('payload savunma kapısı body dahil PII anahtarını derinde yakalar', () => {
+    expect(FORBIDDEN_SNAPSHOT_KEYS).toContain('body')
+    expect(findForbiddenSnapshotKeys({ outcomes: [{ replyClass: 'positive_interest' }] })).toEqual([])
+    expect(findForbiddenSnapshotKeys({ outcomes: [{ nested: { body: 'gizli' } }] }))
+      .toEqual(['$.outcomes[0].nested.body'])
   })
 
   it('maliyet BANT olarak çıkar; bilinmeyen sıfır sayılmaz', () => {

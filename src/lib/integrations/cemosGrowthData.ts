@@ -1,6 +1,7 @@
 import 'server-only'
 import { createHash } from 'node:crypto'
 import { supabaseAdmin } from '@/lib/supabase'
+import { classifyReply, type ReplyClass } from '@/lib/gmail/replyFsm'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GROWTH SNAPSHOT — PII TAŞIMAZ.
@@ -121,6 +122,10 @@ export interface OutcomeRow {
   provider: string | null
   providerState: string | null
   outcome: 'sent' | 'replied' | 'bounced' | 'opted_out' | 'unknown' | 'pending'
+  /** Ham yanit metni DEGIL; deterministik FSM'in kapali-kume sonucu. */
+  replyClass: ReplyClass | null
+  humanReply: boolean | null
+  positiveReply: boolean | null
   /** Neden ilerlemedi — kapalı küme, serbest metin DEĞİL. */
   rejectionReason: string | null
 }
@@ -159,16 +164,79 @@ export async function readOutcomes(warnings: GrowthWarnings): Promise<OutcomeRow
         outreach_provider: string | null
         provider_state: string | null
       }[]
+
+      const outreachIds = rows.map((r) => r.id)
+      const experimentIds = [...new Set(rows.map((r) => r.experiment_id).filter((v): v is string => Boolean(v)))]
+      const variantIds = [...new Set(rows.map((r) => r.variant_id).filter((v): v is string => Boolean(v)))]
+
+      // Ham inbound govde yalniz AgencyOS sunucu belleginde siniflandirilir.
+      // Kopruye metin, konu veya adres degil; yalniz kapali-kume FSM sonucu cikar.
+      // Sinyal kaynagi okunamazsa false uydurulmaz: alanlar `null` kalir.
+      let replySignalsAvailable = true
+      const classesByOutreach = new Map<string, ReplyClass[]>()
+      if (outreachIds.length) {
+        const { data: messages, error: messageError } = await supabaseAdmin
+          .from('email_messages')
+          .select('outreach_message_id,body')
+          .eq('direction', 'inbound')
+          .in('outreach_message_id', outreachIds)
+          .limit(5000)
+        if (messageError) {
+          warnings.push('email reply sinyalleri okunamadi')
+          replySignalsAvailable = false
+        } else {
+          for (const message of messages ?? []) {
+            const outreachId = String(message.outreach_message_id ?? '')
+            if (!outreachId) continue
+            const list = classesByOutreach.get(outreachId) ?? []
+            list.push(classifyReply(String(message.body ?? '')))
+            classesByOutreach.set(outreachId, list)
+          }
+        }
+      }
+
+      const experimentKeys = new Map<string, string>()
+      if (experimentIds.length) {
+        const { data: experiments, error: experimentError } = await supabaseAdmin
+          .from('growth_experiments')
+          .select('id,key')
+          .in('id', experimentIds)
+        if (experimentError) warnings.push('growth experiment anahtarlari okunamadi')
+        else for (const row of experiments ?? []) experimentKeys.set(String(row.id), String(row.key))
+      }
+
+      const variantKeys = new Map<string, string>()
+      if (variantIds.length) {
+        const { data: variants, error: variantError } = await supabaseAdmin
+          .from('growth_experiment_variants')
+          .select('id,key')
+          .in('id', variantIds)
+        if (variantError) warnings.push('growth varyant anahtarlari okunamadi')
+        else for (const row of variants ?? []) variantKeys.set(String(row.id), String(row.key))
+      }
+
       return rows.map<OutcomeRow>((r) => ({
         // Ham lead kimliği DEĞİL — anonim eşleştirme anahtarı.
         anonLeadId: anonId(r.lead_id ?? r.id),
         sector: null, // sektör kırılımı `sectorSignals` tarafında; burada kimlik bağı kurulmaz
-        experimentKey: r.experiment_id,
-        variantKey: r.variant_id,
+        experimentKey: r.experiment_id ? (experimentKeys.get(r.experiment_id) ?? null) : null,
+        variantKey: r.variant_id ? (variantKeys.get(r.variant_id) ?? null) : null,
         sequenceStep: r.sequence_step,
         provider: r.outreach_provider,
         providerState: r.provider_state,
         outcome: mapOutcome(r.status, r.provider_state),
+        replyClass: replySignalsAvailable
+          ? (classesByOutreach.get(r.id)?.find((c) => c === 'positive_interest')
+            ?? classesByOutreach.get(r.id)?.find((c) => !['auto_reply', 'opt_out'].includes(c))
+            ?? classesByOutreach.get(r.id)?.[0]
+            ?? null)
+          : null,
+        humanReply: replySignalsAvailable
+          ? (classesByOutreach.get(r.id) ?? []).some((c) => !['auto_reply', 'opt_out'].includes(c))
+          : null,
+        positiveReply: replySignalsAvailable
+          ? (classesByOutreach.get(r.id) ?? []).some((c) => c === 'positive_interest')
+          : null,
         rejectionReason: null,
       }))
     },
@@ -235,5 +303,18 @@ export async function readBatchSummary(monthKey: string, warnings: GrowthWarning
 /** Köprüden çıkan gövdede ASLA bulunmaması gereken alan adları. */
 export const FORBIDDEN_SNAPSHOT_KEYS = Object.freeze([
   'email', 'phone', 'business_name', 'businessName', 'website', 'address',
-  'contact_name', 'contactName', 'notes', 'raw', 'lead_id', 'leadId',
+  'contact_name', 'contactName', 'notes', 'raw', 'lead_id', 'leadId', 'body', 'subject',
 ])
+
+/** Yeni bir alan sonradan payload'a PII anahtari sizdirirsa yanit verilmez. */
+export function findForbiddenSnapshotKeys(value: unknown, path = '$'): string[] {
+  if (Array.isArray(value)) return value.flatMap((item, i) => findForbiddenSnapshotKeys(item, `${path}[${i}]`))
+  if (!value || typeof value !== 'object') return []
+  const found: string[] = []
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    const next = `${path}.${key}`
+    if ((FORBIDDEN_SNAPSHOT_KEYS as readonly string[]).includes(key)) found.push(next)
+    found.push(...findForbiddenSnapshotKeys(nested, next))
+  }
+  return found
+}
