@@ -62,7 +62,9 @@ export function describeGrowthFlags(env: GrowthEnv = process.env): GrowthFlagSta
     {
       key: 'INSTANTLY_ENABLED',
       enabled: on(env, 'INSTANTLY_ENABLED'),
-      configured: has('INSTANTLY_API_KEY'),
+      // Sağlayıcının KENDİ `not_configured` koşuluyla birebir aynı: kokpitin
+      // "yapılandırılmış" dediği bir sağlayıcının çağrıda reddetmesi yalan olur.
+      configured: has('INSTANTLY_API_KEY') && has('INSTANTLY_CAMPAIGN_ID'),
       costed: true,
       description: 'Instantly gönderim sağlayıcısı (kapalı = GmailDirect/Fake)',
     },
