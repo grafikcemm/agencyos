@@ -18,7 +18,9 @@ import {
   Flame,
   Sparkles,
   ListChecks,
-  Sunrise
+  Sunrise,
+  FlaskConical,
+  GraduationCap
 } from 'lucide-react'
 
 // Günlük çalışma sırası: genel durum → gelir işi → görevler → kişisel ritim.
@@ -49,7 +51,12 @@ const NAV_GROUPS = [
       { label: 'Lead Radar',  icon: Map,       href: '/harita' },
       { label: 'Fırsatlar',   icon: Target,    href: '/firsatlar' },
       { label: 'Pipeline',    icon: GitMerge,  href: '/pipeline' },
+      // Deney kokpiti (RT-A6) ve kariyer yüzeyi: ikisinin de rotası VAR.
+      // Menüye yalnız var olan rota eklenir — ölü bağlantı, kullanıcıyı her gün
+      // boşa tıklatır.
+      { label: 'Deneyler',    icon: FlaskConical, href: '/experiments' },
       { label: 'Projeler',    icon: Briefcase, href: '/projects' },
+      { label: 'Kariyer',     icon: GraduationCap, href: '/kariyer' },
     ]
   },
   {
