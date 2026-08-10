@@ -17,6 +17,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/pipeline': 'Müşteri Akışı',
   '/projects': 'Proje Takibi',
   '/services': 'Hizmetlerim',
+  '/belgeler': 'Belge Merkezi',
   '/bilgi': 'Bilgi Merkezi',
   '/icraat-firsatlari': 'İcraat Fırsatları',
   '/kariyer': 'Kariyer Radarı',
@@ -32,15 +33,9 @@ const PAGE_TITLES: Record<string, string> = {
 
 interface AppLayoutProps {
   children: React.ReactNode
-  /**
-   * Kisisel LIFE girisleri navigasyonda gorunsun mu (RT-A2). Sunucu bileseni
-   * `LIFE_UI_OWNER`i okuyup buraya verir; istemci tarafi env'e bakmaz.
-   * Varsayilan `true` — bayrak verilmezse bugunku davranis birebir korunur.
-   */
-  showsLifeUi?: boolean
 }
 
-export function AppLayout({ children, showsLifeUi = true }: AppLayoutProps) {
+export function AppLayout({ children }: AppLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const pathname = usePathname()
@@ -53,7 +48,7 @@ export function AppLayout({ children, showsLifeUi = true }: AppLayoutProps) {
         className="hidden md:block shrink-0 bg-[var(--bg-sidebar)] border-r border-[var(--border-subtle)] transition-all duration-300"
         style={{ width: sidebarCollapsed ? '64px' : '220px' }}
       >
-        <Sidebar isCollapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(c => !c)} showsLifeUi={showsLifeUi} />
+        <Sidebar isCollapsed={sidebarCollapsed} onToggle={() => setSidebarCollapsed(c => !c)} />
       </aside>
 
       {/* Mobile off-canvas sidebar */}
@@ -72,7 +67,7 @@ export function AppLayout({ children, showsLifeUi = true }: AppLayoutProps) {
             >
               <X className="w-4 h-4" />
             </button>
-            <Sidebar isCollapsed={false} onToggle={() => setMobileNavOpen(false)} onNavigate={() => setMobileNavOpen(false)} showsLifeUi={showsLifeUi} />
+            <Sidebar isCollapsed={false} onToggle={() => setMobileNavOpen(false)} onNavigate={() => setMobileNavOpen(false)} />
           </aside>
         </div>
       )}

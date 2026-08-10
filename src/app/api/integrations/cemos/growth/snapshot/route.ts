@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { authErrorResponse, envelope, istanbulDate } from '@/lib/integrations/cemosLifeAuth'
 import { requireGrowthAuth, writeGrowthAudit } from '@/lib/integrations/cemosGrowthAuth'
 import {
-  findForbiddenSnapshotKeys, readBatchSummary, readOutcomes, readSectorSignals, type GrowthWarnings,
+  buildWeeklyFunnel, findForbiddenSnapshotKeys, readBatchSummary, readOperationalSummary,
+  readOutcomes, readSectorSignals, type GrowthWarnings,
 } from '@/lib/integrations/cemosGrowthData'
 
 export const dynamic = 'force-dynamic'
@@ -24,13 +25,23 @@ export async function GET(req: Request) {
     const { clientId } = requireGrowthAuth(req, 'read')
     const warnings: GrowthWarnings = []
 
-    const [sectorSignals, outcomes, batches] = await Promise.all([
+    const [sectorSignals, outcomes, batches, operations] = await Promise.all([
       readSectorSignals(warnings),
       readOutcomes(warnings),
       readBatchSummary(monthKey, warnings),
+      readOperationalSummary(warnings),
     ])
 
-    const snapshot = { date, monthKey, sectorSignals, outcomes, batches }
+    const snapshot = {
+      date,
+      monthKey,
+      sectorSignals,
+      outcomes,
+      batches,
+      operations,
+      weeklyFunnel: buildWeeklyFunnel(outcomes),
+      connectionHealth: warnings.length ? 'degraded' : 'healthy',
+    }
     const forbidden = findForbiddenSnapshotKeys(snapshot)
     if (forbidden.length) throw new Error('Growth snapshot PII anahtari iceriyor; yanit fail-closed durduruldu.')
 
@@ -45,7 +56,8 @@ export async function GET(req: Request) {
       route: 'growth/snapshot', method: 'GET', scope: 'read', status: 200,
       responseSummary: {
         clientId, sectors: sectorSignals.length, outcomes: outcomes.length,
-        batches: batches.length, warnings: warnings.length,
+        batches: batches.length, pendingApprovals: operations.pendingApprovalCount,
+        warnings: warnings.length,
       },
     })
     return NextResponse.json(body)

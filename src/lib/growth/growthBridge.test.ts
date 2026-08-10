@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  FORBIDDEN_SNAPSHOT_KEYS, anonId, costBand, findForbiddenSnapshotKeys, mapOutcome,
+  FORBIDDEN_SNAPSHOT_KEYS, anonId, buildWeeklyFunnel, costBand,
+  findForbiddenSnapshotKeys, mapOutcome,
 } from '@/lib/integrations/cemosGrowthData'
 import { RecommendationCreate, detectPii } from '@/lib/integrations/cemosGrowthWrite'
 import { requireGrowthAuth } from '@/lib/integrations/cemosGrowthAuth'
@@ -94,6 +95,46 @@ describe('growth kimliği — LIFE`tan BAĞIMSIZ', () => {
 // ─────────────────────────── PII yüzeyi ──────────────────────────────────────
 
 describe('snapshot — PII taşımaz', () => {
+  it('haftalık funnel lead bazında tekilleşir ve ölçülmeyen toplantıyı sıfır yapmaz', () => {
+    const rows = [
+      { anonLeadId: 'a', outcome: 'sent', humanReply: false, positiveReply: false },
+      { anonLeadId: 'a', outcome: 'replied', humanReply: true, positiveReply: true },
+      { anonLeadId: 'b', outcome: 'unknown', humanReply: null, positiveReply: null },
+    ] as Parameters<typeof buildWeeklyFunnel>[0]
+    expect(buildWeeklyFunnel(rows)).toEqual({
+      delivered: 1,
+      humanReplies: 1,
+      positiveReplies: 1,
+      meetings: null,
+    })
+  })
+
+  it('genişletilmiş operasyon sözleşmesi PII anahtarı taşımaz', () => {
+    const safeSnapshot = {
+      operations: {
+        pendingApprovalCount: 2,
+        upcomingActionCount: 3,
+        strongestOpportunity: {
+          anonLeadId: '0123456789abcdef',
+          designScore: 82,
+          aiScore: 74,
+          verifiedEvidenceCount: 4,
+          primaryService: 'landing-page-audit',
+        },
+        freshestLeadUpdateAt: '2026-08-10T10:00:00.000Z',
+      },
+      connectionHealth: 'healthy',
+    }
+    expect(findForbiddenSnapshotKeys(safeSnapshot)).toEqual([])
+  })
+
+  it('operasyon özeti kariyer alanı ÜRETMEZ (sahiplik GrafikcemOS)', () => {
+    const src = readFileSync(join(ROOT, 'src', 'lib', 'integrations', 'cemosGrowthData.ts'), 'utf8')
+    const code = src.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(code).not.toContain('careerAction')
+    expect(code).not.toContain('career_state')
+  })
+
   it('anonim kimlik deterministik ama ham kimliği İÇERMEZ', () => {
     const raw = '9f1c2b7e-0000-4000-8000-000000000001'
     const a = anonId(raw)

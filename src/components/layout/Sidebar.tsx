@@ -12,65 +12,53 @@ import {
   ChevronRight,
   Zap,
   Package,
-  Target,
-  TrendingUp,
-  Wallet,
-  Flame,
+  FileText,
   Sparkles,
-  ListChecks,
   Sunrise,
-  FlaskConical,
-  GraduationCap
+  FlaskConical
 } from 'lucide-react'
 
-// Günlük çalışma sırası: genel durum → gelir işi → görevler → kişisel ritim.
-//
-// KISISEL BLOKLAR SAHIPLIGE BAGLI (RT-A2). `LIFE_UI_OWNER=cemos` iken kişisel
-// görev/alışkanlık girişleri ana navigasyondan DÜŞER — rotalar çalışmaya devam
-// eder ve taşındı ekranı gösterir. Menüde bırakıp içeride "taşındı" demek,
-// kullanıcıyı her gün ölü bir bağlantıya tıklatmak olurdu.
+// AgencyOS'un günlük çalışma sırası yalnız müşteri ve gelir operasyonudur.
+// Kişisel görev/alışkanlık yüzeyleri GrafikcemOS Agent Takımı'na devredildi.
+// Eski rotalar deep-link uyumu için kalır, navigasyona geri dönmez.
 const CORE_ITEMS = [
   { label: 'Ana Merkez',      icon: LayoutDashboard, href: '/command-center' },
   { label: 'Bugün',           icon: Sunrise,         href: '/bugun' },
 ]
 
-const PERSONAL_ITEMS = [
-  { label: 'Aktif Görevler', icon: ListChecks, href: '/gorevler' },
-  { label: 'Alışkanlıklar',  icon: Flame,      href: '/aliskanliklar' },
-]
-
-/** Sunucu bayrağı istemciye prop olarak iner (bkz. `AppShell`). */
-export function topItemsFor(showsLife: boolean) {
-  return showsLife ? [...CORE_ITEMS, ...PERSONAL_ITEMS] : CORE_ITEMS
+/** Kişisel LIFE girişleri sahiplik kararından sonra bu listeye geri dönmez. */
+export function topItemsFor() {
+  return CORE_ITEMS
 }
 
+// MENÜ FİİLE GÖRE GRUPLANIR, ÖZELLİĞE GÖRE DEĞİL (2026-08-10).
+//
+// `YAŞAM` grubu KALDIRILDI (kişisel görev/alışkanlık/finans → GrafikcemOS).
+// `KARİYER` grubu da KALDIRILDI: Kariyer Radarı ve Gelişim AgencyOS kapsamı
+// değildir, GrafikcemOS Kariyer Ajanı'na devrediliyor. Rotalar veri okumayan
+// "geçiş hazırlanıyor" ekranı döner. Bkz. docs/CAREER-HANDOFF-2026-08-10.md.
+//
+// `Fırsatlar` Lead Radar'a girdi: aynı veri kümesinin ikinci görünümüydü.
+// Rota korunuyor, menüde iki ayrı kapı olmuyor.
+//
+// Birincil işe (bugün kime ne gönderilecek) adım sayısı: Ana Merkez → Lead
+// Radar → satır = 3. Bkz. docs/ui-principles-2026-08-10.md §4.1.
 const NAV_GROUPS = [
   {
     title: 'MÜŞTERİ',
     items: [
       { label: 'Lead Radar',  icon: Map,       href: '/harita' },
-      { label: 'Fırsatlar',   icon: Target,    href: '/firsatlar' },
       { label: 'Pipeline',    icon: GitMerge,  href: '/pipeline' },
-      // Deney kokpiti (RT-A6) ve kariyer yüzeyi: ikisinin de rotası VAR.
-      // Menüye yalnız var olan rota eklenir — ölü bağlantı, kullanıcıyı her gün
-      // boşa tıklatır.
       { label: 'Deneyler',    icon: FlaskConical, href: '/experiments' },
       { label: 'Projeler',    icon: Briefcase, href: '/projects' },
-      { label: 'Kariyer',     icon: GraduationCap, href: '/kariyer' },
-    ]
-  },
-  {
-    title: 'YAŞAM',
-    items: [
-      { label: 'Gelişim', icon: TrendingUp, href: '/gelisim' },
-      { label: 'Finans',  icon: Wallet,     href: '/finans' },
+      { label: 'Hizmetlerim', icon: Package,   href: '/services' },
+      { label: 'Belgeler',    icon: FileText,  href: '/belgeler' },
     ]
   },
   {
     title: 'ARAÇLAR',
     items: [
-      { label: 'Asistan',      icon: Sparkles, href: '/asistan' },
-      { label: 'Hizmetlerim',  icon: Package,  href: '/services' },
+      { label: 'Asistan', icon: Sparkles, href: '/asistan' },
     ]
   }
 ]
@@ -86,17 +74,11 @@ interface SidebarProps {
   onToggle: () => void
   /** Called when a nav link is clicked — used to close the mobile drawer. */
   onNavigate?: () => void
-  /**
-   * Kisisel LIFE girisleri gosterilsin mi (RT-A2). Sunucu tarafinda okunan
-   * `LIFE_UI_OWNER` buraya prop olarak iner; istemci bileseni env okumaz.
-   * Varsayilan `true` — bayrak hic verilmezse bugunku davranis aynen surer.
-   */
-  showsLifeUi?: boolean
 }
 
-export function Sidebar({ isCollapsed, onToggle, onNavigate, showsLifeUi = true }: SidebarProps) {
+export function Sidebar({ isCollapsed, onToggle, onNavigate }: SidebarProps) {
   const pathname = usePathname()
-  const topItems = topItemsFor(showsLifeUi)
+  const topItems = topItemsFor()
 
   return (
     <div className="flex flex-col h-full py-4">

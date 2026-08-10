@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Send, Minus, Copy, Check, Zap, Globe, Building2 } from 'lucide-react'
+import type { MarketScope } from '@/lib/leads/marketScope'
 
 type Message = {
   id: string
@@ -11,30 +12,42 @@ type Message = {
   pendingApproval?: boolean
 }
 
-const SAMPLE_COMMANDS = [
-  "Bugün kimi arayayım? İlk 5 lead'i nedenleriyle listele.",
-  "Beşiktaş'ta kuaför tara",
-  "Kadıköy'de diş kliniği bul",
-  "Son eklenen lead'i analiz et",
-  "Oturumu kaydet"
-]
+const sampleCommands = (scope: MarketScope) => scope === 'global'
+  ? [
+      "Bugün kimi arayayım? İlk 5 global lead'i nedenleriyle listele.",
+      "New York'ta premium güzellik markası tara",
+      "London'da specialty food markası bul",
+      "Son eklenen global lead'i analiz et",
+      "Oturumu kaydet",
+    ]
+  : [
+      "Bugün kimi arayayım? İlk 5 lead'i nedenleriyle listele.",
+      "Beşiktaş'ta kuaför tara",
+      "Kadıköy'de diş kliniği bul",
+      "Son eklenen lead'i analiz et",
+      "Oturumu kaydet",
+    ]
 
 interface JarvisPanelProps {
   leadsCount?: number
   stats?: { new: number; contacted: number; won: number }
   /** Called after a JARVIS tool changed lead data (e.g. scan_leads) so the page can refetch. */
   onLeadsChanged?: () => void | Promise<void>
+  marketScope?: MarketScope
+  locationLabel?: string
 }
 
 // Tools whose completion means lead rows changed in the DB.
 const LEAD_MUTATING_TOOLS = ['scan_leads', 'update_lead_stage', 'create_project', 'disqualify_low_quality']
 
-export function JarvisPanel({ leadsCount = 0, stats, onLeadsChanged }: JarvisPanelProps) {
+export function JarvisPanel({ leadsCount = 0, stats, onLeadsChanged, marketScope = 'tr', locationLabel = 'İstanbul' }: JarvisPanelProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
       role: 'assistant',
-      content: "Sistem başlatıldı. İstanbul bölgesinde hazırım. Komut bekliyorum."
+      content: marketScope === 'global'
+        ? `Sistem başlatıldı. Global · ${locationLabel} çalışma alanında hazırım. Türkiye il/ilçe varsayımı kullanmayacağım.`
+        : `Sistem başlatıldı. ${locationLabel} bölgesinde hazırım. Komut bekliyorum.`
     }
   ])
   const [input, setInput] = useState('')
@@ -64,10 +77,13 @@ export function JarvisPanel({ leadsCount = 0, stats, onLeadsChanged }: JarvisPan
     }
 
     try {
+      const contextualMessage = marketScope === 'global'
+        ? `[Çalışma alanı: Global · ${locationLabel}. Türkiye il/ilçe varsayımı kullanma.] ${textToSend}`
+        : textToSend
       const res = await fetch('/api/jarvis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: textToSend })
+        body: JSON.stringify({ message: contextualMessage })
       })
 
       const data = await res.json()
@@ -106,7 +122,7 @@ export function JarvisPanel({ leadsCount = 0, stats, onLeadsChanged }: JarvisPan
     } finally {
       setIsTyping(false)
     }
-  }, [onLeadsChanged])
+  }, [locationLabel, marketScope, onLeadsChanged])
 
   const sendStreaming = useCallback(async (textToSend: string) => {
     const userMsg: Message = { id: Date.now().toString(), role: 'user', content: textToSend }
@@ -118,10 +134,13 @@ export function JarvisPanel({ leadsCount = 0, stats, onLeadsChanged }: JarvisPan
     setMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '' }])
 
     try {
+      const contextualMessage = marketScope === 'global'
+        ? `[Çalışma alanı: Global · ${locationLabel}. Türkiye il/ilçe varsayımı kullanma.] ${textToSend}`
+        : textToSend
       const res = await fetch('/api/jarvis/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: textToSend })
+        body: JSON.stringify({ message: contextualMessage })
       })
 
       if (!res.ok) throw new Error('Stream failed')
@@ -170,7 +189,7 @@ export function JarvisPanel({ leadsCount = 0, stats, onLeadsChanged }: JarvisPan
     } finally {
       setIsTyping(false)
     }
-  }, [sendClassic])
+  }, [locationLabel, marketScope, sendClassic])
 
   const handleSubmit = async (e?: React.FormEvent, textOverride?: string) => {
     e?.preventDefault()
@@ -316,7 +335,7 @@ export function JarvisPanel({ leadsCount = 0, stats, onLeadsChanged }: JarvisPan
       <div className="px-4 pb-4">
         <div className="text-[9px] text-[var(--text-muted)] font-bold tracking-widest mb-2 uppercase">Örnek Komutlar</div>
         <div className="flex flex-wrap gap-2">
-          {SAMPLE_COMMANDS.map((cmd, i) => (
+              {sampleCommands(marketScope).map((cmd, i) => (
             <button
               key={i}
               onClick={() => handleSubmit(undefined, cmd)}

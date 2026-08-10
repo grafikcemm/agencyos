@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { enforceSameOrigin } from '@/lib/api/guards'
 import { scanLeads } from '@/lib/leads/scan'
 import { requireApiAccess } from '@/lib/auth'
+import { MARKET_SCOPES, workspaceFor, type MarketScope } from '@/lib/leads/marketScope'
 
 export async function POST(req: Request) {
   try {
@@ -15,6 +16,15 @@ export async function POST(req: Request) {
     const sector = typeof body.sector === 'string' ? body.sector : ''
     const city = typeof body.city === 'string' ? body.city : ''
     const district = typeof body.district === 'string' ? body.district : ''
+    const requestedScope = typeof body.marketScope === 'string' ? body.marketScope : 'tr'
+    const marketScope: MarketScope = (MARKET_SCOPES as readonly string[]).includes(requestedScope)
+      ? requestedScope as MarketScope
+      : 'tr'
+    const workspace = workspaceFor(marketScope)
+    const requestedCountry = typeof body.countryCode === 'string' ? body.countryCode.trim().toUpperCase() : ''
+    const countryCode = workspace.countries.includes(requestedCountry)
+      ? requestedCountry
+      : workspace.countries[0]
     const limitRaw = parseInt(String(body.limit ?? 10), 10)
     const limit = Math.min(Math.max(Number.isFinite(limitRaw) ? limitRaw : 10, 1), 60)
     const toFiniteNum = (v: unknown): number | undefined => {
@@ -26,7 +36,17 @@ export async function POST(req: Request) {
     const radiusNum = toFiniteNum(body.radius)
     const radius = radiusNum != null ? Math.min(Math.max(radiusNum, 100), 50000) : undefined
 
-    const result = await scanLeads({ sector, city, district, limit, lat, lng, radius })
+    const result = await scanLeads({
+      sector,
+      city,
+      district,
+      limit,
+      lat,
+      lng,
+      radius,
+      marketScope,
+      countryCode,
+    })
 
     if (!result.success) {
       return NextResponse.json(

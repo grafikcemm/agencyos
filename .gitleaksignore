@@ -1,0 +1,31 @@
+# gitleaks — doğrulanmış false positive'ler (2026-08-10 denetimi).
+#
+# Her satır TEK bir bulguyu susturur (commit:dosya:kural:satır) — dosyanın
+# tamamını değil. Aynı dosyaya sonradan giren GERÇEK bir sır yine yakalanır.
+#
+# Bulguların tamamı test fixture'ı, Türkçe placeholder veya şema parmak izi.
+# Doğrulama yöntemi: her satır tek tek okundu, hiçbiri canlı kimlik bilgisi değil.
+#
+#   normalize.test.ts:183        → alan adı dizisi ('linkedinUrl' kelimesi tetikledi)
+#   cemosLifeAuth.test.ts        → 'anahtar-12345678' idempotency-key fixture'ı
+#   expected-fingerprint.json:65 → tablo şemasının md5 parmak izi
+#   playwright.config.ts         → 'e2e-cron-secreti-en-az-32-karakter-uzun'
+#   auth/session/redact/spans/oauth test'leri → 'test-secret-...' placeholder'ları
+#
+# GERÇEK bulgu: HANDOFF.md içindeki düz metin uygulama parolası.
+# Git geçmişine HİÇ girmemiş (dosya .gitignore'da; `git log -S ... --all` → 0 eşleşme).
+# 2026-08-10'da yerinde redakte edildi. Buraya eklenmedi — susturulacak bir şey yok.
+
+bca661d613960d09eec91e8b73ab0c16f9721e37:src/lib/growth/normalize.test.ts:linkedin-client-secret:183
+22b55003ad63bc3a8618608b4e6983d25bb88673:src/lib/integrations/cemosLifeAuth.test.ts:generic-api-key:114
+22b55003ad63bc3a8618608b4e6983d25bb88673:src/lib/integrations/cemosLifeAuth.test.ts:generic-api-key:124
+22b55003ad63bc3a8618608b4e6983d25bb88673:src/lib/integrations/cemosLifeAuth.test.ts:generic-api-key:132
+22b55003ad63bc3a8618608b4e6983d25bb88673:src/lib/integrations/cemosLifeAuth.test.ts:generic-api-key:137
+984664cf1d5be2c4cf1f9892b64df733f23cb046:e2e/schema/expected-fingerprint.json:generic-api-key:65
+0fbbc4c25837fca590cd599395f5ce20a7e246a8:src/lib/gmail/oauth.test.ts:generic-api-key:16
+e16287ddecb51176a5dfb5569e5c59db063a0df5:playwright.config.ts:generic-api-key:24
+2ff8e05bf020e273cdc895563986571bb5ff48e6:playwright.config.ts:generic-api-key:10
+6df511b9d6c3389361d9f101eaa6ab28d16dc976:src/lib/auth.test.ts:generic-api-key:19
+6df511b9d6c3389361d9f101eaa6ab28d16dc976:src/lib/session.test.ts:generic-api-key:12
+9ccb27db4c53f3596c3aa35f3aa908602c63fffe:src/lib/redact.test.ts:generic-api-key:32
+da94dbc7487612c7d295ca739e8b2ebdf6df5c7c:src/lib/trace/spans.test.ts:generic-api-key:8

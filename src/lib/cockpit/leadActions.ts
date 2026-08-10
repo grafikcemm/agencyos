@@ -14,6 +14,31 @@ import { supabaseAdmin } from '@/lib/supabase'
 
 export type LeadRowAction = 'called' | 'no_answer' | 'meeting' | 'later' | 'note'
 
+/**
+ * Yaşam döngüsü eylemleri (mig 069). Satır aksiyonlarından AYRI tutulur:
+ * bunlar `lead_lifecycle_events` yazar ve kanıt kapılarına tabidir.
+ *
+ * Legacy (RPC'siz) yolda DESTEKLENMEZ — kanıt kapıları yalnız RPC içinde,
+ * transaction altında uygulanabilir. RPC yoksa fail-closed döneriz; yarım
+ * uygulanmış bir "gönderildi" kaydı, olmayan bir onayı varmış gibi gösterir.
+ */
+export type LeadLifecycleAction =
+  | 'verify_signal' | 'qualify' | 'enrich_contact' | 'compliance_check'
+  | 'draft' | 'request_approval' | 'send' | 'reply'
+  | 'convert' | 'onboard' | 'produce_case' | 'grow'
+  | 'disqualify' | 'suppress' | 'archive'
+
+const LIFECYCLE_ACTIONS: readonly LeadLifecycleAction[] = [
+  'verify_signal', 'qualify', 'enrich_contact', 'compliance_check',
+  'draft', 'request_approval', 'send', 'reply',
+  'convert', 'onboard', 'produce_case', 'grow',
+  'disqualify', 'suppress', 'archive',
+]
+
+export function isLifecycleAction(action: string): action is LeadLifecycleAction {
+  return (LIFECYCLE_ACTIONS as readonly string[]).includes(action)
+}
+
 /** Aksiyon → izinli kaynak statüler. (won/lost/archived'a satır aksiyonu YOK.) */
 const ALLOWED_FROM: Record<LeadRowAction, string[]> = {
   called: ['new', 'contacted', 'responded'],
@@ -32,14 +57,24 @@ const FOLLOW_UP_DAYS: Partial<Record<LeadRowAction, number>> = {
 
 export interface ApplyLeadActionInput {
   leadId: string
-  action: LeadRowAction
+  action: LeadRowAction | LeadLifecycleAction
   actor: string
-  channel: 'ui' | 'telegram'
+  channel: 'ui' | 'telegram' | 'system' | 'cron'
   note?: string
   /** action='later' için zorunlu — ISO tarih. */
   laterAtIso?: string
   idempotencyKey?: string
   nowMs?: number
+  /**
+   * Yaşam döngüsü eylemlerinin kanıtı (mig 069). Kapılar DB tarafında,
+   * transaction altında denetlenir — burada gevşetilemez.
+   *   verify_signal    → { verified_at }
+   *   compliance_check → { lawful_basis, suppression_status }
+   *   send             → { approval_id, gmail_message_id }
+   *   convert          → { conversion_kind: meeting|paid_entry|core|retainer }
+   *   produce_case     → { client_consent: 'true' }
+   */
+  evidence?: Record<string, unknown>
 }
 
 export interface ApplyLeadActionResult {
@@ -75,6 +110,11 @@ async function tryAtomicRpc(input: ApplyLeadActionInput): Promise<ApplyLeadActio
     p_note: input.note ?? null,
     p_later_at: input.laterAtIso ?? null,
     p_now: new Date(input.nowMs ?? Date.now()).toISOString(),
+    // Mig 069. 068/069 uygulanmamış ortamda RPC 8 argümanlıdır ve fazladan
+    // named parametre PGRST202 üretir → aşağıdaki "RPC yok" dalına düşer,
+    // yaşam döngüsü eylemleri fail-closed olur. Mevcut 5 eylem legacy yolda
+    // çalışmaya devam eder.
+    p_evidence: input.evidence ?? {},
   })
   if (error) {
     if (RPC_MISSING_CODES.has(error.code ?? '')) {
@@ -180,6 +220,18 @@ export async function applyLeadAction(input: ApplyLeadActionInput): Promise<Appl
   // (bilinen crash penceresiyle, atomic:false işaretli) devreye girer.
   const atomicResult = await tryAtomicRpc(input)
   if (atomicResult) return atomicResult
+
+  // Yaşam döngüsü eylemleri legacy yola DÜŞEMEZ. Kanıt kapıları (onay kimliği,
+  // müşteri izni, yasal dayanak) yalnız RPC içinde, satır kilidi altında
+  // denetlenebilir. Burada taklit etmek, kapının kendisini kaldırmak olurdu.
+  if (isLifecycleAction(input.action)) {
+    return {
+      ok: false,
+      error: 'yaşam döngüsü eylemi için migration 069 gerekli — atomik yol yok',
+      audit: 'degraded',
+      atomic: false,
+    }
+  }
 
   const nowIso = new Date(input.nowMs ?? Date.now()).toISOString()
 

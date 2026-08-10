@@ -1,7 +1,7 @@
 import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase'
 import { jobHttp } from './http'
-import { passesFilter } from './filter'
+import { passesFilter, summarizeRejections, type RejectionBreakdown } from './filter'
 import { ATS_PROVIDERS, JOB_SOURCES, TR_SCRAPE_TARGETS, fetchTrJobs } from './providers'
 import type { RawJob } from './types'
 
@@ -18,6 +18,11 @@ export interface ScanStats {
   duplicates: number
   enqueued: number
   errors: string[]
+  /**
+   * Eleme dökümü. `/kariyer` 0 ilan gösterdiğinde "tarama koşmadı" ile "koştu,
+   * her şey elendi" ayrımını yapabilmek için. Kural değiştirmeden ÖNCE ölçüm.
+   */
+  rejections?: RejectionBreakdown
 }
 
 // Basit eşzamanlılık limiti (career-ops scan.mjs limit pattern'i).
@@ -138,7 +143,12 @@ export async function runJobScan(): Promise<ScanStats> {
   const [ats, tr] = await Promise.all([fetchAtsSources(errors), fetchTrSources(errors)])
   const fetched = [...ats, ...tr]
 
-  const passing = dedupeByUrl(fetched.filter((j) => passesFilter(j).ok))
+  // Filtre BİR KEZ koşar ve sonucu saklanır: hem geçenleri seçmek hem HANGİ
+  // kuralın kaç ilanı elediğini saymak için. İkinci kez koşturmak, ölçümle
+  // gerçeğin ayrışabileceği bir pencere açardı.
+  const verdicts = fetched.map((j) => ({ job: j, verdict: passesFilter(j) }))
+  const rejections = summarizeRejections(verdicts.map((v) => v.verdict))
+  const passing = dedupeByUrl(verdicts.filter((v) => v.verdict.ok).map((v) => v.job))
 
   let inserted = 0
   let duplicates = 0
@@ -174,5 +184,13 @@ export async function runJobScan(): Promise<ScanStats> {
     })
   }
 
-  return { fetched: fetched.length, filtered: passing.length, inserted, duplicates, enqueued, errors }
+  return {
+    fetched: fetched.length,
+    filtered: passing.length,
+    inserted,
+    duplicates,
+    enqueued,
+    errors,
+    rejections,
+  }
 }

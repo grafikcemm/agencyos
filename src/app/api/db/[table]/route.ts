@@ -4,6 +4,7 @@ import { requireApiUser } from '@/lib/auth'
 import { isAllowedOrder } from '@/lib/db/orderGuard'
 import { z } from 'zod'
 import { enforceSameOrigin, sanitizeWriteBody, parseJsonBody, BadRequestError } from '@/lib/api/guards'
+import { currentEpoch } from '@/lib/leads/epoch'
 
 // Yapısal üst-şema: düz JSON nesnesi + boyut sınırı (parseJsonBody). Alan
 // düzeyi doğrulama tablo-başına allowlist'te (WRITE_FIELDS + sanitizeWriteBody).
@@ -93,14 +94,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ table: s
     // person_leads: ham Apollo objesini (raw) cliente sızdırma — açık kolon projeksiyonu.
     const PERSON_LEADS_COLS =
       'id,source,purpose,preset_id,b2b_filter_label,apollo_person_id,full_name,title,seniority,linkedin_url,email,email_status,phone,company_name,company_domain,company_industry,company_size,city,country,difficulty_score,market_score,earning_score,person_score,person_tier,expected_monthly_value_tl,why_now,next_action,status,notes,created_at,updated_at'
-    let query = supabaseAdmin.from(table).select(table === 'person_leads' ? PERSON_LEADS_COLS : '*')
-
     const status = searchParams.get('status')
-    if (status) query = query.eq('status', status)
-
-    // Server-side hariç tutma (örn. arşivlenmiş/dismissed leadler haritaya gelmesin).
     const neStatus = searchParams.get('neStatus')
-    if (neStatus) query = query.neq('status', neStatus)
 
     // Pagination: param yoksa bile varsayılan 200 ile sınırla (unbounded fetch'i önle),
     // üst sınır 1000. İstemci daha fazlasını isterse limit param geçer.
@@ -112,17 +107,33 @@ export async function GET(req: Request, { params }: { params: Promise<{ table: s
       const n = parseInt(limitParam, 10)
       if (Number.isInteger(n) && n > 0) limit = Math.min(n, MAX_LIMIT)
     }
-    query = query.limit(limit)
-
     const order = searchParams.get('order')
     if (order) {
       if (!isAllowedOrder(table, order)) {
         return NextResponse.json({ error: `Invalid order column: ${order}` }, { status: 400 })
       }
-      query = query.order(order, { ascending: searchParams.get('asc') === 'true' })
     }
 
-    const { data, error } = await withTimeout(query)
+    const isEpochTable = table === 'leads' || table === 'person_leads'
+    const buildQuery = (scopeEpoch: boolean) => {
+      let query = supabaseAdmin.from(table).select(table === 'person_leads' ? PERSON_LEADS_COLS : '*')
+      if (scopeEpoch && isEpochTable) {
+        query = query.eq('acquisition_epoch', currentEpoch()).is('retired_at', null)
+      }
+      if (status) query = query.eq('status', status)
+      if (neStatus) query = query.neq('status', neStatus)
+      query = query.limit(limit)
+      if (order) query = query.order(order, { ascending: searchParams.get('asc') === 'true' })
+      return query
+    }
+
+    const { data, error } = await withTimeout(buildQuery(true))
+    // Migration 071 beklerken eski dönemi yeniden göstermek yerine açıklanmış
+    // boş durum döndür. Kullanıcının "temiz başladım" kararını şema gecikmesi
+    // sessizce geri almamalıdır.
+    if (error && isEpochTable && /acquisition_epoch|retired_at|PGRST204|42703/i.test(String(error.message ?? error.code ?? ''))) {
+      return NextResponse.json([])
+    }
     if (error) throw error
     return NextResponse.json(data || [])
   } catch (error: unknown) {

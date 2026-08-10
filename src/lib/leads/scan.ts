@@ -10,6 +10,7 @@ import { calculateLeadScoreV3 } from '@/lib/leadScoringV3'
 import { runQualityEngine } from '@/lib/highQualityLeadEngine'
 import { isMissingCategoryColumnError, stripCategoryKeys } from '@/lib/leads/categoryPersist'
 import { logToolCostRow } from '@/lib/ai/toolCostLog'
+import { workspaceFor, type MarketScope } from '@/lib/leads/marketScope'
 
 export interface ScanParams {
   sector: string
@@ -24,6 +25,17 @@ export interface ScanParams {
   lng?: number
   /** Daire yarıçapı (metre). */
   radius?: number
+  /**
+   * Pazar çalışma alanı. SABİT `tr` DEĞİLDİR — Places sorgusunun dili ve ülke
+   * bias'ı buradan gelir. Verilmezse `tr` ile eskisiyle birebir aynı davranır
+   * (geriye dönük uyum), ama Global taramada `global` verilmesi zorunludur.
+   */
+  marketScope?: MarketScope
+  /**
+   * Places `region` bias'ı için ISO-3166-1 alpha-2. Verilmezse çalışma alanının
+   * ilk ülkesi kullanılır.
+   */
+  countryCode?: string
 }
 
 export interface ScanOutcome {
@@ -43,7 +55,13 @@ export interface ScanOutcome {
 const PLACES_BASE = 'https://maps.googleapis.com/maps/api/place'
 
 export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
-  const { sector, city, district = '', limit = 10, source = 'manual', lat, lng, radius } = params
+  const {
+    sector, city, district = '', limit = 10, source = 'manual', lat, lng, radius,
+    marketScope = 'tr', countryCode,
+  } = params
+  const workspace = workspaceFor(marketScope)
+  const placesLanguage = workspace.language
+  const placesRegion = (countryCode ?? workspace.countries[0] ?? 'TR').toLowerCase()
   const apiKey = process.env.GOOGLE_MAPS_KEY
 
   const empty: ScanOutcome = { success: true, insertedCount: 0, updatedCount: 0, skippedCount: 0, count: 0 }
@@ -60,7 +78,7 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
   // &location=lat,lng&radius=m eklenir (alan bias'ı). Yoksa URL eskisiyle birebir aynı kalır.
   const hasCircle =
     Number.isFinite(lat) && Number.isFinite(lng) && Number.isFinite(radius) && (radius as number) > 0
-  const searchBase = `${PLACES_BASE}/textsearch/json?query=${encodeURIComponent(searchQuery)}&key=${apiKey}&language=tr&region=tr`
+  const searchBase = `${PLACES_BASE}/textsearch/json?query=${encodeURIComponent(searchQuery)}&key=${apiKey}&language=${placesLanguage}&region=${placesRegion}`
   const buildSearchUrl = (pagetoken?: string): string =>
     searchBase +
     (hasCircle ? `&location=${lat},${lng}&radius=${Math.round(radius as number)}` : '') +
@@ -149,13 +167,21 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
 
   for (const place of places) {
     const placeId = place.place_id as string
-    const detailsUrl = `${PLACES_BASE}/details/json?place_id=${placeId}&fields=name,formatted_phone_number,website,formatted_address,geometry,rating,user_ratings_total&key=${apiKey}&language=tr`
+    const detailsUrl = `${PLACES_BASE}/details/json?place_id=${placeId}&fields=name,formatted_phone_number,website,formatted_address,geometry,rating,user_ratings_total&key=${apiKey}&language=${placesLanguage}`
     detailsCalls++
     const detailsRes = await fetch(detailsUrl)
     const detailsData = await detailsRes.json()
     const d = detailsData.result as Record<string, unknown> | null
 
-    if (!d || !d.formatted_phone_number) { skippedCount++; continue }
+    // ULAŞILABİLİRLİK KAPISI — "telefonu varsa kabul" varsayımı KALDIRILDI (2026-08-10).
+    //
+    // Eski kural yalnız telefon numarası olan işletmeyi kabul ediyordu. Bu, TR
+    // yerel esnaf taramasının varsayımıydı; B2B ve Global'de değeri taşıyan şey
+    // web sitesidir (domain → zenginleştirme → karar verici → uyum kapısı).
+    // Telefonsuz ama web siteli bir marka artık ELENMİYOR.
+    const hasPhone = Boolean(d?.formatted_phone_number)
+    const hasWebsite = Boolean(d?.website)
+    if (!d || (!hasPhone && !hasWebsite)) { skippedCount++; continue }
 
     const evidence = await runEvidenceEngine({
       website: (d.website as string) ?? null,
@@ -170,7 +196,7 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
       city: loc.city,
       rating: (d.rating as number) ?? null,
       reviewCount: (d.user_ratings_total as number) ?? 0,
-      phone: d.formatted_phone_number as string,
+      phone: (d.formatted_phone_number as string) ?? null,
       evidence,
       email: evidence.found_email,
     })
@@ -181,7 +207,7 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
         sector: cleanSector,
         city: loc.city,
         google_place_id: placeId,
-        phone: d.formatted_phone_number as string,
+        phone: (d.formatted_phone_number as string) ?? null,
         website: (d.website as string) ?? null,
         email: evidence.found_email,
         rating: (d.rating as number) ?? null,
@@ -197,13 +223,23 @@ export async function scanLeads(params: ScanParams): Promise<ScanOutcome> {
     const payload: Record<string, unknown> = {
       google_place_id: placeId,
       business_name: d.name as string,
+      // Pazar kapsamı ve kaynak izlenebilirliği (mig 072). Kolonlar yoksa
+      // PGRST204 stripRetry devreye girer — tarama çökmez.
+      market_scope: marketScope,
+      country_code: placesRegion.toUpperCase(),
+      lead_timezone: workspace.timezone,
+      lead_language: workspace.language,
+      lead_currency: workspace.currency,
+      source_provider: 'google_places',
+      source_url: `https://www.google.com/maps/place/?q=place_id:${placeId}`,
+      acquired_at: new Date().toISOString(),
       sector: cleanSector,
       normalized_sector: qualityResult.normalized_sector,
       city: loc.city,
       district: loc.district || null,
       city_slug: loc.citySlug,
       district_slug: loc.districtSlug || null,
-      phone: d.formatted_phone_number as string,
+      phone: (d.formatted_phone_number as string) ?? null,
       website: (d.website as string) ?? null,
       has_website: evidence.has_real_website || !!(d.website),
       latitude: geometry?.location?.lat ?? null,

@@ -255,6 +255,110 @@ export interface BatchSummary {
   costBand: ReturnType<typeof costBand>
 }
 
+export interface WeeklyFunnelSummary {
+  delivered: number
+  humanReplies: number
+  positiveReplies: number
+  /** Bu köprü kaynağında haftalık toplantı zamanı yoksa null kalır. */
+  meetings: number | null
+}
+
+/** Aynı lead birden çok mesaj taşısa da haftalık özeti lead bazında tekilleştirir. */
+export function buildWeeklyFunnel(outcomes: OutcomeRow[]): WeeklyFunnelSummary {
+  const delivered = new Set<string>()
+  const replied = new Set<string>()
+  const positive = new Set<string>()
+  for (const row of outcomes) {
+    if (['sent', 'replied'].includes(row.outcome)) delivered.add(row.anonLeadId)
+    if (row.humanReply === true) replied.add(row.anonLeadId)
+    if (row.positiveReply === true) positive.add(row.anonLeadId)
+  }
+  return {
+    delivered: delivered.size,
+    humanReplies: replied.size,
+    positiveReplies: positive.size,
+    meetings: null,
+  }
+}
+
+export interface GrowthOperationalSummary {
+  pendingApprovalCount: number | null
+  upcomingActionCount: number | null
+  strongestOpportunity: {
+    anonLeadId: string
+    designScore: number | null
+    aiScore: number | null
+    verifiedEvidenceCount: number
+    primaryService: string | null
+  } | null
+  freshestLeadUpdateAt: string | null
+}
+// NOT: `careerAction` 2026-08-10'da KALDIRILDI. Kariyer GrafikcemOS'un
+// sahipliğindedir; ajans büyüme snapshot'ı kariyer eylemi taşımaz.
+
+/** PII yerine yalnız sayaç, anonim kimlik ve kapalı-küme karar alanları çıkarır. */
+export async function readOperationalSummary(warnings: GrowthWarnings): Promise<GrowthOperationalSummary> {
+  const fallback: GrowthOperationalSummary = {
+    pendingApprovalCount: null,
+    upcomingActionCount: null,
+    strongestOpportunity: null,
+    freshestLeadUpdateAt: null,
+  }
+
+  return safe<GrowthOperationalSummary>('growth operational summary', async () => {
+    const now = new Date()
+    const sevenDays = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+    const [approvals, actions, opportunity, freshness] = await Promise.all([
+      supabaseAdmin
+        .from('approval_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'pending')
+        .gt('expires_at', now.toISOString()),
+      supabaseAdmin
+        .from('leads')
+        .select('id', { count: 'exact', head: true })
+        .gte('next_follow_up_at', now.toISOString())
+        .lte('next_follow_up_at', sevenDays.toISOString())
+        .not('status', 'in', '(converted,lost,disqualified,suppressed,archived)'),
+      supabaseAdmin
+        .from('lead_assessments')
+        .select('lead_id,design_score,ai_score,verified_evidence_count,chair_verdict')
+        .eq('selected', true)
+        .not('lead_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabaseAdmin
+        .from('leads')
+        .select('updated_at')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+    ])
+
+    for (const result of [approvals, actions, opportunity, freshness]) {
+      if (result.error) throw result.error
+    }
+
+    const verdict = opportunity.data?.chair_verdict
+    const primaryService = verdict && typeof verdict === 'object' && !Array.isArray(verdict)
+      ? String((verdict as Record<string, unknown>).primary_service_slug ?? '').trim() || null
+      : null
+    return {
+      pendingApprovalCount: approvals.count ?? 0,
+      upcomingActionCount: actions.count ?? 0,
+      strongestOpportunity: opportunity.data?.lead_id ? {
+        anonLeadId: anonId(String(opportunity.data.lead_id)),
+        designScore: opportunity.data.design_score ?? null,
+        aiScore: opportunity.data.ai_score ?? null,
+        verifiedEvidenceCount: opportunity.data.verified_evidence_count ?? 0,
+        primaryService,
+      } : null,
+      freshestLeadUpdateAt: freshness.data?.updated_at ?? null,
+    }
+  }, warnings, fallback)
+}
+
 export async function readBatchSummary(monthKey: string, warnings: GrowthWarnings): Promise<BatchSummary[]> {
   return safe(
     'prospect_import_batches',

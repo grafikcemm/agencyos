@@ -427,7 +427,7 @@ describe('kokpit — bütünleşik görünüm', () => {
       outreachHealth: listOutreachHealth({ env: {} }),
       pilotGate: { canSend: false, dailyCap: null, remainingToday: 0, blockedReason: 'warmup_unverified' },
     })
-    expect(c.budget).toMatchObject({ capUsd: 29, spentUsd: 4, remainingUsd: 25, state: 'ok' })
+    expect(c.budget).toMatchObject({ capUsd: 22, spentUsd: 4, remainingUsd: 18, state: 'ok' })
     expect(c.experiments[0].totals.sourced).toBe(100)
     expect(c.experiments[0].winner.decided).toBe(false)
     expect(c.providers.sources.find((p) => p.key === 'apify')!.enabled).toBe(false)

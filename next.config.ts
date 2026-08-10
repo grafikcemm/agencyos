@@ -2,6 +2,10 @@ import type { NextConfig } from "next";
 import path from "node:path";
 
 const nextConfig: NextConfig = {
+  // Kullanıcı yerelde 127.0.0.1 üzerinden açıyor. Next 16 dev asset/HMR
+  // isteklerini varsayılan localhost origin'inden farklı saydığı için dinamik
+  // harita chunk'ı yüklenmiyordu. Yalnız development origin allowlist'i.
+  allowedDevOrigins: ['127.0.0.1'],
   // Bu proje, üst dizininde (…\scratch) başka lockfile'lar bulunan bir klasörde
   // duruyor. Next/Turbopack workspace kökünü otomatik tespit ederken üst dizini
   // seçip "Can't resolve 'tailwindcss'" + OOM ile çöküyordu. Kökü projeye sabitle.

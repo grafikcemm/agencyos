@@ -9,6 +9,7 @@ import {
   istanbulMonthKey,
 } from './budget'
 import type { SpendReader } from './budget'
+import { APIFY_MONTHLY_HARD_STOP_USD } from './apifyPolicy'
 import { describeGrowthFlags, isApifyEnabled, isInstantlyEnabled } from './flags'
 import {
   collectLeads,
@@ -19,6 +20,7 @@ import {
   getSourceProvider,
   listProviderHealth,
   mapRunState,
+  parseActorPricing,
   startSourceRun,
   SourceProviderError,
 } from './sources'
@@ -34,6 +36,22 @@ const QUERY: SourceQuery = { niche: 'mimarlık ofisi', location: 'İstanbul', li
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+
+const APIFY_PRICING_BODY = {
+  data: {
+    currentPricingInfo: {
+      pricingModel: 'PAY_PER_EVENT',
+      minimalMaxTotalChargeUsd: 0.05,
+      pricingPerEvent: {
+        actorChargeEvents: {
+          'place-scraped': { eventTitle: 'Place scraped', eventPriceUsd: 0.005 },
+          'filter-applied': { eventTitle: 'Search filter applied', eventPriceUsd: 0.001 },
+          'contact-details-scraped': { eventTitle: 'Contact enrichment', eventPriceUsd: 0.002 },
+        },
+      },
+    },
+  },
+}
 
 /** Sıfır harcamalı okuyucu — bütçe kapısını açık bırakır. */
 const spendZero: SpendReader = async (_p, monthKey) => ({ spentUsd: 0, burnedUsd: 0, runCount: 0, monthKey })
@@ -74,7 +92,7 @@ describe('growth bayrakları — hepsi default KAPALI', () => {
 
 // ──────────────────────────────── bütçe ──────────────────────────────────────
 
-describe('bütçe kapısı — $29, aşım yok', () => {
+describe('bütçe kapısı — sert kesme $22, aşım yok', () => {
   const est = (usd: number | null): CostEstimate => ({
     provider: 'apify',
     estimatedCostUsd: usd,
@@ -84,8 +102,8 @@ describe('bütçe kapısı — $29, aşım yok', () => {
 
   it('bütçe içindeyse geçer ve kalanı bildirir', async () => {
     const d = await assertWithinBudget(est(5), async (_p, m) => ({ spentUsd: 10, burnedUsd: 1, runCount: 2, monthKey: m }))
-    expect(d).toMatchObject({ allowed: true, spentUsd: 10, estimateUsd: 5, capUsd: 29 })
-    expect(d.remainingAfterUsd).toBe(14)
+    expect(d).toMatchObject({ allowed: true, spentUsd: 10, estimateUsd: 5, capUsd: APIFY_MONTHLY_HARD_STOP_USD })
+    expect(d.remainingAfterUsd).toBe(APIFY_MONTHLY_HARD_STOP_USD - 15)
   })
 
   it('ÖLÇÜLEMEYEN harcama sıfır sayılmaz — kapı kapanır', async () => {
@@ -103,18 +121,21 @@ describe('bütçe kapısı — $29, aşım yok', () => {
   })
 
   it('tavanı aşacaksa koşu KÜÇÜLTÜLMEZ, tamamen reddedilir', async () => {
-    const spent: SpendReader = async (_p, m) => ({ spentUsd: 28, burnedUsd: 0, runCount: 9, monthKey: m })
+    const nearCap = APIFY_MONTHLY_HARD_STOP_USD - 1
+    const spent: SpendReader = async (_p, m) => ({ spentUsd: nearCap, burnedUsd: 0, runCount: 9, monthKey: m })
     await assertWithinBudget(est(2), spent).catch((e: BudgetExceededError) => {
       expect(e.detail.reason).toBe('would_exceed')
-      expect(e.detail.spentUsd).toBe(28)
+      expect(e.detail.spentUsd).toBe(nearCap)
     })
     // Tam tavan geçer, bir kuruş fazlası geçmez.
     await expect(assertWithinBudget(est(1), spent)).resolves.toMatchObject({ remainingAfterUsd: 0 })
     await expect(assertWithinBudget(est(1.01), spent)).rejects.toThrow(BudgetExceededError)
   })
 
-  it('tavan sabiti $29 ve koşu başına 100 lead', () => {
-    expect(APIFY_MONTHLY_BUDGET_USD).toBe(29)
+  it('tavan sert kesme noktasıdır ($22) ve koşu başına 100 lead', () => {
+    // Sabit $29 KALDIRILDI — tavan apifyPolicy.ts'ten gelir.
+    expect(APIFY_MONTHLY_BUDGET_USD).toBe(APIFY_MONTHLY_HARD_STOP_USD)
+    expect(APIFY_MONTHLY_HARD_STOP_USD).toBe(22)
     expect(MAX_LEADS_PER_RUN).toBe(100)
   })
 
@@ -129,9 +150,9 @@ describe('bütçe kapısı — $29, aşım yok', () => {
 
   it('okunamayan harcama kokpitte SAĞLIKLI görünmez', () => {
     expect(describeBudget({ spentUsd: null, burnedUsd: 0, runCount: 0, monthKey: '2026-07' }).state).toBe('unmeasurable')
-    expect(describeBudget({ spentUsd: 29, burnedUsd: 3, runCount: 5, monthKey: '2026-07' }).state).toBe('exhausted')
+    expect(describeBudget({ spentUsd: APIFY_MONTHLY_HARD_STOP_USD, burnedUsd: 3, runCount: 5, monthKey: '2026-07' }).state).toBe('exhausted')
     expect(describeBudget({ spentUsd: 4, burnedUsd: 1, runCount: 1, monthKey: '2026-07' })).toMatchObject({
-      remainingUsd: 25,
+      remainingUsd: APIFY_MONTHLY_HARD_STOP_USD - 4,
       burnedUsd: 1,
       state: 'ok',
     })
@@ -150,8 +171,7 @@ describe('Apify sağlayıcı — default kapalı', () => {
   const enabledEnv = {
     APIFY_ENABLED: 'true',
     APIFY_TOKEN: 'apify_api_GIZLI',
-    APIFY_ACTOR_ID: 'acme~scraper',
-    APIFY_COST_PER_1K_USD: '4',
+    APIFY_ACTOR_ID: 'compass/crawler-google-places',
   }
 
   it('KAPALIYKEN start AĞA ÇIKMADAN reddeder', async () => {
@@ -178,51 +198,88 @@ describe('Apify sağlayıcı — default kapalı', () => {
     const p = createApifyProvider({ env: {} })
     expect(p.health({})).toMatchObject({ enabled: false, reason: 'APIFY_ENABLED kapalı' })
     expect(p.health({ APIFY_ENABLED: 'true', APIFY_TOKEN: 't', APIFY_ACTOR_ID: 'a' }).reason)
-      .toContain('APIFY_COST_PER_1K_USD')
+      .toContain('compass/crawler-google-places')
   })
 
-  it('birim fiyat yoksa tahmin null (sıfır DEĞİL) ve bütçe kapısı kapanır', async () => {
-    const p = createApifyProvider({ env: { APIFY_TOKEN: 't', APIFY_ACTOR_ID: 'a' } })
+  it('fiyat metadata yoksa tahmin null (sıfır DEĞİL) ve bütçe kapısı kapanır', async () => {
+    const p = createApifyProvider({
+      env: enabledEnv,
+      fetchImpl: (async () => jsonResponse({ data: {} })) as unknown as typeof fetch,
+    })
     const e = await p.estimate(QUERY)
     expect(e.estimatedCostUsd).toBeNull()
     await expect(assertWithinBudget(e, spendZero)).rejects.toThrow(BudgetExceededError)
   })
 
-  it('geçersiz birim fiyat da null üretir', async () => {
-    const p = createApifyProvider({ env: { APIFY_TOKEN: 't', APIFY_ACTOR_ID: 'a', APIFY_COST_PER_1K_USD: 'bedava' } })
+  it('beklenmeyen fiyat modeli null üretir', async () => {
+    const bad = { data: { currentPricingInfo: { pricingModel: 'PRICE_PER_DATASET_ITEM', pricingPerEvent: {} } } }
+    const p = createApifyProvider({ env: enabledEnv, fetchImpl: (async () => jsonResponse(bad)) as unknown as typeof fetch })
     expect((await p.estimate(QUERY)).estimatedCostUsd).toBeNull()
   })
 
-  it('tahmin yerel çarpımdır, ağa çıkmaz', async () => {
-    const fetchImpl = vi.fn()
+  it('tahmin güncel Actor metadata fiyatından üretilir ve koşu başlatmaz', async () => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      void url
+      void init
+      return jsonResponse(APIFY_PRICING_BODY)
+    })
     const p = createApifyProvider({ env: enabledEnv, fetchImpl: fetchImpl as unknown as typeof fetch })
-    expect(await p.estimate({ ...QUERY, limit: 250 })).toMatchObject({ estimatedCostUsd: 1 })
-    expect(fetchImpl).not.toHaveBeenCalled()
+    expect(await p.estimate({ ...QUERY, limit: 100 })).toMatchObject({ estimatedCostUsd: 0.6 })
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain('/acts/compass~crawler-google-places')
+    expect(fetchImpl.mock.calls[0]?.[1]?.method).not.toBe('POST')
   })
 
-  it('koşu başlatınca kimlik döner ve CRM verisi Actor girdisine GİRMEZ', async () => {
-    const fetchImpl = vi.fn(async (_u: string, init?: RequestInit) => {
+  it('koşu provider tavanıyla başlar; CRM verisi ve pahalı eklentiler girdiye GİRMEZ', async () => {
+    const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method !== 'POST') return jsonResponse(APIFY_PRICING_BODY)
+      expect(url).toContain('maxItems=10')
+      expect(url).toContain('maxTotalChargeUsd=0.06')
       const body = JSON.parse(String(init?.body))
-      expect(Object.keys(body).sort()).toEqual(['maxCrawledPlacesPerSearch', 'searchStringsArray'])
+      expect(body).toMatchObject({
+        maxCrawledPlacesPerSearch: 10,
+        scrapeContacts: false,
+        maximumLeadsEnrichmentRecords: 0,
+        maxReviews: 0,
+        maxImages: 0,
+        enableCompetitorAnalysis: false,
+      })
       return jsonResponse({ data: { id: 'run-1', startedAt: '2026-07-31T10:00:00Z' } })
     })
     const p = createApifyProvider({ env: enabledEnv, fetchImpl: fetchImpl as unknown as typeof fetch })
+    await p.estimate(QUERY)
     await expect(p.start(QUERY)).resolves.toMatchObject({ provider: 'apify', providerRunId: 'run-1' })
+    await expect(p.start(QUERY)).rejects.toMatchObject({ code: 'budget_exceeded' })
+  })
+
+  it('kademeli fiyatlarda en pahalı birimi seçer', () => {
+    const parsed = parseActorPricing({
+      data: {
+        currentPricingInfo: {
+          pricingModel: 'PAY_PER_EVENT',
+          pricingPerEvent: {
+            actorChargeEvents: {
+              place: { eventTieredPricingUsd: [{ unitPriceUsd: 0.001 }, { unitPriceUsd: 0.005 }] },
+            },
+          },
+        },
+      },
+    })
+    expect(parsed.metadata.perEventUsd?.place).toBe(0.005)
   })
 })
 
 describe('Apify sağlayıcı — arıza sınıfları', () => {
-  const env = { APIFY_ENABLED: 'true', APIFY_TOKEN: 't', APIFY_ACTOR_ID: 'a', APIFY_COST_PER_1K_USD: '4' }
+  const env = { APIFY_ENABLED: 'true', APIFY_TOKEN: 't', APIFY_ACTOR_ID: 'compass/crawler-google-places' }
   const withFetch = (impl: unknown) => createApifyProvider({ env, fetchImpl: impl as typeof fetch, timeoutMs: 20 })
 
   it('429 → rate_limited', async () => {
-    await expect(withFetch(async () => new Response('slow down', { status: 429 })).start(QUERY))
+    await expect(withFetch(async () => new Response('slow down', { status: 429 })).estimate(QUERY))
       .rejects.toMatchObject({ code: 'rate_limited' })
   })
 
   it('5xx → server_error', async () => {
     for (const s of [500, 502, 503]) {
-      await expect(withFetch(async () => new Response('boom', { status: s })).start(QUERY))
+      await expect(withFetch(async () => new Response('boom', { status: s })).estimate(QUERY))
         .rejects.toMatchObject({ code: 'server_error' })
     }
   })
@@ -233,7 +290,7 @@ describe('Apify sağlayıcı — arıza sınıfları', () => {
   })
 
   it('yönlendirme izlenmez, bad_response olur', async () => {
-    await expect(withFetch(async () => new Response('', { status: 302 })).start(QUERY))
+    await expect(withFetch(async () => new Response('', { status: 302 })).estimate(QUERY))
       .rejects.toMatchObject({ code: 'bad_response' })
   })
 
@@ -246,18 +303,18 @@ describe('Apify sağlayıcı — arıza sınıfları', () => {
           rej(e)
         })
       })
-    await expect(withFetch(hanging).start(QUERY)).rejects.toMatchObject({ code: 'timeout' })
+    await expect(withFetch(hanging).estimate(QUERY)).rejects.toMatchObject({ code: 'timeout' })
   })
 
   it('JSON olmayan yanıt → bad_response', async () => {
-    await expect(withFetch(async () => new Response('<html>502 Bad Gateway</html>', { status: 200 })).start(QUERY))
+    await expect(withFetch(async () => new Response('<html>502 Bad Gateway</html>', { status: 200 })).estimate(QUERY))
       .rejects.toMatchObject({ code: 'bad_response' })
   })
 
   it('HAM hata gövdesi mesaja SIZMAZ', async () => {
     const secretBody = 'token apify_api_GIZLI gecersiz'
     try {
-      await withFetch(async () => new Response(secretBody, { status: 500 })).start(QUERY)
+      await withFetch(async () => new Response(secretBody, { status: 500 })).estimate(QUERY)
       throw new Error('reddetmeliydi')
     } catch (e) {
       expect(e).toBeInstanceOf(SourceProviderError)
@@ -266,7 +323,12 @@ describe('Apify sağlayıcı — arıza sınıfları', () => {
   })
 
   it('şema kayması: koşu kimliği dönmezse bad_response', async () => {
-    await expect(withFetch(async () => jsonResponse({ data: { identifier: 'run-1' } })).start(QUERY))
+    const p = withFetch(async (_url: string, init?: RequestInit) =>
+      init?.method === 'POST'
+        ? jsonResponse({ data: { identifier: 'run-1' } })
+        : jsonResponse(APIFY_PRICING_BODY))
+    await p.estimate(QUERY)
+    await expect(p.start(QUERY))
       .rejects.toMatchObject({ code: 'bad_response' })
   })
 

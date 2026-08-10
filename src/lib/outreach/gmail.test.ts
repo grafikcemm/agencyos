@@ -1,3 +1,4 @@
+import { READINESS_CHECKS } from '@/lib/outreach/outboundCapacity'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // eval.outreach.send_gmail (26 Senaryo 2/5/6 · 21 T5/T6/T8):
@@ -242,13 +243,25 @@ import { computeActionDigest } from '@/lib/brain/gate'
 import { OPT_OUT_MARKER } from './auditCompliance'
 
 const LEAD_ID = 'lead-1'
+/** Tüm deliverability kontrolleri doğrulanmış — yalnız gerçek-gönderim testleri için. */
+const READY_CHECKS = READINESS_CHECKS.join(',')
 const DRAFT_ID = 'draft-1'
 const VALID_BODY = `Merhaba,\n\nöneri...\n\n—\nGrafikcem | MERSİS: 1\nBu tür e-postaları almak istemezseniz "ret" yazarak ${OPT_OUT_MARKER}.`
 
 function seed() {
   seq = 0
   for (const key of Object.keys(db)) db[key] = []
-  db.leads.push({ id: LEAD_ID, business_name: 'Test Klinik', email: 'info@testklinik.com', do_not_contact: false })
+  db.leads.push({
+    id: LEAD_ID, business_name: 'Test Klinik', email: 'info@testklinik.com', do_not_contact: false,
+    // Ülke uyum kapısı (mig 072 + countryPolicy.ts): bu fixture GÖNDERİLEBİLİR
+    // bir alıcıyı temsil eder — TR tüzel kişi, tüm kanıtlar tam. Kapının kendisi
+    // src/lib/compliance/countryPolicy.test.ts ve leadPolicyGate.test.ts'te sınanır.
+    country_code: 'TR', entity_type: 'legal_entity', profession: null, market_scope: 'tr',
+    compliance_evidence: {
+      sender_identity: true, accurate_subject: true, opt_out_mechanism: true,
+      merchant_status_verified: true, iys_consent_or_exemption: true, privacy_notice_delivered: true,
+    },
+  })
   db.outreach_messages.push({
     id: DRAFT_ID, lead_id: LEAD_ID, channel: 'email', status: 'draft',
     subject: 'Web siteniz', body: VALID_BODY, final_body: null,
@@ -276,6 +289,9 @@ beforeEach(() => {
   versionsInsertFail = null
   claimEvSelectFail = null
   delete process.env.GMAIL_SEND_ENABLED
+  delete process.env.OUTBOUND_READINESS_CONFIRMED
+  delete process.env.OUTBOUND_SPAM_RATE
+  delete process.env.OUTBOUND_HARD_BOUNCE_RATE
 })
 
 /** Provider çağrılarını sayan test transport'u. */
@@ -562,7 +578,7 @@ describe('sendGmailMessage (T5/T6/T8 + dry-run)', () => {
     expect(r.ok).toBe(false)
     expect(r.blockedReasons?.some((f) => f.includes('suppression'))).toBe(true)
     expect(db.email_messages).toHaveLength(0)
-    expect(String(db.outreach_messages[0].error)).toContain('audit-compliance bloke')
+    expect(String(db.outreach_messages[0].error)).toContain('uyum kapısı bloke')
     warnSpy.mockRestore()
   })
 
@@ -588,6 +604,11 @@ describe('sendGmailMessage (T5/T6/T8 + dry-run)', () => {
 
   it('GMAIL_SEND_ENABLED=true ama aktif hesap yok → açıklayıcı hata (sessiz düşüş yok)', async () => {
     process.env.GMAIL_SEND_ENABLED = 'true'
+    // Gerçek gönderim yolu deliverability hazırlığını ŞART koşar; bu testler
+    // transport davranışını sınıyor, o yüzden hazırlık açıkça beyan edilir.
+    process.env.OUTBOUND_READINESS_CONFIRMED = READY_CHECKS
+    process.env.OUTBOUND_SPAM_RATE = '0.0005'
+    process.env.OUTBOUND_HARD_BOUNCE_RATE = '0.005'
     const req = await requestSendApproval(DRAFT_ID)
     approve(req.approvalId!)
 
@@ -599,6 +620,11 @@ describe('sendGmailMessage (T5/T6/T8 + dry-run)', () => {
 
   it('ilk GERÇEK gönderim başarıyla finalize olunca follow-up planı otomatik kurulur', async () => {
     process.env.GMAIL_SEND_ENABLED = 'true'
+    // Gerçek gönderim yolu deliverability hazırlığını ŞART koşar; bu testler
+    // transport davranışını sınıyor, o yüzden hazırlık açıkça beyan edilir.
+    process.env.OUTBOUND_READINESS_CONFIRMED = READY_CHECKS
+    process.env.OUTBOUND_SPAM_RATE = '0.0005'
+    process.env.OUTBOUND_HARD_BOUNCE_RATE = '0.005'
     db.gmail_accounts.push({
       id: 'acc-1', email_address: 'ops@ajans.com', vault_secret_id: 'vault-1',
       active: true, created_at: '2026-07-14T00:00:00Z',
@@ -923,6 +949,11 @@ describe('at-most-once state machine (yarış + provider hataları)', () => {
 
   it('GMAIL_SEND_ENABLED=true + aktif hesap: OAuth\'suz REST transport KESİN hata → failed (sessiz düşüş yok)', async () => {
     process.env.GMAIL_SEND_ENABLED = 'true'
+    // Gerçek gönderim yolu deliverability hazırlığını ŞART koşar; bu testler
+    // transport davranışını sınıyor, o yüzden hazırlık açıkça beyan edilir.
+    process.env.OUTBOUND_READINESS_CONFIRMED = READY_CHECKS
+    process.env.OUTBOUND_SPAM_RATE = '0.0005'
+    process.env.OUTBOUND_HARD_BOUNCE_RATE = '0.005'
     db.gmail_accounts.push({
       id: 'acc-1', email_address: 'ali@grafikcem.agency', vault_secret_id: 'vault-1',
       active: true, created_at: new Date().toISOString(),
@@ -953,8 +984,36 @@ describe('at-most-once state machine (yarış + provider hataları)', () => {
     expect((await sendGmailMessage({ outreachMessageId: DRAFT_ID, approvalId: 'app-x' })).error).toContain('farklı bir eyleme')
   })
 
+  it('ÜLKE UYUM KAPISI: ülke/kanıt olmayan lead için onay kartı DOĞMAZ (fail-closed)', async () => {
+    // Migration 072 uygulanmamış ya da alanlar boşsa sonuç "blocked" olmalıdır.
+    // "Kolon yok → serbest" davranışı tüm dünyaya gönderim açmak demek olurdu.
+    db.leads.push({ id: 'lead-nc', business_name: 'Ülkesiz', email: 'x@y.co', do_not_contact: false })
+    db.outreach_messages.push({ id: 'draft-nc', lead_id: 'lead-nc', channel: 'email', status: 'draft', subject: 'x', body: VALID_BODY, final_body: null, sent_at: null, gmail_message_id: null, gmail_thread_id: null, error: null })
+    const r = await requestSendApproval('draft-nc')
+    expect(r.ok).toBe(false)
+    expect(r.blockedReasons).toContain('ulke_politikasi_bloke')
+  })
+
+  it('ÜLKE UYUM KAPISI: bloklu ülkedeki lead için onay kartı DOĞMAZ', async () => {
+    db.leads.push({
+      id: 'lead-de', business_name: 'Berlin GmbH', email: 'a@berlin.de', do_not_contact: false,
+      country_code: 'DE', entity_type: 'legal_entity', market_scope: 'global', compliance_evidence: {},
+    })
+    db.outreach_messages.push({ id: 'draft-de', lead_id: 'lead-de', channel: 'email', status: 'draft', subject: 'x', body: VALID_BODY, final_body: null, sent_at: null, gmail_message_id: null, gmail_thread_id: null, error: null })
+    const r = await requestSendApproval('draft-de')
+    expect(r.ok).toBe(false)
+    expect(r.blockedReasons).toContain('ulke_politikasi_bloke')
+  })
+
   it('konu boş + işletme adsız lead → preview yine üretilir (konu yok/— dalları)', async () => {
-    db.leads.push({ id: 'lead-3', business_name: null, email: 'a@b.co', do_not_contact: false })
+    db.leads.push({
+      id: 'lead-3', business_name: null, email: 'a@b.co', do_not_contact: false,
+      country_code: 'TR', entity_type: 'legal_entity', profession: null, market_scope: 'tr',
+      compliance_evidence: {
+        sender_identity: true, accurate_subject: true, opt_out_mechanism: true,
+        merchant_status_verified: true, iys_consent_or_exemption: true, privacy_notice_delivered: true,
+      },
+    })
     db.outreach_messages.push({ id: 'draft-3', lead_id: 'lead-3', channel: 'email', status: 'draft', subject: null, body: VALID_BODY, final_body: null, sent_at: null, gmail_message_id: null, gmail_thread_id: null, error: null })
     const r = await requestSendApproval('draft-3')
     expect(r.ok).toBe(true)
@@ -1012,6 +1071,11 @@ describe('at-most-once state machine (yarış + provider hataları)', () => {
 
   it('GMAIL_SEND_ENABLED=true reconcile: REST araması OAuth\'suz → outcome error (durum korunur; arama hatası ≠ not-found)', async () => {
     process.env.GMAIL_SEND_ENABLED = 'true'
+    // Gerçek gönderim yolu deliverability hazırlığını ŞART koşar; bu testler
+    // transport davranışını sınıyor, o yüzden hazırlık açıkça beyan edilir.
+    process.env.OUTBOUND_READINESS_CONFIRMED = READY_CHECKS
+    process.env.OUTBOUND_SPAM_RATE = '0.0005'
+    process.env.OUTBOUND_HARD_BOUNCE_RATE = '0.005'
     db.gmail_accounts.push({ id: 'acc-1', email_address: 'ali@x.co', vault_secret_id: 'v1', active: true, created_at: new Date().toISOString() })
     const approvalId = await approvedDraft()
     db.outreach_send_attempts.push({

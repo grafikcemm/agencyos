@@ -84,3 +84,14 @@ agencyos g*ncelleme/
 .wrangler-dry-run
 .dev.vars*
 !.dev.vars.example
+
+# Ajan/araç çalışma artıkları — repoya girmez.
+# `.mcp.json` sır TAŞIMIYOR (yalnız project_ref + feature listesi, 2026-08-10'da
+# doğrulandı) ama yerel araç yapılandırmasıdır; makineler arası taşınmaz.
+/tmp/
+/.playwright-cli/
+/.codex/
+/.mcp.json
+
+# Seed ve migration koşu raporları (UUID + canlı kayıt kimliği taşır).
+/reports/

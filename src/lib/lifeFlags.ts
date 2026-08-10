@@ -1,32 +1,32 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// LIFE UI SAHIPLIGI — geri alinabilir tek anahtar.
+// LIFE UI SAHIPLIGI — kesin karar.
 //
 // Kisisel gorev/aliskanlik yonetimi GrafikcemOS Hayat Merkezi'ne tasiniyor.
 // VERI TASINMIYOR: LIFE Supabase projesi tek dogruluk kaynagi olarak kaliyor ve
 // Telegram/orchestrator o tablolari dogrudan okumaya devam ediyor. Tasinan sey
 // PANEL sahipligi.
 //
-// Bu yuzden kesme noktasi bir kod silme degil, bir bayrak: `cemos` modunda
-// AgencyOS yuzeyleri gizlenir, ama write action kodu YERINDE kalir. Sorun
-// cikarsa donus tek env degisikligidir; kod geri alinmasi gerekmez.
-//
-// `flags.ts` idiomu: env string'i, varsayilan KAPALI (burada `agencyos`).
+// 2026-08-10 kullanıcı kararıyla panel sahipliği GrafikcemOS'a kesin devredildi.
+// Eski env anahtarı yalnız tanılama/geriye dönük yapılandırma uyumu için okunur;
+// AgencyOS yüzeylerini yeniden açamaz. Veri ve ajan yazma yolları korunur.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type LifeUiOwner = 'agencyos' | 'cemos'
 export type LifeFlagEnv = Readonly<Record<string, string | undefined> & { LIFE_UI_OWNER?: string }>
 
 /**
- * Varsayilan `agencyos`. YALNIZ tam olarak `cemos` yazilmasi sahipligi devreder;
- * yazim hatasi ya da bos deger sessizce tasima YAPMAZ — kullanicinin gunluk
- * yuzeyinin bir yazim hatasiyla kaybolmasi kabul edilemez.
+ * Eski imzayı korur; panel sahipliği her ortamda kesin olarak GrafikcemOS'tadır.
  */
 export function lifeUiOwner(env: LifeFlagEnv = process.env): LifeUiOwner {
-  return env.LIFE_UI_OWNER === 'cemos' ? 'cemos' : 'agencyos'
+  void env
+  return 'cemos'
 }
 
 /** AgencyOS kisisel LIFE yuzeylerini gosteriyor mu. */
-export const showsLifeUi = (env: LifeFlagEnv = process.env) => lifeUiOwner(env) === 'agencyos'
+export const showsLifeUi = (env: LifeFlagEnv = process.env) => {
+  void env
+  return false
+}
 
 /** Panelde gosterilecek durum ozeti — deger degil, DURUM. */
 export function describeLifeFlag(env: LifeFlagEnv = process.env) {
@@ -34,8 +34,6 @@ export function describeLifeFlag(env: LifeFlagEnv = process.env) {
   return {
     key: 'LIFE_UI_OWNER',
     value: owner,
-    description: owner === 'cemos'
-      ? 'Kisisel gorev/aliskanlik paneli GrafikcemOS Hayat Merkezi\'nde. Veri yine LIFE DB\'de.'
-      : 'Kisisel gorev/aliskanlik paneli AgencyOS\'ta (varsayilan).',
+    description: 'Kisisel gorev/aliskanlik paneli GrafikcemOS Hayat Merkezi\'nde. Veri yine LIFE DB\'de.',
   }
 }

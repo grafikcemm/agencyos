@@ -20,7 +20,7 @@ import { SourceProviderError } from './types'
 import type { ProviderHealth, RunHandle, SourceProvider, SourceProviderKey, SourceQuery } from './types'
 
 export * from './types'
-export { createApifyProvider, mapRunState } from './apify'
+export { createApifyProvider, mapRunState, parseActorPricing } from './apify'
 export { createApolloProvider, createPlacesProvider } from './existing'
 export { createFakeProvider, FAKE_DATASET } from './fake'
 

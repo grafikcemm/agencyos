@@ -8,6 +8,7 @@ import 'leaflet.markercluster/dist/MarkerCluster.Default.css'
 import L from 'leaflet'
 import 'leaflet.markercluster'
 import type { EnrichedLead } from '@/lib/enrichLead'
+import type { MarketScope } from '@/lib/leads/marketScope'
 
 // Fix Leaflet default icon paths
 const fixLeafletIcons = () => {
@@ -179,9 +180,10 @@ interface LeadMapProps {
   drawMode?: boolean
   circle?: CircleArea | null
   onCircleChange?: (area: CircleArea) => void
+  scope?: MarketScope
 }
 
-export default function LeadMap({ leads, onLeadClick, drawMode = false, circle = null, onCircleChange }: LeadMapProps) {
+export default function LeadMap({ leads, onLeadClick, drawMode = false, circle = null, onCircleChange, scope = 'tr' }: LeadMapProps) {
   const [mounted, setMounted] = useState(false)
 
   const handleLeadClick = useCallback((lead: EnrichedLead) => {
@@ -200,8 +202,9 @@ export default function LeadMap({ leads, onLeadClick, drawMode = false, circle =
   return (
     <div className={`w-full h-full relative${drawMode ? ' draw-mode' : ''}`}>
       <MapContainer
-        center={[38.96, 35.24]}
-        zoom={5.5}
+        key={scope}
+        center={scope === 'tr' ? [38.96, 35.24] : [28, -18]}
+        zoom={scope === 'tr' ? 5.5 : 2.5}
         scrollWheelZoom={true}
         className="w-full h-full bg-[var(--bg-base)]"
         zoomControl={false}
@@ -211,7 +214,7 @@ export default function LeadMap({ leads, onLeadClick, drawMode = false, circle =
           url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
         />
         <ClusterLayer leads={leads} onLeadClick={handleLeadClick} />
-        <CircleDrawLayer drawMode={drawMode} circle={circle} onCircleChange={onCircleChange} />
+        {scope === 'tr' && <CircleDrawLayer drawMode={drawMode} circle={circle} onCircleChange={onCircleChange} />}
       </MapContainer>
 
       {/* Cluster icon styles */}

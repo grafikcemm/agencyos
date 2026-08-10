@@ -23,6 +23,8 @@ import { computeActionDigest } from '@/lib/brain/gate'
 import { buildApprovalDraft, DEFAULT_APPROVAL_TTL_MS } from '@/lib/approvals/integrity'
 import { getApproval } from '@/lib/approvals/repo'
 import { auditCompliance, extractDomain } from '@/lib/outreach/auditCompliance'
+import { evaluateLeadSendPolicy } from '@/lib/compliance/leadPolicyGate'
+import { mailboxReady } from '@/lib/outreach/outboundCapacity'
 import { evaluateOutboundText, type GateVerdict } from '@/lib/outreach/outboundGate'
 import {
   loadClaimEntriesForMessage,
@@ -214,13 +216,25 @@ export async function requestSendApproval(
 
   // Deterministik kapı — onay isteğinden ÖNCE (bloke ise onay kartı bile doğmaz).
   const audit = await auditCompliance({ toAddress: lead.email, body, doNotContact: lead.do_not_contact })
-  if (!audit.ok) {
+
+  // ÜLKE UYUM KAPISI — onay isteğinden ÖNCE. Ülkesi/tüzel kişiliği/kanıtı
+  // eksik bir alıcı için onay kartı DOĞMAZ; operatör "onayla"yamayacağı bir
+  // şeyi görmez. Fail-closed: lead okunamazsa sonuç blocked.
+  const policyGate = await evaluateLeadSendPolicy({
+    leadId: lead.id,
+    stage: 'approval',
+    suppressed: false, // suppression zaten audit içinde kontrol edildi
+    emailConfidence: null,
+    mailboxReady: mailboxReady(),
+  })
+  if (!audit.ok || policyGate.failures.length > 0) {
+    const reasons = [...audit.failures, ...policyGate.failures]
     await supabaseAdmin
       .from('outreach_messages')
-      .update({ error: `audit-compliance bloke: ${audit.failures.join(', ')}` })
+      .update({ error: `uyum kapısı bloke: ${reasons.join(', ')}` })
       .eq('id', outreachMessageId)
-    console.warn(`[outreach.blocked] stage=request-approval outreach=${outreachMessageId} reasons=${audit.failures.join(',')}`)
-    return { ok: false, blockedReasons: audit.failures }
+    console.warn(`[outreach.blocked] stage=request-approval outreach=${outreachMessageId} reasons=${reasons.join(',')}`)
+    return { ok: false, blockedReasons: reasons }
   }
 
   // Faz 1.3: BLOCKING kalite kapısı — approval yaratılmadan ÖNCE.
@@ -631,13 +645,27 @@ async function validateSendPreconditions(
   // eklenmiş olabilir — pre-send kapısı atlanamaz, T8). Provider'dan ve
   // claim'den ÖNCE: bloke ise provider çağrı sayısı SIFIR.
   const audit = await auditCompliance({ toAddress: lead.email, body, doNotContact: lead.do_not_contact })
-  if (!audit.ok) {
+
+  // Ülke uyum kapısı yürütme anında TEKRAR — onaydan sonra ülke/kanıt/mailbox
+  // durumu değişmiş olabilir. Provider çağrısından ÖNCE.
+  const sendPolicyGate = await evaluateLeadSendPolicy({
+    leadId: lead.id,
+    stage: 'send',
+    suppressed: false,
+    emailConfidence: null,
+    // DRY-RUN'da mailbox hazırlığı aranmaz: GMAIL_SEND_ENABLED=false iken
+    // hiçbir mesaj dışarı ÇIKMAZ, transport mock'tur. Gerçek gönderim açıkken
+    // ölçülmüş deliverability hazırlığı ZORUNLUDUR.
+    mailboxReady: isGmailSendEnabled() ? mailboxReady() : true,
+  })
+  if (!audit.ok || sendPolicyGate.failures.length > 0) {
+    const reasons = [...audit.failures, ...sendPolicyGate.failures]
     await supabaseAdmin
       .from('outreach_messages')
-      .update({ error: `audit-compliance bloke (send): ${audit.failures.join(', ')}` })
+      .update({ error: `uyum kapısı bloke (send): ${reasons.join(', ')}` })
       .eq('id', row.id)
-    console.warn(`[outreach.blocked] stage=send outreach=${row.id} reasons=${audit.failures.join(',')}`)
-    return { ok: false, outcome: { ok: false, blockedReasons: audit.failures } }
+    console.warn(`[outreach.blocked] stage=send outreach=${row.id} reasons=${reasons.join(',')}`)
+    return { ok: false, outcome: { ok: false, blockedReasons: reasons } }
   }
 
   return { ok: true, ctx: { row, toAddress: lead.email, subject, body, actionDigest: expectedDigest } }

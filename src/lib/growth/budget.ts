@@ -1,8 +1,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// APIFY BÜTÇE KAPISI — aylık $29, aşım YOK.
+// APIFY BÜTÇE KAPISI — aşım YOK.
 //
-// Apify Starter planı aylık $29'dur ve tavan aşıldığında Apify koşuyu
-// REDDETMEZ; fazlasını faturalar. Yani üst sınırı uygulamak BİZİM işimizdir.
+// SABİT $29 LİMİT KALDIRILDI (2026-08-10). Tavan artık politika + ortamdan
+// gelir: elde $25 kredi, aylık operasyon hedefi $18, SERT KESME $22, dokunulmaz
+// rezerv $3. Kanonik değerler: src/lib/growth/apifyPolicy.ts
+//
+// Apify tavan aşıldığında koşuyu REDDETMEZ; fazlasını faturalar. Yani üst
+// sınırı uygulamak BİZİM işimizdir.
 //
 // ÜÇ KURAL:
 //
@@ -24,9 +28,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { CostEstimate, SourceProviderKey } from './sources/types'
+import { APIFY_MONTHLY_HARD_STOP_USD } from './apifyPolicy'
 
-/** Apify Starter aylık tavan (USD). */
-export const APIFY_MONTHLY_BUDGET_USD = 29
+/**
+ * Aylık sert kesme (USD). `APIFY_MONTHLY_BUDGET_USD` adı geriye dönük uyum için
+ * korunur; DEĞERİ artık politika modülünden gelir ve ortamla daraltılabilir
+ * (genişletilemez — env yalnız daha DÜŞÜK bir tavan koyabilir).
+ */
+export const APIFY_MONTHLY_BUDGET_USD = APIFY_MONTHLY_HARD_STOP_USD
+
+/** Ortam daha düşük bir tavan dayatabilir; yükseltemez. */
+export function monthlyCapUsd(env: Record<string, string | undefined> = process.env): number {
+  const raw = Number(env.APIFY_MONTHLY_CAP_USD ?? '')
+  if (!Number.isFinite(raw) || raw <= 0) return APIFY_MONTHLY_HARD_STOP_USD
+  return Math.min(raw, APIFY_MONTHLY_HARD_STOP_USD)
+}
 /** Tek koşuda azami lead. */
 export const MAX_LEADS_PER_RUN = 100
 

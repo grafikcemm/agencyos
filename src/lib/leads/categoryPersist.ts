@@ -9,6 +9,19 @@ export const CATEGORY_PERSIST_KEYS = [
   'website_quality_band',
   'category_reasons',
   'has_social_link',
+  // Migration 071 — edinim dönemi
+  'acquisition_epoch',
+  // Migration 072 — pazar kapsamı ve kaynak izlenebilirliği
+  'market_scope',
+  'country_code',
+  'lead_timezone',
+  'entity_type',
+  'source_provider',
+  'source_provider_run_id',
+  'source_url',
+  'acquired_at',
+  'lead_language',
+  'lead_currency',
 ] as const
 
 interface SupabaseErrorLike {
